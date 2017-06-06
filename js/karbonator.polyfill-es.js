@@ -1,4 +1,4 @@
-/**
+﻿/**
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
@@ -404,41 +404,12 @@
         var TempFunction = function () {};
         var _this = this;
         var FunctionWrapper = function () {
-            // call the original function with a new context using `apply`.
-            // however if the function is called with `new`, it needs to be called
-            // with the context of, and return, a new object instance and not the
-            // bound version of this.  In that case, binding gets ignored in favor
-            // of using the `this` of the new instance rather than the `oThis` binding.
-            
-            // new object instances inherit from the prototype of their constructors.
-            // Our `fBound` function is supposed to mimic the original with the
-            // exception of a change in context.  So if new objects are created with
-            // it, they should behave as though they were created from the original.
-            // But at the same time, we can't simply carry over the prototype of the
-            // original into `fBound` because it is a separate function and needs its
-            // own prototype, just one that also inherits from the original. To
-            // accommodate this, the `fNOP` function (constructor) above is used as
-            // an intermediary for creating `fBound`'s prototype while allowing it to
-            // be unique but also inherit the original.  And because that becomes part
-            // of the bound function's prototype chain, it can be used to determine
-            // whether `this` in `fBound` is an instance created by `new` or not since
-            // `instanceof` works through a prototype chain lookup.
-            
             return _this.apply(
                 (this instanceof TempFunction ? this : thisArg),
                 args.concat(Array.prototype.slice.call(arguments))
             );
         };
         
-        // `fNOP`'s use to provide an intermediary prototype between `fBound` and
-        // the current function instance mimics `Object.create`. But we're assuming
-        // if you don't have `bind`, you probably don't have `create` either, so do
-        // it the old fashioned way with a constructor.  This works by setting the
-        // constructor's prototype to the to-inherit-from constructor's (this)
-        // prototype. A check is needed to prevent assinging that prototype to null
-        // if it doesn't exist on this function (Function.prototype is technically
-        // a valid target for `bind()` because it is a function but one that does not
-        // have its own prototype).
         if(this.prototype) {
             TempFunction.prototype = this.prototype;
         }
