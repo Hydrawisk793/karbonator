@@ -1,4 +1,4 @@
-﻿/**
+/**
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
@@ -717,7 +717,7 @@
                     Object.prototype.hasOwnProperty.call(o, key)
                     && symbolKeyPattern.test(key)
                 ) {
-                    symbolKeys.push(key);
+                    symbolKeys.push(key.replace(symbolKeyPattern, ""));
                 }
             }
             
