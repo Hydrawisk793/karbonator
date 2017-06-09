@@ -27,6 +27,15 @@
     "use strict";
     
     /*////////////////////////////////////////////////////////////////*/
+    //The 'polyfilled' ECMAScript built-in object snapshots.
+    
+    var Object = global.Object;
+    var Array = global.Array;
+    var Date = global.Date;
+    
+    /*////////////////////////////////////////////////////////////////*/
+    
+    /*////////////////////////////////////////////////////////////////*/
     //karbonator namespace.
     
     var karbonator = (function (global) {
@@ -45,7 +54,9 @@
          * @return {Boolean}
          */
         var _isCallable = function (o) {
-            return typeof(o) === "function";// || (function () {try {o(); return true;} catch(e) {return false;}})();
+            return typeof(o) === "function"
+                //|| (function () {try {o(); return true;} catch(e) {return false;}})()
+            ;
         };
         
         /**
@@ -63,7 +74,7 @@
          * @param {Object} defaultValue
          */
         var _selectNonUndefined = function (value, defaultValue) {
-            return (typeof(value) !== "undefined" ? value : defaultValue);
+            return (_isNotUndefined(value) ? value : defaultValue);
         };
         
         /**
@@ -71,7 +82,7 @@
          * @param {Object} global
          * @return {String}
          */
-        var _determineEnvironmentType = function (global) {
+        var _testEnvironmentType = function (global) {
             if((new Function("try{return this===window}catch(e){return false;}")).bind(global)()) {
                 return "WebBrowser";
             }
@@ -206,7 +217,7 @@
              * @return {String}
              */
             Environment.prototype.getType = function () {
-                return _determineEnvironmentType(this.global);
+                return _testEnvironmentType(this.global);
             };
             
             /**
@@ -238,7 +249,7 @@
             Environment.prototype.testEs6Symbol = function () {
                 var Symbol = this.global.Symbol;
                 if(typeof(Symbol) === "undefined" || Symbol === null) {
-                    //지원 안 함.
+                    //It means that this environment doen't support 'Symbol'.
                     return 0;
                 }
                 
@@ -247,7 +258,7 @@
                 var symbolKey = "karbonator";
                 
                 /*////////////////////////////////*/
-                //생성 테스트
+                //Construction test.
                 
                 var localSymbol1 = Symbol(symbolKey);
                 if(typeof(localSymbol1) !== "undefined") {
@@ -269,7 +280,7 @@
                 /*////////////////////////////////*/
                 
                 /*////////////////////////////////*/
-                //비교 테스트
+                //Comparison test.
                 
                 var localSymbol2 = Symbol(symbolKey);
                 if(
@@ -307,8 +318,9 @@
                     
                     /*////////////////////////////////*/
                     //global 심볼과 local 심볼을 오브젝트 프로퍼티로 활용하는 테스트.
-                    //polyfill이 Symbol.prototype.toString 메소드를 사용하는 경우
-                    //반환 값이 표준에 어긋나야 점수를 받을 수 있을 것임.
+                    //if the polyfill uses Symbol.prototype.toString,
+                    //the return value must be different to standard's one(e.g. Symbol(foo))
+                    //and it must be some kind of unique string.
                     
                     var propTestObj = {};
                     propTestObj[localSymbol1] = symbolKey;
@@ -322,7 +334,7 @@
                     /*////////////////////////////////*/
                     
                     /*////////////////////////////////*/
-                    //undefined 심볼 비교 테스트
+                    //'undefined' symbol comparison test.
                     
                     if(
                         SymbolForFunc() === SymbolForFunc("undefined")
@@ -761,7 +773,7 @@
                     case 2:
                     default:
                     {
-                        if(!(arguments[0] instanceof Array)) {
+                        if(!Array.isArray(arguments[0])) {
                             throw new TypeError("The parameter 'dependencies' must be an string array.");
                         }
                         if(typeof(arguments[1]) !== "function") {
@@ -825,7 +837,7 @@
                         throw new TypeError("The parameter 'id' must be a string.");
                     }
                     
-                    if(dependencies !== null && !(dependencies instanceof Array)) {
+                    if(dependencies !== null && !Array.isArray(dependencies)) {
                         throw new TypeError("The parameter 'dependencies' must be an string array.");
                     }
                     
@@ -1309,7 +1321,7 @@
                             ;
                         }
                     }
-                    else if(arg instanceof Array) {
+                    else if(Array.isArray(arg)) {
                         for(var i = 0, len = arg.length; i < len; ++i) {
                             if(!this.contains(arg[i])) {
                                 return false;

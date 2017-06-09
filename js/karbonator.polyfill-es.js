@@ -29,6 +29,7 @@
     var String = global.String;
     var Function = global.Function;
     var Number = global.Number;
+    var Boolean = global.Boolean;
     var Date = global.Date;
     var RegExp = global.RegExp;
     var Error = global.Error;
@@ -39,6 +40,14 @@
     var _hasOwnPropertyFunction = Object.prototype.hasOwnProperty;
     
     /**
+     * @constructor
+     */
+    var _Array = function () {
+        Array.apply(this, arguments);
+    };
+    _Array.prototype = Array.prototype;
+    
+    /**
      * @function
      * @param {Object} value
      * @param {Object} defaultValue
@@ -46,6 +55,39 @@
     var _selectNonUndefined = function (value, defaultValue) {
         return (typeof(value) !== "undefined" ? value : defaultValue);
     };
+    
+    /**
+     * TODO : test this code.
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    var _isArray = function (o) {
+        return typeof(o) === "object"
+            && o !== null
+            && o instanceof _Array //uses the 'snapshot' constructor function that has original 'Array.prototype'.
+        ;
+    };
+    
+    /**
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    var _isString = function (o) {
+        var result = false;
+        
+        switch(typeof(o)) {
+        case "string":
+            result = true;
+        break;
+        case "object":
+            result = o instanceof String;
+        //break;
+        }
+        
+        return result;
+    }
     
     /**
      * @function
@@ -86,6 +128,98 @@
         if(typeof(o) === "undefined" || o === null) {
             throw new Error("A non-null object must be passed.");
         }
+    };
+    
+    /**
+     * @constructor
+     * @param {Array} arr
+     */
+    var ArrayKeyIterator = function (arr) {
+        this._arr = arr;
+        this._i = 0;
+    };
+    
+    ArrayKeyIterator.prototype.next = function () {
+        var done = this._i >= this._arr.length;
+        var result = {
+            value : (done ? undefined : this._i),
+            done : done
+        };
+        
+        if(!done) {
+            ++this._i;
+        }
+        
+        return result;
+    };
+    
+    /**
+     * @constructor
+     * @param {Array} arr
+     */
+    var ArrayValueIterator = function (arr) {
+        this._arr = arr;
+        this._i = 0;
+    };
+    
+    ArrayValueIterator.prototype.next = function () {
+        var done = this._i >= this._arr.length;
+        var result = {
+            value : (done ? undefined : this._arr[this._i]),
+            done : done
+        };
+        
+        if(!done) {
+            ++this._i;
+        }
+        
+        return result;
+    };
+    
+    /**
+     * @constructor
+     * @param {Array} arr
+     */
+    var ArrayEntryIterator = function (arr) {
+        this._arr = arr;
+        this._i = 0;
+    };
+    
+    ArrayEntryIterator.prototype.next = function () {
+        var done = this._i >= this._arr.length;
+        var result = {
+            value : (done ? undefined : [this._i, this._arr[this._i]]),
+            done : done
+        };
+        
+        if(!done) {
+            ++this._i;
+        }
+        
+        return result;
+    };
+    
+    /**
+     * @constructor
+     * @param {String} str
+     */
+    var StringValueIterator = function (str) {
+        this._str = str;
+        this._i = 0;
+    };
+    
+    StringValueIterator.prototype.next = function () {
+        var done = this._i >= this._str.length;
+        var result = {
+            value : (done ? undefined : this._str.charAt(this._i)),
+            done : done
+        };
+        
+        if(!done) {
+            ++this._i;
+        }
+        
+        return result;
     };
     
     Object.keys = (function (global) {
@@ -306,6 +440,17 @@
         }
     }(global));
     
+//    Array.from = Array.from || function (arrayLike) {
+//        
+//    };
+    
+    Array.of = Array.of || function () {
+        return Array.prototype.slice.call(arguments);
+    };
+    
+    //TODO : test this code.
+    Array.isArray = Array.isArray || _isArray;
+    
     Array.prototype.findIndex = Array.prototype.findIndex || (function (callback) {
         var thisArg = arguments[1];
         
@@ -369,6 +514,51 @@
             callback.call(thisArg, this[i], i, this);
         }
     });
+    
+    Array.prototype.entries = Array.prototype.entries || function () {
+        return new ArrayEntryIterator(this);
+    }
+    
+    Array.prototype.keys = Array.prototype.keys || function () {
+        return new ArrayKeyIterator(this);
+    };
+    
+    Array.prototype.values = Array.prototype.values || function () {
+        return new ArrayValueIterator(this);
+    };
+    
+//    Array.prototype.copyWithin = Array.prototype.copyWithin || function (target) {
+//        var start = 0;
+//        var end = 0;
+//    };
+    
+    Array.prototype.fill = Array.prototype.fill || function (value) {
+        var start = _selectNonUndefined(arguments[1], 0);
+        if(start < 0) {
+            start += this.length;
+        }
+        
+        var end = _selectNonUndefined(arguments[2], this.length);
+        if(end < 0) {
+            end += this.length;
+        }
+        
+        if(_isString(this)) {
+            if(this.length < 1) {
+                return this;
+            }
+            else {
+                throw new Error("Cannot modify readonly property '0'.");
+            }
+        }
+        else {
+            for(var i = start; i < end; ++i) {
+                this[i] = value;
+            }
+        }
+        
+        return this;
+    };
     
     String.prototype.trim = String.prototype.trim || (function () {
         //https://developer.mozilla.org/en/docs/Web/JavaScript/Reference/Global_Objects/String/trim
@@ -528,30 +718,20 @@
         var globalIdCounter = 0;
         
         var FakeSymbolCtor = function () {
-            if(arguments.length > 0) {
-                var arg = arguments[0];
-                
-                switch(typeof(arg)) {
-                case "string":
-                    this._key = arg;
-                break;
-                case "object":
-                    if(arg === null) {
-                        this._key = "null";
-                    }
-                    else {
-                        this._key = arg.toString();
-                    }
-                break;
-                case "undefined":
-                    this._key = "";
-                break;
-                default:
-                    this._key = arg.toString();
-                }
-            }
-            else {
+            var arg = arguments[0];
+            
+            switch(typeof(arg)) {
+            case "string":
+                this._key = arg;
+            break;
+            case "object":
+                this._key = (arg === null ? "null" : arg.toString());
+            break;
+            case "undefined":
                 this._key = "";
+            break;
+            default:
+                this._key = arg.toString();
             }
             
             //A non-standard behaviour to distinguish each symbol instances...
@@ -723,6 +903,12 @@
             
             return symbolKeys;
         });
+        
+        Array.prototype[Symbol.iterator] = Array.prototype[Symbol.iterator] || Array.prototype.values;
+        
+        String.prototype[Symbol.iterator] = String.prototype[Symbol.iterator] || function () {
+            return new StringValueIterator(this);
+        };
         
         return Symbol;
     }(global));

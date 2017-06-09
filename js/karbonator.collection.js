@@ -24,11 +24,7 @@
      * @namespace
      */
     var collection = karbonator.collection || {};
-    
     karbonator.collection = collection;
-    
-    var SymbolExist = typeof(global.Symbol) !== "undefined";
-    var SymbolIteratorExist = (SymbolExist && typeof(global.Symbol.iterator) !== "undefined");
     
     var defaultArrayLikeObjectWrapper = {
         get : function (arr, index) {
@@ -1365,9 +1361,7 @@
          */
         OrderedTreeSet.prototype.values = OrderedTreeSet.prototype.keys;
         
-        if(SymbolIteratorExist) {
-            OrderedTreeSet.prototype[Symbol.iterator] = OrderedTreeSet.prototype.values;
-        }
+        OrderedTreeSet.prototype[global.Symbol.iterator] = OrderedTreeSet.prototype.values;
         
         /**
          * @function
@@ -1561,9 +1555,7 @@
          */
         ListSet.prototype.values = ListSet.prototype.keys;
         
-        if(SymbolIteratorExist) {
-            ListSet.prototype[Symbol.iterator] = ListSet.prototype.values;
-        }
+        ListSet.prototype[global.Symbol.iterator] = ListSet.prototype.values;
         
         /**
          * @function
@@ -1790,9 +1782,7 @@
             
         };
         
-        if(SymbolIteratorExist) {
-            ListMap.prototype[Symbol.iterator] = ListMap.prototype.entries;
-        }
+        ListMap.prototype[global.Symbol.iterator] = ListMap.prototype.entries;
         
         /**
          * @function
