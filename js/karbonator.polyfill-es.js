@@ -717,22 +717,33 @@
         
         var globalIdCounter = 0;
         
-        var FakeSymbolCtor = function () {
-            var arg = arguments[0];
+        /**
+         * @function
+         * @param {*} arg
+         * @return {String}
+         */
+        var createKey = function (arg) {
+            var key = "";
             
             switch(typeof(arg)) {
             case "string":
-                this._key = arg;
+                key = arg;
             break;
             case "object":
-                this._key = (arg === null ? "null" : arg.toString());
+                key = (arg === null ? "null" : arg.toString());
             break;
             case "undefined":
-                this._key = "";
+                key = "";
             break;
             default:
-                this._key = arg.toString();
+                key = arg.toString();
             }
+            
+            return key;
+        };
+        
+        var FakeSymbolCtor = function () {
+            this._key = createKey(arguments[0]);
             
             //A non-standard behaviour to distinguish each symbol instances...
             this._id = ++globalIdCounter;
@@ -847,7 +858,7 @@
          */
         Symbol["for"] = function (key) {
             return globalRegistry.getOrCreateSymbolByKey(
-                _selectNonUndefined(key, "undefined")
+                createKey(_selectNonUndefined(key, "undefined"))
             );
         };
         

@@ -254,7 +254,7 @@
                 }
                 
                 var Object = this.global.Object;
-                var score = 16;
+                var score = 17;
                 var symbolKey = "karbonator";
                 
                 /*////////////////////////////////*/
@@ -366,6 +366,17 @@
                     }
                     
                     /*////////////////////////////////*/
+                    
+                    //'toString' should be used to create description.
+                    if(
+                        Symbol["for"]("true") === Symbol["for"](true)
+                        && Symbol["for"]("false") === Symbol["for"](false)
+                        && Symbol["for"]("0") === Symbol["for"](0)
+                        && Symbol["for"]({}) === Symbol["for"](({}).toString())
+                        && Symbol["for"](function () {}) === Symbol["for"]("function () {}")
+                    ) {
+                        --score;
+                    }
                     
                     if(typeof(Symbol.keyFor) !== "undefined") {
                         /*////////////////////////////////*/
