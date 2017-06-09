@@ -329,12 +329,12 @@
         
         var Derived = function () {};
         Derived.prototype = proto;
-        Derived.prototype.constructor = proto.constructor;
         
         var newObject = new Derived();
         if(arguments.length > 1) {
             Object.defineProperties(Derived.prototype, arguments[1]);
         }
+        newObject.constructor = proto.constructor;
         
         return newObject;
     });
@@ -750,22 +750,24 @@
          * @param {String} [description = ""]
          */
         var Symbol = function () {
-            if((this instanceof Symbol)) {
-                throw new TypeError("'Symbol' cannot be instantiated by the new operator.");
-            }
+            //This code can't be a complete alternative of 'new.target' proposed in Es6 spec
+            //because this can cause some problems
+            //when Object.create(Symbol.prototype) is used to inherit 'Symbol.prototype'.
+            //if((this instanceof Symbol)) {
+            //    throw new TypeError("'Symbol' cannot be instantiated by the new operator.");
+            //}
             
-            var newSymbol = null;
-            if(arguments.length > 0) {
-                newSymbol = new FakeSymbolCtor(arguments[0]);
+            var arg = arguments[0];
+            //It works because of it's a polyfill which is an object...
+            if(arg instanceof Symbol) {
+                throw new TypeError("Cannot convert symbol value to string.");
             }
-            else {
-                newSymbol = new FakeSymbolCtor();
-            }
-            newSymbol.constructor = Symbol;
+            var newSymbol = new FakeSymbolCtor(arg);
             
             return newSymbol;
         };
         Symbol.prototype = FakeSymbolCtor.prototype;
+        Symbol.prototype.constructor = Symbol;
         
         var Registry = (function () {
             var Registry = function () {
@@ -888,6 +890,15 @@
             return this;
         };
         
+        /**
+         * @function
+         * @param {String} hint
+         * @return {Symbol}
+         */
+        Symbol.prototype[Symbol.toPrimitive] = function (hint) {
+            return this.valueOf();
+        };
+        
         var symbolKeyPattern = new RegExp("^" + symbolKeyPrefix + "[0-9]+_");
         
         Object.getOwnPropertySymbols = Object.getOwnPropertySymbols || (function (o) {
@@ -908,6 +919,33 @@
         
         String.prototype[Symbol.iterator] = String.prototype[Symbol.iterator] || function () {
             return new StringValueIterator(this);
+        };
+        
+        Date.prototype[Symbol.toPrimitive] = Date.prototype[Symbol.toPrimitive] || function (hint) {
+            switch(hint) {
+            case "number":
+                if(this.valueOf) {
+                    return this.valueOf();
+                }
+                else if(this.toString) {
+                    return this.toString();
+                }
+                else {
+                    throw new TypeError("Cannot convert the date instance to primitive.");
+                }
+            case "default":
+            case "string":
+                if(this.toString) {
+                    return this.toString();
+                }
+                else if(this.valueOf){
+                    return this.valueOf();
+                }
+                else {
+                    throw new TypeError("Cannot convert the date instance to primitive.");
+                }
+            //break;
+            }
         };
         
         return Symbol;

@@ -254,7 +254,7 @@
                 }
                 
                 var Object = this.global.Object;
-                var score = 12;
+                var score = 16;
                 var symbolKey = "karbonator";
                 
                 /*////////////////////////////////*/
@@ -265,10 +265,23 @@
                     --score;
                 }
                 
+                if(typeof(Symbol.iterator) !== "undefined") {
+                    --score;
+                    
+                    try {
+                        Symbol(Symbol.iterator);
+                    }
+                    catch(e) {
+                        --score;
+                    }
+                }
+                
                 /*////////////////////////////////*/
                 
                 /*////////////////////////////////*/
-                //new 연산자에 의한 생성이 금지되었는 지 테스트.
+                //Test if the polyfiiled Symbol prevents programmers instantiating symbol by using new operator.
+                //This feature requires 'new.target' virtual property proposed in Es6.
+                //I don't think that this can be implemented in Es3 environment...
                 
                 try {
                     new Symbol();
@@ -386,7 +399,7 @@
                 }
                 
                 /*////////////////////////////////*/
-                //프토로타입 체인 테스트.
+                //Prototype chain test.
                 
                 (function () {
                     if(localSymbol1.constructor !== Symbol) {
@@ -406,6 +419,27 @@
                     
                     --score;
                 })();
+                
+                //Should allow objects to inherit Symbol.prototype using Object.create function.
+                try {
+                    var Inherited = function () {
+                        Symbol.apply(this, arguments);
+                    };
+                    Inherited.prototype = Object.create(Symbol.prototype);
+                    
+                    var inheritedInstance = new Inherited();
+                    if(inheritedInstance.constructor === Symbol) {
+                        --score;
+                        
+                        try {
+                            Symbol(new Inherited());
+                        }
+                        catch(ei) {
+                            --score;
+                        }
+                    }
+                }
+                catch(eo) {}
                 
                 /*////////////////////////////////*/
                 
