@@ -901,14 +901,14 @@
             return this;
         };
         
-        /**
-         * @function
-         * @param {String} hint
-         * @return {Symbol}
-         */
-        Symbol.prototype[Symbol.toPrimitive] = function (hint) {
-            return this.valueOf();
-        };
+//        /**
+//         * @function
+//         * @param {String} hint
+//         * @return {Symbol}
+//         */
+//        Symbol.prototype[Symbol.toPrimitive] = function (hint) {
+//            return this.valueOf();
+//        };
         
         var symbolKeyPattern = new RegExp("^" + symbolKeyPrefix + "[0-9]+_");
         
@@ -932,32 +932,32 @@
             return new StringValueIterator(this);
         };
         
-        Date.prototype[Symbol.toPrimitive] = Date.prototype[Symbol.toPrimitive] || function (hint) {
-            switch(hint) {
-            case "number":
-                if(this.valueOf) {
-                    return this.valueOf();
-                }
-                else if(this.toString) {
-                    return this.toString();
-                }
-                else {
-                    throw new TypeError("Cannot convert the date instance to primitive.");
-                }
-            case "default":
-            case "string":
-                if(this.toString) {
-                    return this.toString();
-                }
-                else if(this.valueOf){
-                    return this.valueOf();
-                }
-                else {
-                    throw new TypeError("Cannot convert the date instance to primitive.");
-                }
-            //break;
-            }
-        };
+//        Date.prototype[Symbol.toPrimitive] = Date.prototype[Symbol.toPrimitive] || function (hint) {
+//            switch(hint) {
+//            case "number":
+//                if(this.valueOf) {
+//                    return this.valueOf();
+//                }
+//                else if(this.toString) {
+//                    return this.toString();
+//                }
+//                else {
+//                    throw new TypeError("Cannot convert the date instance to primitive.");
+//                }
+//            case "default":
+//            case "string":
+//                if(this.toString) {
+//                    return this.toString();
+//                }
+//                else if(this.valueOf){
+//                    return this.valueOf();
+//                }
+//                else {
+//                    throw new TypeError("Cannot convert the date instance to primitive.");
+//                }
+//            //break;
+//            }
+//        };
         
         return Symbol;
     }(global));

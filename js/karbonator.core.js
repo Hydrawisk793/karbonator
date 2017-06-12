@@ -46,6 +46,47 @@
         var karbonator = {};
         
         /*////////////////////////////////*/
+        //Interface & Callback documentations.
+        
+        /**
+         * 비교 함수<br/>
+         * 0 : 좌변과 우변이 동등<br/>
+         * 양의 정수 : 좌변이 우변보다 큼<br/>
+         * 음의 정수 : 좌변이 우변보다 작음<br/>
+         * @callback karbonator.comparator
+         * @param {*} l
+         * @param {*} r
+         * @return {Number}
+         */
+        
+        /*////////////////////////////////*/
+        
+        /*////////////////////////////////*/
+        //global.Console polyfill.(usually for node.js)
+        
+        (function (console) {
+            if(typeof(console) === "undefined") {
+                return;
+            }
+            
+            if(!console.clear && console.log) {
+                if(global.process) {
+                    console.clear = function () {
+                        var lines = global.process.stdout.getWindowSize()[1];
+                        for(var i = 0; i < lines; i++) {
+                            console.log('\x1BC');
+                        }
+                    }; 
+                }
+                else {
+                    console.clear = function () {
+                        console.log('\x1B[EJ');
+                    };
+                }
+            }
+        }(global.console));
+        
+        /*////////////////////////////////*/
         //Namespace private constants and functions.
         
         /**
