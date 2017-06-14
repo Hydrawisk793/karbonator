@@ -6,7 +6,7 @@
      * @return {Number}
      */
     var numberComparator = function (l, r) {
-        return l-r;
+        return l - r;
     };
     
     /**

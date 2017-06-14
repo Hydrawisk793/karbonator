@@ -48,7 +48,7 @@
      * @enum {Interval}
      */
     var _constInterval = {
-        epsilon : new Interval(Number.MIN_VALUE, Number.MAX_VALUE),
+        epsilon : new Interval(Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER),
         anyCharacters : new Interval(_charCodeMin, _charCodeMax),
         whiteSpaces : new Interval(0x09, 0x0D),
         posixLower : new Interval(0x61, 0x7A),
@@ -100,16 +100,38 @@
             new Interval(0x00, 0x1F),
             _constInterval.del
         ],
-        nonWhiteSpaces : [
-            //TODO : Fill it with adequate values...
-        ],
+        nonWhiteSpaces : Interval.negate(_constIntervalSet.posixSpace),
         word : [
             _constIntervalSet.posixAlnum,
             _constInterval.underscore
         ],
-        nonWord : [
-             //TODO : Fill it with adequate values...
-        ]
+        nonWord : Interval.negate(_constIntervalSet.word)
+    };
+    
+    /**
+     * @function
+     * @param {Interval} o
+     */
+    var _assertIsInterval = function (o) {
+        if(typeof(o) !== "object" || !(o instanceof Interval)) {
+            throw new TypeError("A instance of 'Interval' must be passed.");
+        }
+    };
+    
+    /**
+     * @function
+     * @param {Array.<Interval>} o
+     */
+    var _assertIsArrayOfIntervals = function (o) {
+        if(typeof(o) !== "object" || !(o instanceof Array)) {
+            throw new TypeError("An array of 'Interval's must be passed.");
+        }
+        
+        for(var i = 0; i < o.length; ++i) {
+            if(typof(o) !== "object" || !(o instanceof Interval)) {
+                throw new TypeError("An array of 'Interval's must be passed.");
+            }
+        }
     };
     
     /**
@@ -154,6 +176,20 @@
         );
     };
     
+    /**
+     * @function
+     * @param {Interval} l
+     * @param {Interval} r
+     * @return {Number}
+     */
+    var _edgeComparator = function (l, r) {
+        if(l.equals(r)) {
+            return 0;
+        }
+
+        return l._min - r._min;
+    };
+    
     string.Lexer = (function () {
         /**
          * @memberof karbonator.string
@@ -193,9 +229,10 @@
         var Nfa = (function () {
             /**
              * @constructor
+             * @param {karbonator.comparator} edgeComparator
              */
-            var State = function () {
-                this._transitionMap = new ListMap(_objectComparator);
+            var State = function (edgeComparator) {
+                this._transitionMap = new ListMap(edgeComparator);
                 this._finalFlag = false;
                 this._action = {
                     code : 0,
@@ -290,7 +327,7 @@
              */
             Nfa.prototype.addState = function () {
                 if(this._states.length - 1 < Number.MAX_VALUE) {
-                    this._states.push(new State());
+                    this._states.push(new State(this._edgeComparator));
                     
                     return this._states.length;
                 }
@@ -637,38 +674,37 @@
         var RegExParser = (function () {
             /**
              * @function
-             * @param {Interval} o
-             */
-            var _assertIsInterval = function (o) {
-                if(typeof(o) !== "object" || !(o instanceof Interval)) {
-                    throw new TypeError("A instance of 'Interval' must be passed.");
-                }
-            };
-            
-            /**
-             * @function
-             * @param {Interval} l
-             * @param {Interval} r
-             * @return {Number}
-             */
-            var _edgeComparator = function (l, r) {
-                if(l.equals(r)) {
-                    return 0;
-                }
-                
-                return l._min - r._min;
-            };
-            
-            /**
-             * @function
              * @param {Interval} edge
              * @reutrn {Nfa}
              */
             var _createNfaFromInterval = function (edge) {
+                _assertIsInterval(edge);
+                
                 var nfa = new Nfa(_constInterval.epsilon, _edgeComparator);
                 var startKey = nfa.addState();
                 var endKey = nfa.addState();
                 nfa.addTransition(startKey, edge, endKey);
+                nfa.setStartState(startKey);
+                nfa.setStateAsFinal(endKey, true);
+                
+                return nfa;
+            };
+            
+            /**
+             * @function
+             * @param {Array.<Interval>} edges
+             * @reutrn {Nfa}
+             */
+            var _createNfaFromIntervals = function (edges) {
+                _assertIsArrayOfIntervals(edges);
+                
+                var nfa = new Nfa(_constInterval.epsilon, _edgeComparator);
+                var startKey = nfa.addState();
+                var endKey = nfa.addState();
+                var disjoinedEdges = Interval.disjoin(edges);
+                for(var i = 0; i < disjoinedEdges.length; ++i) {
+                    nfa.addTransition(startKey, disjoinedEdges[i], endKey);
+                }
                 nfa.setStartState(startKey);
                 nfa.setStateAsFinal(endKey, true);
                 
@@ -742,16 +778,16 @@
              * @return {Nfa}
              */
             RegExParser.prototype.createNfa = function () {
-                /////////
-                ///1. infix to postfix 및 postfix 계산기 기법 활용
-                ///2. 반복 연산자는 연산자 스택에 넣지 말고
-                ///   가장 마지막으로 입력된 character-term에 대해 바로 연산을 수행 해서
-                ///   토큰 스택에는 반복 연산자가 없는 것처럼 처리.
-                ///3. ')'가 입력되는 순간 '('까지의 모든 연산자들을 즉시 계산하고
-                ///   토큰 스택에는 반복 연산자가 없는 것처럼 처리.
-                ///4. '('가 입력되면 concat 연산자를 먼저 push하고 '('를 스택에 push.
-                ///5. character-term이 입력되면 concat 연산자를 먼저 연산자 스택에 push하고
-                ///   입력된 character-term을 토큰 스택에 push.
+                /*/////////////////////////////////////////////*/
+                //1. infix to postfix 및 postfix 계산기 기법 활용
+                //2. 반복 연산자는 연산자 스택에 넣지 말고
+                //   가장 마지막으로 입력된 character-term에 대해 바로 연산을 수행 해서
+                //   토큰 스택에는 반복 연산자가 없는 것처럼 처리.
+                //3. ')'가 입력되는 순간 '('까지의 모든 연산자들을 즉시 계산하고
+                //   토큰 스택에는 반복 연산자가 없는 것처럼 처리.
+                //4. '('가 입력되면 concat 연산자를 먼저 push하고 '('를 스택에 push.
+                //5. character-term이 입력되면 concat 연산자를 먼저 연산자 스택에 push하고
+                //   입력된 character-term을 토큰 스택에 push.
                 
                 var intervals = [];
                 for(; this.isParsingNotComplete(); ) {
@@ -759,10 +795,10 @@
                     var chCode = this._regExStr.charCodeAt(this._pos);
                     switch(ch) {
                     case '^':
-                        
+                        throw new Error("Not implemented yet...");
                     break;
                     case '$':
-                        
+                        throw new Error("Not implemented yet...");
                     break;
                     case '(':
                         if(this._isLastTokenTypeCharacter()) {
@@ -775,13 +811,16 @@
                         this._evaluateGroupedTokens();
                     break;
                     case '[':
-                        //1. Get ranges from character set.
-                        //2. Push it.
-                        
-                        this._moveToNextCharacter();
+                        //TODO : _parseCharacterSet 메소드 구현.
+//                        intervals = this._parseCharacterSet();
+//                        if(this.isParsingNotComplete()) {
+//                            this._pushCharacterRanges(intervals);
+//                            this._moveToNextCharacter();
+//                        }
+                        throw new Error("Not implemented yet...");
                     break;
                     case ']':
-                        //Error - 
+                        this._updateErrorAndStopParsing("An invalid token that specifies end of a character set has been found.");
                     break;
                     case '*':
                     case '+':
@@ -802,6 +841,7 @@
                             case '{':
                                 //1. parse constrained repetition.
                                 //2. convert the nfa of the character token.
+                                throw new Error("Not implemented yet...");
                             break;
                             default:
                                 this._updateErrorAndStopParsing("An unknown repetition operator has been found.");
@@ -815,7 +855,7 @@
                         }
                     break;
                     case '}':
-                        //Error - 
+                        this._updateErrorAndStopParsing("An invalid token that specifies end of constrained repetition has been found.");
                     break;
                     case '|':
                         this._pushOperator('|');
@@ -823,17 +863,26 @@
                     break;
                     case '\\':
                         intervals = this._escapeNextCharacter();
-                        //Create nfa with intervals.
+                        if(this.isParsingNotComplete()) {
+                            this._pushCharacterRanges(intervals);
+                            this._moveToNextCharacter();
+                        }
                     break;
                     case '.':
-                        this._pushCharacter(_constInterval.anyCharacters);
+                        this._pushCharacterRange(_constInterval.anyCharacters);
                         this._moveToNextCharacter();
                     break;
                     default:
-                        this._pushCharacter(_createIntervalFromCharCode(chCode));
+                        this._pushCharacterRange(_createIntervalFromCharCode(chCode));
                         this._moveToNextCharacter();
                     }
                 }
+                
+                if(!this._complete) {
+                    
+                }
+                
+                return null;
             };
             
             /**
@@ -849,18 +898,34 @@
             /**
              * @private
              * @function
-             * @param {Interval} charInterval
+             * @param {Interval} interval
              */
-            RegExParser.prototype._pushCharacter = function (charInterval) {
-                _assertIsInterval(charInterval);
-                
+            RegExParser.prototype._pushCharacterRange = function (interval) {
+                this._pushCharacterToken(_createNfaFromInterval(interval));
+            };
+            
+            /**
+             * @private
+             * @function
+             * @param {Array.<Interval>} intervals
+             */
+            RegExParser.prototype._pushCharacterRanges = function (intervals) {
+                this._pushCharacterToken(_createNfaFromIntervals(intervals));
+            };
+            
+            /**
+             * @private
+             * @function
+             * @param {Nfa} nfa
+             */
+            RegExParser.prototype._pushCharacterToken = function (nfa) {
                 if(this._isLastTokenTypeCharacter()) {
                     this._pushOperator('.');
                 }
                 
                 this._tokenStack.push(new Token(
                     Token.Type.character,
-                    _createNfaFromInterval(charInterval)
+                    nfa
                 ));
                 this._lastTokenType = Token.Type.character;
             };
@@ -900,6 +965,7 @@
                     
                     switch(op) {
                     case '(':
+                        loop = false;
                         complete = true;
                     break;
                     case '.':
@@ -946,11 +1012,12 @@
                     break;
                     default:
                         this._updateErrorAndStopParsing("An unknown operator has been found.");
+                        loop = false;
                     }
                 }
                 
-                if(!complete) {
-                    //
+                if(!complete && loop) {
+                    this._updateErrorAndStopParsing("A sub expression must start with '('.");
                 }
             };
             
@@ -999,13 +1066,13 @@
                         intervals.push(_constInterval.whiteSpaces);
                     break;
                     case 'S':
-                        //Outputs pre-defined character set.
+                        intervals.concat(_constIntervalSet.nonWhiteSpaces);
                     break;
                     case 'w':
-                        //Outputs pre-defined character set.
+                        intervals.concat(_constIntervalSet.word);
                     break;
                     case 'W':
-                        //Outputs pre-defined character set.
+                        intervals.concat(_constIntervalSet.nonWord);
                     break;
                     case '0': case '1': case '2': case '3': case '4':
                     case '5': case '6': case '7': case '8': case '9':
@@ -1049,12 +1116,11 @@
                             this._moveToNextCharacter();
                         }
                         else {
-                            if(ch === '0') {
-                                this._updateErrorAndStopParsing("A decimal integer doesn't start with a sequence of '0'.");
-                            }
-                            else {
-                                this._updateErrorAndStopParsing("A decimal integer doesn't start with '0'.");
-                            }
+                            this._updateErrorAndStopParsing((
+                               ch === '0'
+                               ? "A decimal integer doesn't start with a sequence of '0'."
+                               : "A decimal integer doesn't start with '0'."
+                            ));
                         }
                     break;
                     default:
@@ -1160,10 +1226,8 @@
          * @constructor
          */
         var LexerGenerator = function () {
-            this._tokenMap = new ListMap(_objectComparator);
-            
-            this._edgeMap = new ListMap(_objectComparator);
-            this._states = [];
+            this._tokenMap = new ListMap(_stringComparator);
+            this._regExParser = new RegExParser();
         };
         
         /**
@@ -1177,10 +1241,10 @@
         /**
          * @function
          * @param {String} name
-         * @return {Token}
+         * @return {Token|undefined}
          */
         LexerGenerator.prototype.getToken = function (name) {
-            
+            return this._tokenMap.get(name);
         };
         
         /**
@@ -1206,8 +1270,9 @@
          */
         LexerGenerator.prototype.generateLexer = function () {
             this._tokenMap.forEach(
-                function (pair, index, list) {
-                    //var nfaOfRegEx = convertToNfa(this, token._regExStr);
+                function (token) {
+                    this._regExParser.initialize(token._regExStr);
+                    var nfa = this._regExParser.createNfa();
                 },
                 this
             );

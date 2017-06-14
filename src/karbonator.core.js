@@ -1022,16 +1022,33 @@
          * @memberof karbonator
          */
         var math = (karbonator.math = karbonator.math || {
+            /**
+             * @readonly
+             */
             epsilon : 1e-5,
             
             /**
              * @memberof karbonator.math
              * @function
-             * @param {Number} value
+             * @param {*} v
              * @return {Number}
              */
-            toInt : function (value) {
-                return Math.round(Number(value));
+            toInt : function (v) {
+                //TODO : polyfill-es 모듈에 있는 _toInteger와 코드 병합.
+                var n = Number(v);
+                if(global.isNaN(n)) {
+                    return +0;
+                }
+                
+                if(
+                    n === 0
+                    || n === Number.POSITIVE_INFINITY
+                    || n === Number.NEGATIVE_INFINITY
+                ) {
+                    return n;
+                }
+                
+                return Math.sign(n) * Math.floor(Math.abs(n));
             },
             
             /**
@@ -1061,7 +1078,7 @@
              * @function
              * @param {Number} lhs
              * @param {Number} rhs
-             * @param {Number} [epsilon]
+             * @param {Number} [epsilon=karbonator.math.epsilon]
              * @return {Boolean}
              */
             numberEquals : function (lhs, rhs) {
@@ -1187,7 +1204,7 @@
             /**
              * @function
              * @param {Array.<Interval>} intervals
-             * @param {Number} [epsilon]
+             * @param {Number} [epsilon=karbonator.math.epsilon]
              * @return {Array.<Interval>}
              */
             var _createSortedIntervalListSet = function (intervals) {
@@ -1206,10 +1223,39 @@
             };
             
             /**
+             * @function
+             * @param {Number} prefered
+             * @param {Number} alternative
+             * @return {Number}
+             */
+            var _selectInt = function (prefered, alternative) {
+                return (
+                    Number.isInteger(prefered)
+                    ? prefered
+                    : alternative
+                );
+            };
+            
+            /**
+             * @function
+             * @param {Number} prefered
+             * @param {Number} alternative
+             * @return {Number}
+             */
+            var _selectFloat = function (prefered, alternative) {
+                return (
+                    !Number.isNaN(prefered)
+                    ? prefered
+                    : alternative
+                );
+            };
+            
+            /**
              * @memberof karbonator.math.Interval
              * @function
              * @param {Array.<karbonator.math.Interval>} intervals
-             * @param {Number} [epsilon]
+             * @param {Number} [epsilon=karbonator.math.epsilon]
+             * @param {Boolean} [mergePoints=false]
              * @return {Array.<karbonator.math.Interval>}
              */
             Interval.disjoin = (function () {
@@ -1256,16 +1302,19 @@
                 };
                 
                 return function (intervals) {
-                    var sortedListSet = _createSortedIntervalListSet(intervals, arguments[1]);
-                    
                     var disjoinedIntervals = [];
+                    
+                    var j = 0, sortedPointMaxIndex = 0, endOfClosureIndex = 0;
+                    var neighbor = null;
+                    var sortedPoints = [];
+                    var sortedListSet = _createSortedIntervalListSet(intervals, arguments[1]);
                     for(var i = 0, len = sortedListSet.length; i < len; ) {
-                        var j = 0;
+                        j = 0;
                         
-                        var endOfClosureIndex = _findEndOfClosureIndex(sortedListSet, i);
-                        var sortedPoints = [];
+                        endOfClosureIndex = _findEndOfClosureIndex(sortedListSet, i);
+                        sortedPoints.length = 0;
                         for(j = i; j < endOfClosureIndex; ++j) {
-                            var neighbor = sortedListSet[j];
+                            neighbor = sortedListSet[j];
                             _insertIfNotExistAndSort(
                                 sortedPoints,
                                 neighbor._min
@@ -1276,13 +1325,19 @@
                             );
                         }
                         
-                        j = 0;
-                        var spLen = sortedPoints.length - 1;
-                        do {
-                            disjoinedIntervals.push(new Interval(sortedPoints[j], sortedPoints[j + 1]));
-                            ++j;
+                        sortedPointMaxIndex = sortedPoints.length - 1;
+                        if(arguments[2]) {
+                            disjoinedIntervals.push(new Interval(sortedPoints[0], sortedPoints[sortedPointMaxIndex]));
                         }
-                        while(j < spLen);
+                        else {
+                            //TODO : 안전성 검사(e.g. Interval이 1개인 경우)
+                            j = 0;
+                            do {
+                                disjoinedIntervals.push(new Interval(sortedPoints[j], sortedPoints[j + 1]));
+                                ++j;
+                            }
+                            while(j < sortedPointMaxIndex);
+                        }
                         
                         i = endOfClosureIndex;
                     }
@@ -1297,13 +1352,62 @@
              * @param {Array.<karbonator.math.Interval>} intervals
              * @param {Number} [minimumValue=Number.MIN_VALUE]
              * @param {Number} [maximumValue=Number.MAX_VALUE]
-             * @param {Number} [epsilon]
+             * @param {Number} [epsilon=karbonator.math.epsilon]
              * @return {Array.<karbonator.math.Interval>}
              */
             Interval.negate = function (intervals) {
-                var disjoinedIntervals = Interval.disjon(intervals);
+                var negatedIntervals = [];
                 
+                //Must be sorted in lowest minimum value order.
+                var epsilon = karbonator.selectNonUndefined(arguments[3], karbonator.math.epsilon);
+                var disjoinedIntervals = Interval.disjoin(intervals, epsilon, true);
+                var intervalCount = disjoinedIntervals.length;
+                var i, j = 0;
                 
+                if(intervalCount > 0) {
+                    var min = disjoinedIntervals[j]._min;
+                    if(Number.isInteger(min)) {
+                        negatedIntervals.push(new Interval(
+                            _selectInt(arguments[1], Number.MIN_SAFE_INTEGER),
+                            min - 1
+                        ));
+                    }
+                    else {
+                        negatedIntervals.push(new Interval(
+                            _selectFloat(arguments[1], -Number.MAX_VALUE),
+                            min - epsilon
+                        ));
+                    }
+                    
+                    i = 0, ++j;
+                }
+                
+                for(; j < intervalCount; ++j, ++i) {
+                    var max = disjoinedIntervals[i]._max;
+                    var min = disjoinedIntervals[j]._min;
+                    negatedIntervals.push(new Interval(
+                        max + (Number.isInteger(max) ? 1 : epsilon),
+                        min - (Number.isInteger(min) ? 1 : epsilon)
+                    ));
+                }
+                
+                if(i < intervalCount) {
+                    var max = disjoinedIntervals[i]._max;
+                    if(Number.isInteger(max)) {
+                        negatedIntervals.push(new Interval(
+                            max + 1,
+                            _selectInt(arguments[2], Number.MAX_SAFE_INTEGER)
+                        ));
+                    }
+                    else {
+                        negatedIntervals.push(new Interval(
+                            max + epsilon,
+                            _selectFloat(arguments[2], Number.MAX_VALUE)
+                        ));
+                    }
+                }
+                
+                return negatedIntervals;
             };
             
             /**
@@ -1311,7 +1415,7 @@
              * @function
              * @param {Array.<karbonator.math.Interval>} intervals
              * @param {Number} [targetIndex=0]
-             * @param {Number} [epsilon]
+             * @param {Number} [epsilon=karbonator.math.epsilon]
              * @return {Array.<karbonator.math.Interval>}
              */
             Interval.findClosure = function (intervals) {
@@ -1371,7 +1475,7 @@
             /**
              * @function
              * @param {karbonator.math.Interval} rhs
-             * @param {Number} [epsilon]
+             * @param {Number} [epsilon=karbonator.math.epsilon]
              * @return {Boolean}
              */
             Interval.prototype.equals = function (rhs) {
@@ -1460,49 +1564,42 @@
              * @function
              * @param {Number} [minimumValue]
              * @param {Number} [maximumValue]
-             * @param {Number} [epsilon]
+             * @param {Number} [epsilon=karbonator.math.epsilon]
              * @return {Array.<karbonator.math.Interval>}
              */
             Interval.prototype.negate = function () {
-                //TODO : Deal with NaNs.
                 var negatedIntervals = [];
                 
                 if(Number.isInteger(this._min)) {
                     negatedIntervals.push(new Interval(
-                        (
-                            typeof(arguments[0]) !== "undefined"
-                            ? karbonator.math.toInt(arguments[0])
-                            : Number.MIN_SAFE_INTEGER
-                        ),
+                        _selectInt(arguments[0], Number.MIN_SAFE_INTEGER),
                         this._min - 1
                     ));
                 }
                 else {
                     negatedIntervals.push(new Interval(
-                        karbonator.selectNonUndefined(arguments[0], Number.MIN_VALUE),
+                        _selectFloat(arguments[0], -Number.MAX_VALUE),
                         this._min - karbonator.selectNonUndefined(arguments[2], karbonator.math.epsilon)
                     ));
                 }
                 
                 if(Number.isInteger(this._max)) {
                     negatedIntervals.push(new Interval(
-                        (
-                            typeof(arguments[1]) !== "undefined"
-                            ? karbonator.math.toInt(arguments[1])
-                            : Number.MAX_SAFE_INTEGER
-                        ),
+                        _selectInt(arguments[1], Number.MAX_SAFE_INTEGER),
                         this._max + 1
                     ));
                 }
                 else {
                     negatedIntervals.push(new Interval(
-                        karbonator.selectNonUndefined(arguments[1], Number.MAX_VALUE),
+                        _selectFloat(arguments[1], Number.MAX_VALUE),
                         this._max + karbonator.selectNonUndefined(arguments[2], karbonator.math.epsilon)
                     ));
                 }
                 
                 return negatedIntervals;
             };
+            
+            math._insertIfNotExistAndSort = _insertIfNotExistAndSort;
             
             return Interval;
         })();
