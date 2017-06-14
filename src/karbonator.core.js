@@ -1119,7 +1119,7 @@
              * @param {Number} value
              * @return {Boolean}
              */
-            var isValueInInterval = function (o, value) {
+            var _isValueInInterval = function (o, value) {
                 return (value >= o._min || value <= o._max);
             };
             
@@ -1131,7 +1131,7 @@
              * @param {Object} [thisArg]
              * @return {Boolean}
              */
-            var insertIfNotExistAndSort = function (sortedArray, o, comparator) {
+            var _insertIfNotExistAndSort = function (sortedArray, o, comparator) {
                 var thisArg = arguments[3];
                 comparator = (
                     typeof(comparator) !== "undefined"
@@ -1171,48 +1171,46 @@
             
             /**
              * @function
-             * @param {Array.<Interval>} intervals
-             * @param {Number} [epsilon]
-             * @return {Array.<Interval>}
+             * @param {Interval} l
+             * @param {Interval} r
+             * @return {Number}
              */
-            var createSortedListSet = (function () {
-                /**
-                 * @function
-                 * @param {Interval} l
-                 * @param {Interval} r
-                 * @return {Number}
-                 */
-                var comparatorForSort = function (l, r) {
-                    var diff = l._min - r._min;
-                    if(math.numberEquals(diff, 0, this.epsilon)) {
-                        return (l.equals(r) ? 0 : -1);
-                    }
-                    
-                    return diff;
-                };
+            var _intervalComparatorForSort = function (l, r) {
+                var diff = l._min - r._min;
+                if(math.numberEquals(diff, 0, this.epsilon)) {
+                    return (l.equals(r) ? 0 : -1);
+                }
                 
-                return function (intervals) {
-                    var comparatorParams = {epsilon : arguments[1]};
-                    var sortedIntervals = [];
-                    for(var i = 0, len = intervals.length; i < len; ++i) {
-                        insertIfNotExistAndSort(
-                            sortedIntervals,
-                            intervals[i],
-                            comparatorForSort,
-                            comparatorParams
-                        );
-                    }
-                    
-                    return sortedIntervals;
-                };
-            }());
+                return diff;
+            };
             
             /**
-             * @memberof karbonator.math.Interval
              * @function
              * @param {Array.<Interval>} intervals
              * @param {Number} [epsilon]
              * @return {Array.<Interval>}
+             */
+            var _createSortedIntervalListSet = function (intervals) {
+                var comparatorParams = {epsilon : arguments[1]};
+                var sortedIntervals = [];
+                for(var i = 0, len = intervals.length; i < len; ++i) {
+                    _insertIfNotExistAndSort(
+                        sortedIntervals,
+                        intervals[i],
+                        _intervalComparatorForSort,
+                        comparatorParams
+                    );
+                }
+                
+                return sortedIntervals;
+            };
+            
+            /**
+             * @memberof karbonator.math.Interval
+             * @function
+             * @param {Array.<karbonator.math.Interval>} intervals
+             * @param {Number} [epsilon]
+             * @return {Array.<karbonator.math.Interval>}
              */
             Interval.disjoin = (function () {
                 /**
@@ -1221,7 +1219,7 @@
                  * @param {Number} startIndex
                  * @return {Number}
                  */
-                var findEndOfClosureIndex = function (sortedListSet, startIndex) {
+                var _findEndOfClosureIndex = function (sortedListSet, startIndex) {
                     var endOfClosureIndex = startIndex + 1;
                     for(
                         var i = startIndex, len = sortedListSet.length;
@@ -1258,21 +1256,21 @@
                 };
                 
                 return function (intervals) {
-                    var sortedListSet = createSortedListSet(intervals, arguments[1]);
+                    var sortedListSet = _createSortedIntervalListSet(intervals, arguments[1]);
                     
                     var disjoinedIntervals = [];
                     for(var i = 0, len = sortedListSet.length; i < len; ) {
                         var j = 0;
                         
-                        var endOfClosureIndex = findEndOfClosureIndex(sortedListSet, i);
+                        var endOfClosureIndex = _findEndOfClosureIndex(sortedListSet, i);
                         var sortedPoints = [];
                         for(j = i; j < endOfClosureIndex; ++j) {
                             var neighbor = sortedListSet[j];
-                            insertIfNotExistAndSort(
+                            _insertIfNotExistAndSort(
                                 sortedPoints,
                                 neighbor._min
                             );
-                            insertIfNotExistAndSort(
+                            _insertIfNotExistAndSort(
                                 sortedPoints,
                                 neighbor._max
                             );
@@ -1296,13 +1294,28 @@
             /**
              * @memberof karbonator.math.Interval
              * @function
-             * @param {Array.<Interval>} intervals
+             * @param {Array.<karbonator.math.Interval>} intervals
+             * @param {Number} [minimumValue=Number.MIN_VALUE]
+             * @param {Number} [maximumValue=Number.MAX_VALUE]
+             * @param {Number} [epsilon]
+             * @return {Array.<karbonator.math.Interval>}
+             */
+            Interval.negate = function (intervals) {
+                var disjoinedIntervals = Interval.disjon(intervals);
+                
+                
+            };
+            
+            /**
+             * @memberof karbonator.math.Interval
+             * @function
+             * @param {Array.<karbonator.math.Interval>} intervals
              * @param {Number} [targetIndex=0]
              * @param {Number} [epsilon]
-             * @return {Array.<Interval>}
+             * @return {Array.<karbonator.math.Interval>}
              */
             Interval.findClosure = function (intervals) {
-                var sortedListSet = createSortedListSet(intervals, arguments[2]);
+                var sortedListSet = _createSortedIntervalListSet(intervals, arguments[2]);
                 
                 var targetIndex = (typeof(arguments[1]) !== "undefined" ? arguments[1] : 0);
                 var len = sortedListSet.length;
@@ -1357,7 +1370,7 @@
             
             /**
              * @function
-             * @param {Interval} rhs
+             * @param {karbonator.math.Interval} rhs
              * @param {Number} [epsilon]
              * @return {Boolean}
              */
@@ -1370,7 +1383,7 @@
             
             /**
              * @function
-             * @param {Interval} rhs
+             * @param {karbonator.math.Interval} rhs
              * @return {Boolean}
              */
             Interval.prototype.intersectsWith = function (rhs) {
@@ -1384,7 +1397,7 @@
             
             /**
              * @function
-             * @param {Interval|Array|String|Number} arg
+             * @param {karbonator.math.Interval|Array|String|Number} arg
              * @return {Boolean}
              */
             Interval.prototype.contains = function (arg) {
@@ -1393,13 +1406,13 @@
                 case "object":
                     if(arg instanceof Interval) {
                         if(this._min < arg._min) {
-                            return isValueInInterval(this, arg._min)
-                                && isValueInInterval(this, arg._max)
+                            return _isValueInInterval(this, arg._min)
+                                && _isValueInInterval(this, arg._max)
                             ;
                         }
                         else {
-                            return isValueInInterval(arg, this._min)
-                                && isValueInInterval(arg, this._max)
+                            return _isValueInInterval(arg, this._min)
+                                && _isValueInInterval(arg, this._max)
                             ;
                         }
                     }
@@ -1418,7 +1431,7 @@
                 //break;
                 case "string":
                     for(var i = 0; i < arg.length; ++i) {
-                        if(!isValueInInterval(this, arg.charCodeAt(i))) {
+                        if(!_isValueInInterval(this, arg.charCodeAt(i))) {
                             return false;
                         }
                     }
@@ -1426,11 +1439,69 @@
                     return true;
                 //break;
                 case "number":
-                    return isValueInInterval(this, arg);
+                    return _isValueInInterval(this, arg);
                 //break;
                 default:
                     throw new TypeError("The parameter must be either an Interval instance, an array, a string or a number.");
                 }
+            };
+            
+            /**
+             * @function
+             * @param {Number} offset
+             */
+            Interval.prototype.shift = function (offset) {
+                //TODO : refactor.
+                this._min -= offset;
+                this._max -= offset;
+            };
+            
+            /**
+             * @function
+             * @param {Number} [minimumValue]
+             * @param {Number} [maximumValue]
+             * @param {Number} [epsilon]
+             * @return {Array.<karbonator.math.Interval>}
+             */
+            Interval.prototype.negate = function () {
+                //TODO : Deal with NaNs.
+                var negatedIntervals = [];
+                
+                if(Number.isInteger(this._min)) {
+                    negatedIntervals.push(new Interval(
+                        (
+                            typeof(arguments[0]) !== "undefined"
+                            ? karbonator.math.toInt(arguments[0])
+                            : Number.MIN_SAFE_INTEGER
+                        ),
+                        this._min - 1
+                    ));
+                }
+                else {
+                    negatedIntervals.push(new Interval(
+                        karbonator.selectNonUndefined(arguments[0], Number.MIN_VALUE),
+                        this._min - karbonator.selectNonUndefined(arguments[2], karbonator.math.epsilon)
+                    ));
+                }
+                
+                if(Number.isInteger(this._max)) {
+                    negatedIntervals.push(new Interval(
+                        (
+                            typeof(arguments[1]) !== "undefined"
+                            ? karbonator.math.toInt(arguments[1])
+                            : Number.MAX_SAFE_INTEGER
+                        ),
+                        this._max + 1
+                    ));
+                }
+                else {
+                    negatedIntervals.push(new Interval(
+                        karbonator.selectNonUndefined(arguments[1], Number.MAX_VALUE),
+                        this._max + karbonator.selectNonUndefined(arguments[2], karbonator.math.epsilon)
+                    ));
+                }
+                
+                return negatedIntervals;
             };
             
             return Interval;

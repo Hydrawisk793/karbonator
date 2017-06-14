@@ -40,19 +40,76 @@
         return new Interval(chCode, chCode);
     };
     
+    var _charCodeMin = 0x000000;
+    var _charCodeMax = 0x10FFFF;
+    
     /**
      * @readonly
      * @enum {Interval}
      */
     var _constInterval = {
         epsilon : new Interval(Number.MIN_VALUE, Number.MAX_VALUE),
-        anyCharacters : new Interval(0x000000, 0x10FFFF),
+        anyCharacters : new Interval(_charCodeMin, _charCodeMax),
         whiteSpaces : new Interval(0x09, 0x0D),
+        posixLower : new Interval(0x61, 0x7A),
+        posixUpper : new Interval(0x41, 0x5A),
+        posixDigit : new Interval(0x30, 0x39),
+        posixGraph : new Interval(0x21, 0x7E),
         horizontalTab : _createIntervalFromCharCode(0x09),
         carrigeReturn : _createIntervalFromCharCode(0x0A),
         lineFeed : _createIntervalFromCharCode(0x0B),
         verticalTab : _createIntervalFromCharCode(0x0C),
-        formFeed : _createIntervalFromCharCode(0x0D)
+        formFeed : _createIntervalFromCharCode(0x0D),
+        space : _createIntervalFromCharCode(0x20),
+        underscore : _createIntervalFromCharCode(0x5F),
+        del : _createIntervalFromCharCode(0x7F)
+    };
+    
+    /**
+     * @readonly
+     * @enum {Array.<Interval>}
+     */
+    var _constIntervalSet = {
+        posixPrint : [
+            _constInterval.space,
+            _constInterval.posixGraph        
+        ],
+        posixAlnum : [
+            _constInterval.posixLower,
+            _constInterval.posixUpper,
+            _constInterval.posixDigit
+        ],
+        posixAlpha : [
+            _constInterval.posixLower,
+            _constInterval.posixUpper
+        ],
+        posixBlank : [
+            _constInterval.space,
+            _constInterval.horizontalTab
+        ],
+        posixSpace : [
+            _constInterval.space,
+            _constInterval.whiteSpaces
+        ],
+        posixXdigit : [
+            new Interval(0x41, 0x46),
+            new Interval(0x61, 0x66),
+            _constInterval.posixDigit
+        ],
+        posixCntrl : [
+            new Interval(0x00, 0x1F),
+            _constInterval.del
+        ],
+        nonWhiteSpaces : [
+            //TODO : Fill it with adequate values...
+        ],
+        word : [
+            _constIntervalSet.posixAlnum,
+            _constInterval.underscore
+        ],
+        nonWord : [
+             //TODO : Fill it with adequate values...
+        ]
     };
     
     /**
