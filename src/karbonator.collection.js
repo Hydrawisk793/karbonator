@@ -6,18 +6,17 @@
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
-(function (moduleFactory) {
-    var g = this;
-    
+(function (g, factory) {
     if(typeof(define) === "function" && define.amd) {
         define(["./karbonator.core"], function (core) {
-            return moduleFactory(g, core);
+            return factory(g, core);
         });
     }
-    else if(typeof(module) !== "undefined" && module.exports) {        
-        exports = module.exports = moduleFactory(g, require("./karbonator.core"));
+    else if(typeof(module) !== "undefined" && module.exports) {
+        exports = module.exports = factory(g, require("./karbonator.core"));
     }
 }(
+(global ? global : (window ? window : this)),
 (function (global, karbonator) {
     /**
      * @memberof karbonator
@@ -99,6 +98,7 @@
             this._comparator = _assertComparatorIsPassed(comparator);
             this._elementCount = 0;
             this._root = null;
+            this._garbageNodes = [];
         };
         
         /**
@@ -171,7 +171,7 @@
                 var pRoot = this;
                 for(
                     var pParent = pRoot._parent;
-                    pParent != null;
+                    pParent !== null;
                     pRoot = pParent, pParent = pRoot._parent
                 );
                 
@@ -183,7 +183,7 @@
              * @return {_Node}
              */
             _Node.prototype.getGrandParent = function () {
-                return (this._parent != null ? this._parent._parent : null);        
+                return (this._parent !== null ? this._parent._parent : null);
             };
             
             /**
@@ -194,26 +194,27 @@
                 var pUncle = null;
                 
                 var pGrandParent = this.getGrandParent();
-                if(pGrandParent != null) {
-                    pUncle = (pGrandParent._leftChild == this._parent
+                if(pGrandParent !== null) {
+                    pUncle = (pGrandParent._leftChild === this._parent
                         ? pGrandParent._rightChild
                         : pGrandParent._leftChild
                     );
                 }
-        
+                
                 return pUncle;
             };
             
             /**
              * @function
+             * @param {_Node} parent
              * @return {_Node}
              */
             _Node.prototype.getSibling = function (parent) {
                 if(typeof(parent) === "undefined") {
                     return (
-                        (this._parent != null)
+                        (this._parent !== null)
                         ? (
-                            this == this._parent._leftChild
+                            this === this._parent._leftChild
                             ? this._parent._rightChild
                             : this._parent._leftChild
                             )
@@ -222,15 +223,13 @@
                 }
                 else {
                     var pSibling = null;
-                    if(this == parent._leftChild)
-                    {
+                    if(this === parent._leftChild) {
                         pSibling = parent._rightChild;
                     }
-                    else if(this == parent._rightChild)
-                    {
+                    else if(this === parent._rightChild) {
                         pSibling = parent._leftChild;
                     }
-            
+                    
                     return pSibling;
                 }
             };
@@ -248,7 +247,7 @@
              * @return {Boolean}
              */
             _Node.prototype.isNonNillRoot = function () {
-                return this._parent == null && !this.isNill();
+                return this._parent === null && !this.isNill();
             };
             
             /**
@@ -309,7 +308,7 @@
                 }
                 
                 if(pNode) {
-                    if(pNode._parent != null) {
+                    if(pNode._parent !== null) {
                         pNode.getChildSlot().call(pNode._parent, null);
                     }
                     pNode._parent = this;
@@ -346,10 +345,10 @@
                 var level = 0;
                 for(
                     var pCurrent = this._parent;
-                    pCurrent != null;
+                    pCurrent !== null;
                     pCurrent = pCurrent._parent, ++level
                 );
-        
+                
                 return level;
             };
             
@@ -408,8 +407,8 @@
             _Node.prototype.getChildSlot = function () {
                 var pChildSlot = null;
                 
-                if(this._parent != null) {
-                    if(this._parent._leftChild == this) {
+                if(this._parent !== null) {
+                    if(this._parent._leftChild === this) {
                         pChildSlot = this._parent.leftChild;
                     }
                     else {
@@ -426,8 +425,8 @@
              */
             _Node.prototype.getChildSlotIndex = function () {
                 return (
-                    (this._parent != null)
-                    ? (this == this._parent._leftChild ? 0 : 1)
+                    (this._parent !== null)
+                    ? (this === this._parent._leftChild ? 0 : 1)
                     : 2
                 );
             };
@@ -445,12 +444,12 @@
                 this._parent = this._rightChild;
                 
                 this._rightChild._parent = pParent;
-                if(pChildSlot != null) {
+                if(pChildSlot !== null) {
                     pChildSlot.call(pParent, this._rightChild);
                 }
                 
                 this._rightChild = pLeftChildOfRightChild;
-                if(pLeftChildOfRightChild != _Node.nil) {
+                if(pLeftChildOfRightChild !== _Node.nil) {
                     pLeftChildOfRightChild._parent = this;
                 }
             };
@@ -468,12 +467,12 @@
                 this._parent = this._leftChild;
                 
                 this._leftChild._parent = pParent;
-                if(pChildSlot != null) {
+                if(pChildSlot !== null) {
                     pChildSlot.call(pParent, this._leftChild);
                 }
                 
                 this._leftChild = pRightChildOfLeftChild;
-                if(pRightChildOfLeftChild != _Node.nil) {
+                if(pRightChildOfLeftChild !== _Node.nil) {
                     pRightChildOfLeftChild._parent = this;
                 }
             };
@@ -486,10 +485,10 @@
                 var pCurrent = this;
                 for(
                     ;
-                    pCurrent != null && pCurrent.hasNonNilLeftChild();
+                    pCurrent !== null && pCurrent.hasNonNilLeftChild();
                     pCurrent = pCurrent._leftChild
                 );
-        
+                
                 return pCurrent;
             };
             
@@ -501,10 +500,10 @@
                 var pCurrent = this;
                 for(
                     ;
-                    pCurrent != null && pCurrent.hasNonNilRightChild();
+                    pCurrent !== null && pCurrent.hasNonNilRightChild();
                     pCurrent = pCurrent._rightChild
                 );
-        
+                
                 return pCurrent;
             };
             
@@ -514,9 +513,9 @@
              */
             _Node.prototype.findLeftSubTreeRootNode = function () {
                 var pCurrent = this;
-                for(; pCurrent != null; ) {
+                for(; pCurrent !== null; ) {
                     var pParent = pCurrent._parent;
-                    if(pParent == null || pCurrent == pParent._leftChild) {
+                    if(pParent === null || pCurrent === pParent._leftChild) {
                         break;
                     }
                     
@@ -532,9 +531,9 @@
              */
             _Node.prototype.findRightSubTreeRootNode = function () {
                 var pCurrent = this;
-                for(; pCurrent != null; ) {
+                for(; pCurrent !== null; ) {
                     var pParent = pCurrent._parent;
-                    if(pParent == null || pCurrent == pParent._rightChild) {
+                    if(pParent === null || pCurrent === pParent._rightChild) {
                         break;
                     }
                     
@@ -547,9 +546,12 @@
             /**
              * @function
              * @param {Function} handler
+             * @param {Object} [thisArg]
              * @return {Boolean}
              */
             _Node.prototype.traverseNonNilNodesByPostorder = function (handler) {
+                var thisArg = arguments[1];
+                
                 var nodeStack = [];
                 nodeStack.push(this);
                 
@@ -559,19 +561,19 @@
                     var pCurrentNode = nodeStack[nodeStack.length - 1];
                     if(
                         !pCurrentNode.isLeaf()
-                        && pCurrentNode.getLastChild() != pLastTraversedNode
+                        && pCurrentNode.getLastChild() !== pLastTraversedNode
                     ) {
                         if(pCurrentNode.hasRightChild()) {
                             nodeStack.push(pCurrentNode._rightChild);
                         }
-        
+                        
                         if(pCurrentNode.hasLeftChild()) {
                             nodeStack.push(pCurrentNode._leftChild);
                         }
                     }
                     else {
                         if(!pCurrentNode.isNill()) {
-                            continueTraversal = !handler(pCurrentNode);
+                            continueTraversal = !handler.call(thisArg, pCurrentNode);
                         }
                         pLastTraversedNode = pCurrentNode;
                         nodeStack.pop();
@@ -592,8 +594,8 @@
                     pGreater = this._rightChild.findLeftMostNode();
                 }
                 else {
-                    if(this._parent != null) {
-                        if(this == this._parent._leftChild) {
+                    if(this._parent !== null) {
+                        if(this === this._parent._leftChild) {
                             pGreater = this._parent;
                         }
                         else {
@@ -613,8 +615,8 @@
                 var pLesser = null;
                 
                 if(this.isNonNilLeaf()) {
-                    if(this._parent != null) {
-                        if(this == this._parent._leftChild) {
+                    if(this._parent !== null) {
+                        if(this === this._parent._leftChild) {
                             pLesser = this.findRightSubTreeRootNode()._parent;
                         }
                         else {
@@ -642,30 +644,50 @@
         
         /**
          * @function
+         * @param {RbTreeSetBase} oThis
          * @param {_Node} parent
          * @param {Object} element
          * @return {_Node}
          */
-        var _constructNode = function (parent, element) {
-            return (new _Node(
-                parent,
-                _Node.nil,
-                _Node.nil,
-                element,
-                true
-            ));
+        var _constructNode = function (oThis, parent, element) {
+            var node = null;
+            if(oThis._garbageNodes.length < 1) {
+                node = new _Node(parent, _Node.nil, _Node.nil, element, true);
+            }
+            else {
+                node = oThis._garbageNodes.pop();
+                _Node.call(node, parent, _Node.nil, _Node.nil, element, true);
+            }
+            
+            return node;
         };
         
         /**
          * @function
+         * @param {RbTreeSetBase} oThis
+         * @param {_Node} node
+         */
+        var _destructNode = function (oThis, node) {
+            node._element =
+            node._parent =
+            node._leftChild =
+            node._rightChild =
+            node._red = undefined;
+            
+            oThis._garbageNodes.push(node);
+        };
+        
+        /**
+         * @function
+         * @param {RbTreeSetBase} oThis
          * @param {Object} element
          * @param {Number} searchTarget
          * @return {_Node}
          */
-        var findNode = function (oThis, element, searchTarget) {
+        var _findNode = function (oThis, element, searchTarget) {
             var pElementKey = oThis.getKeyFromElement(element);
             var pCurrent = oThis._root, pPrevious = null;
-            for(; pCurrent != null && !pCurrent.isNill(); ) {
+            for(; pCurrent !== null && !pCurrent.isNill(); ) {
                 var pCurrentElementKey = oThis.getKeyFromElement(pCurrent._element);
                 var compResult = oThis._comparator(pElementKey, pCurrentElementKey);
                 if(compResult < 0) {
@@ -684,7 +706,7 @@
             var pFoundNode = null;
             if(
                 searchTarget >= RbTreeSetBase.SearchTarget.greater
-                && pPrevious != null
+                && pPrevious !== null
                 && !pPrevious.isNill()
                 && oThis._comparator(oThis.getKeyFromElement(pPrevious._element), pElementKey) < 0
             ) {
@@ -692,13 +714,13 @@
             }
             switch(searchTarget) {
             case RbTreeSetBase.SearchTarget.equal:
-                pFoundNode = (pCurrent != null && !pCurrent.isNill() ? pCurrent : null);
+                pFoundNode = (pCurrent !== null && !pCurrent.isNill() ? pCurrent : null);
             break;
             case RbTreeSetBase.SearchTarget.greater:
-                pFoundNode = (pPrevious != null && !pPrevious.isNill() ? pPrevious : null);
+                pFoundNode = (pPrevious !== null && !pPrevious.isNill() ? pPrevious : null);
             break;
             case RbTreeSetBase.SearchTarget.greaterOrEqual:
-                pFoundNode = (pCurrent != null && !pCurrent.isNill() ? pCurrent : pPrevious);
+                pFoundNode = (pCurrent !== null && !pCurrent.isNill() ? pCurrent : pPrevious);
             break;
             default:
                 throw new Error("An unknown search target has been specified.");
@@ -716,8 +738,8 @@
         var _insertNodeInBinarySearchTree = function (oThis, element) {
             var newNode = null;
             
-            if(oThis._root == null) {
-                newNode = _constructNode(null, element);
+            if(oThis._root === null) {
+                newNode = _constructNode(oThis, null, element);
                 oThis._root = newNode;
             }
             else {
@@ -727,10 +749,10 @@
                     !pCurrent.isNill();
                 ) {
                     var pCurrentElementKey = oThis.getKeyFromElement(pCurrent._element);
-                    var compResult = oThis._comparator(pElementKey, pCurrentElementKey)
+                    var compResult = oThis._comparator(pElementKey, pCurrentElementKey);
                     if(compResult < 0) {
-                        if(pCurrent._leftChild == _Node.nil) {
-                            newNode = _constructNode(pCurrent, element);
+                        if(pCurrent._leftChild === _Node.nil) {
+                            newNode = _constructNode(oThis, pCurrent, element);
                             pCurrent._leftChild = newNode;
                             
                             pCurrent = _Node.nil;
@@ -740,8 +762,8 @@
                         }
                     }
                     else if(compResult > 0) {
-                        if(pCurrent._rightChild == _Node.nil) {
-                            newNode = _constructNode(pCurrent, element);
+                        if(pCurrent._rightChild === _Node.nil) {
+                            newNode = _constructNode(oThis, pCurrent, element);
                             pCurrent._rightChild = newNode;
                             
                             pCurrent = _Node.nil;
@@ -777,7 +799,7 @@
             var childCount = target.getNonNilChildCount();
             if(childCount >= 2) {
                 var pMaximumOfRightSubTree = target._leftChild.findRightMostNode();
-                if(pMaximumOfRightSubTree == null) {
+                if(pMaximumOfRightSubTree === null) {
                     throw new Error();
                 }
                 
@@ -797,8 +819,8 @@
             
             var pTargetParent = out.pRemovalTarget._parent;
             out.pParentOfReplacement = pTargetParent;
-            if(pTargetParent != null) {
-                if(pTargetParent._leftChild == out.pRemovalTarget) {
+            if(pTargetParent !== null) {
+                if(pTargetParent._leftChild === out.pRemovalTarget) {
                     pTargetParent._leftChild = pSelectedChildSlot.call(out.pRemovalTarget);
                     out.pReplacementChildSlot = pTargetParent.leftChild;
                 }
@@ -829,15 +851,15 @@
             else {
                 for(
                     var pCurrent = insertedNode;
-                    pCurrent != null;
+                    pCurrent !== null;
                 ) {
                     var pParent = pCurrent._parent;
                     if(pParent._red) {
                         var pUncle = pParent.getSibling();
-                        if(pUncle != _Node.nil && pUncle._red) {
+                        if(pUncle !== _Node.nil && pUncle._red) {
                             pParent._red = false;
                             pUncle._red = false;
-                            
+
                             var pGrandParent = pParent._parent;
                             if(!pGrandParent.isNonNillRoot()) {
                                 pGrandParent._red = true;
@@ -851,15 +873,15 @@
                             var pGrandParent = pParent._parent;
                             var pTarget = pCurrent;
                             if(
-                                pTarget == pParent._rightChild
-                                && pParent == pGrandParent._leftChild
+                                pTarget === pParent._rightChild
+                                && pParent === pGrandParent._leftChild
                             ) {
                                 pParent.rotateLeft();
                                 pTarget = pTarget._leftChild;
                             }
                             else if(
-                                pTarget == pParent._leftChild
-                                && pParent == pGrandParent._rightChild
+                                pTarget === pParent._leftChild
+                                && pParent === pGrandParent._rightChild
                             ) {
                                 pParent.rotateRight();
                                 pTarget = pTarget._rightChild;
@@ -869,7 +891,7 @@
                             pTarget._parent._red = false;
                             pGrandParentOfTarget._red = true;
                             var isGrandParentRoot = pGrandParentOfTarget.isNonNillRoot();
-                            if(pTarget == pTarget._parent._leftChild) {
+                            if(pTarget === pTarget._parent._leftChild) {
                                 pGrandParentOfTarget.rotateRight();
                             }
                             else {
@@ -902,9 +924,9 @@
             else {
                 for(
                     var pCurrent = replacement, pParentOfCurrent = pParentOfReplacement;
-                    pCurrent != null;
+                    pCurrent !== null;
                 ) {
-                    if(pParentOfCurrent == null) {
+                    if(pParentOfCurrent === null) {
                         oThis._root = pCurrent;
                         
                         pCurrent = null;
@@ -914,8 +936,8 @@
                         if(pSiblingOfCurrent._red) {
                             pParentOfCurrent._red = true;
                             pSiblingOfCurrent._red = false;
-    
-                            if(pSiblingOfCurrent == pParentOfCurrent._rightChild) {
+                            
+                            if(pSiblingOfCurrent === pParentOfCurrent._rightChild) {
                                 pParentOfCurrent.rotateLeft();
                             }
                             else {
@@ -931,7 +953,7 @@
                             && !pSiblingOfCurrent._rightChild._red
                         ) {
                             pSiblingOfCurrent._red = true;
-    
+                            
                             pCurrent = pParentOfCurrent;
                             pParentOfCurrent = pCurrent._parent;
                         }
@@ -947,23 +969,23 @@
                             }
                             else if(!pSiblingOfCurrent._red) {
                                 if(
-                                    pCurrent == pParentOfCurrent._leftChild
+                                    pCurrent === pParentOfCurrent._leftChild
                                     && pSiblingOfCurrent._leftChild._red
                                     && !pSiblingOfCurrent._rightChild._red
                                 ) {
                                     pSiblingOfCurrent._red = true;
                                     pSiblingOfCurrent._leftChild._red = false;
-    
+                                    
                                     pSiblingOfCurrent.rotateRight();
                                 }
                                 else if(
-                                    pCurrent == pParentOfCurrent._rightChild
+                                    pCurrent === pParentOfCurrent._rightChild
                                     && pSiblingOfCurrent._rightChild._red
                                     && !pSiblingOfCurrent._leftChild._red
                                 ) {
                                     pSiblingOfCurrent._red = true;
                                     pSiblingOfCurrent._rightChild._red = false;
-    
+                                    
                                     pSiblingOfCurrent.rotateLeft();
                                 }
                             }
@@ -975,14 +997,14 @@
                                 pSiblingOfCurrent._red = isParentRed;
                                 
                                 if(
-                                    pCurrent == pParentOfCurrent._leftChild
+                                    pCurrent === pParentOfCurrent._leftChild
                                     && pSiblingOfCurrent._rightChild._red
                                 ) {
                                     pSiblingOfCurrent._rightChild._red = false;
                                     pParentOfCurrent.rotateLeft();
                                 }
                                 else if(
-                                    pCurrent == pParentOfCurrent._rightChild
+                                    pCurrent === pParentOfCurrent._rightChild
                                     && pSiblingOfCurrent._leftChild._red
                                 ) {
                                     pSiblingOfCurrent._leftChild._red = false;
@@ -995,6 +1017,14 @@
                     }
                 }
             }
+        };
+        
+        /**
+         * @function
+         * @param {_Node} node
+         */
+        var _traversalHandlerOfRemoveAll = function (node) {
+            _destructNode(this, node);
         };
         
         RbTreeSetBase.IteratorBase = (function () {
@@ -1024,7 +1054,7 @@
              * @return {Boolean}
              */
             IteratorBase.prototype.moveToNext = function () {
-                var result = this._node != null;
+                var result = this._node !== null;
                 if(result) {
                     this._node = this._node.getGreater();
                 }
@@ -1039,12 +1069,12 @@
             IteratorBase.prototype.moveToPrevious = function () {
                 var result = true;
                 
-                if(this._node == null) {
+                if(this._node === null) {
                     this._node = this._tree._root.findRightMostNode();
                 }
                 else {
                     var lesser = this._node.getLesser();
-                    result = lesser != null;
+                    result = lesser !== null;
                     if(result) {
                         this._node = lesser;
                     }
@@ -1058,7 +1088,7 @@
              * @return {Object}
              */
             IteratorBase.prototype.dereference = function () {
-                if(this._node == null) {
+                if(this._node === null) {
                     throw new Error("Cannot deference an iterator pointing the end of container.");
                 }
                 
@@ -1075,7 +1105,7 @@
         RbTreeSetBase.prototype.begin = function () {
             return new RbTreeSetBase.IteratorBase(
                 this,
-                (this._root != null ? this._root.findLeftMostNode() : null)
+                (this._root !== null ? this._root.findLeftMostNode() : null)
             );
         };
         
@@ -1100,7 +1130,7 @@
          * @return {Boolean}
          */
         RbTreeSetBase.prototype.isEmpty = function () {
-            return this._elementCount < 1;
+            return this._root === null;
         };
         
         /**
@@ -1110,7 +1140,7 @@
          * @return {RbTreeSetBase.IteratorBase}
          */
         RbTreeSetBase.prototype.find = function (element, searchTarget) {
-            return new RbTreeSetBase.IteratorBase(this, findNode(this, element, searchTarget));
+            return new RbTreeSetBase.IteratorBase(this, _findNode(this, element, searchTarget));
         };
         
         /**
@@ -1134,18 +1164,18 @@
          * @return {Boolean}
          */
         RbTreeSetBase.prototype.remove = function (element) {
-            var pTarget = findNode(this, element, RbTreeSetBase.SearchTarget.equal)._node;
-            var targetFound = pTarget != null;
+            var pTarget = _findNode(this, element, RbTreeSetBase.SearchTarget.equal)._node;
+            var targetFound = pTarget !== null;
             if(targetFound) {
                 --this._elementCount;
                 
                 var info = _disconnectNodeFromBinarySearchTree(this, pTarget);
                 
                 var pTempNilNode = null;
-                if(info.pReplacement == _Node.nil) {
-                    pTempNilNode = _constructNode(info.pParentOfReplacement, null);
+                if(info.pReplacement === _Node.nil) {
+                    pTempNilNode = _constructNode(this, info.pParentOfReplacement, null);
                     pTempNilNode._red = false;
-                    if(info.pParentOfReplacement != null) {
+                    if(info.pParentOfReplacement !== null) {
                         info.pReplacementChildSlot.call(info.pParentOfReplacement, pTempNilNode);
                     }
                     info.pReplacement = pTempNilNode;
@@ -1157,7 +1187,7 @@
                 }
                 else {
                     _rebalanceAfterRemoval(this, info.pReplacement, info.pParentOfReplacement);
-                    if(this._root == pTempNilNode) {
+                    if(this._root === pTempNilNode) {
                         this._root = null;
                     }
                     else if(info.pReplacement.isNonNillRoot()) {
@@ -1169,24 +1199,29 @@
                 }
                 
                 info.pRemovalTarget._parent = null;
-                //this._destructNode(info.pRemovalTarget);
-                if(pTempNilNode != null) {
+                _destructNode(this, info.pRemovalTarget);
+                if(pTempNilNode !== null) {
                     pTempNilNode._parent = null;
-                    //this.destructNode(pTempNilNode);
-                    if(info.pParentOfReplacement != null) {
+                    _destructNode(this, pTempNilNode);
+                    if(info.pParentOfReplacement !== null) {
                         info.pReplacementChildSlot.call(info.pParentOfReplacement, _Node.nil);
                     }
                 }
             }
             
             return targetFound;
-        };        
+        };
         
         /**
          * @function
          */
         RbTreeSetBase.prototype.removeAll = function () {
             if(!this.isEmpty()) {
+                this._root.traverseNonNilNodesByPostorder(
+                    _traversalHandlerOfRemoveAll,
+                    this
+                );
+                
                 this._root = null;
                 this._elementCount = 0;
             }
@@ -1292,7 +1327,7 @@
          * @return {Boolean}
          */
         OrderedTreeSet.prototype.has = function (value) {
-            return this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.equal) != this._rbTreeSet.end();
+            return this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.equal).equals(this._rbTreeSet.end());
         };
         
         /**
@@ -1381,7 +1416,7 @@
          */
         OrderedTreeSet.prototype.add = function (value) {
             this._rbTreeSet.insert(value);
-            
+
             return this;
         };
         
@@ -1417,8 +1452,8 @@
         OrderedTreeSet.prototype.toArray = function () {
             var arr = [];
             this.forEach(
-                function (key, value, set) {
-                    arr.push(key)
+                function (key) {
+                    arr.push(key);
                 }
             );
             
@@ -1465,10 +1500,6 @@
         var ListSet = function (comparator) {
             this._comparator = _assertComparatorIsPassed(comparator);
             this._elements = [];
-//            this._equalComparator = karbonator.selectNonUndefined(
-//                equalComparator,
-//                ListSet.equalComparator
-//            );
         };
         
         var ValueIterator = (function () {
@@ -1619,7 +1650,7 @@
         ListSet.prototype.findIndex = function (element, comparator) {
             comparator = karbonator.selectNonUndefined(comparator, this._comparator);
             for(var i = 0; i < this._elements.length; ++i) {
-                if(comparator(this._elements[i], element) == 0) {
+                if(comparator(this._elements[i], element) === 0) {
                     return i;
                 }
             };
@@ -1675,7 +1706,7 @@
          * @function
          */
         ListSet.prototype.clear = function () {
-            this._elements = [];
+            this._elements.length = 0;
         };
         
         /**
@@ -1879,7 +1910,7 @@
          */
         ListMap.prototype.findIndex = function (key) {
             for(var i = 0; i < this._pairs.length; ++i) {
-                if(this._comparator(this._pairs[i].key, key) == 0) {
+                if(this._comparator(this._pairs[i].key, key) === 0) {
                     return i;
                 }
             }
@@ -1930,7 +1961,7 @@
         ListMap.prototype.values = function () {
             return new ValueIterator(this);
         };
-        
+         
         /**
          * @function
          * @param {Object} key
@@ -1942,7 +1973,7 @@
             if(result) {
                 this._pairs.splice(index, 1);
             }
-            
+
             return result;
         };
         
@@ -1957,7 +1988,7 @@
          * @function
          */
         ListMap.prototype.clear = function () {
-            this._pairs = [];
+            this._pairs.length = 0;
         };
         
         /**
@@ -2006,9 +2037,9 @@
         
         return ListMap;
     })();
-    
-    /*////////////////////////////////*/      
-    
+
+    /*////////////////////////////////*/
+
     return karbonator;
 })
 ));

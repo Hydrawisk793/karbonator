@@ -6,21 +6,20 @@
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
-(function (factory) {
-    var g = this;
-    
+(function (g, factory) {
     if(typeof(define) === "function" && define.amd) {
         define(function () {
             return factory(g);
         });
     }
     else if(typeof(module) !== "undefined" && module.exports) {
-        exports = module.exports = factory(g);
+        module.exports = factory(g);
     }
     else {
         factory(g);
     }
 }(
+(global ? global : (window ? window : this)),
 (function (global) {
     "use strict";
     

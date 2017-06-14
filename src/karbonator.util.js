@@ -6,18 +6,17 @@
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
-(function (moduleFactory) {
-    var g = this;
-    
+(function (g, factory) {
     if(typeof(define) === "function" && define.amd) {
         define(["./karbonator.core"], function (dom) {
-            return moduleFactory(g, dom);
+            return factory(g, dom);
         });
     }
     else if(typeof(module) !== "undefined" && module.exports) {
-        exports = module.exports = moduleFactory(g, require("./karbonator.core"));
+        exports = module.exports = factory(g, require("./karbonator.core"));
     }
 }(
+(global ? global : (window ? window : this)),
 (function (global, karbonator) {
     /**
      * @memberof karbonator

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
@@ -6,23 +6,18 @@
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
-(function (moduleFactory) {
-    var g = this;
-    
+(function (g, factory) {
     if(typeof(define) === "function" && define.amd) {
         define(["./karbonator.polyfill-es"], function () {
-            return moduleFactory(g);
+            return factory(g);
         });
     }
     else if(typeof(module) !== "undefined" && module.exports) {
         require("./karbonator.polyfill-es");
-        
-        exports = module.exports = moduleFactory(g);
-    }
-    else {
-        g.karbonator = moduleFactory(g);
+        exports = module.exports = factory(g);
     }
 }(
+(global ? global : (window ? window : this)),
 (function (global) {
     "use strict";
     
@@ -766,8 +761,9 @@
                     else {
                         scriptTag.onreadystatechange = handler;
                     }
-                    scriptTag.src = scriptSrc;
-                    destTag.appendChild(scriptTag);
+                    
+                    //scriptTag.src = scriptSrc;
+                    //destTag.appendChild(scriptTag);
                 }
             };
             
@@ -794,8 +790,8 @@
                 /**
                  * @memberof karbonator.AmdModuleLoader
                  * @constructor
-                 * @param {String} [id = ""]
-                 * @param {String} [relativePath = ""]
+                 * @param {String} [id=""]
+                 * @param {String} [relativePath=""]
                  * @param {Function|Object} factory
                  */
                 var ModuleDescriptor = function (id, relativePath, factory) {
@@ -847,11 +843,11 @@
                     switch(arguments.length) {
                     case 0:
                         throw new Error("At least one argument must be passed.");
-                    break;
+                    //break;
                     case 1:
                         if(this.getModuleDescriptor(id) === null) {
                             var module = syncedLoad(this.createPath(arguments[0]));
-                            add_module;
+                            //add_module;
                         }
                         
                         result = this.getModuleDescriptor(id).factory;
@@ -875,16 +871,16 @@
                         };
                         for(var i = 0; i < proxy.dependencies.length; ++i) {
                             var id = proxy.dependencies[i];
-                            if(idNotExists) {
-                                proxy.loadTargetPaths.push(this.createPath(id));
-                                proxy.modules.push(null);
-                            }
-                            else {
-                                proxy.modules.push(this.getModuleDescriptor(id).module);
-                            }
+//                            if(idNotExists) {
+//                                proxy.loadTargetPaths.push(this.createPath(id));
+//                                proxy.modules.push(null);
+//                            }
+//                            else {
+//                                proxy.modules.push(this.getModuleDescriptor(id).module);
+//                            }
                         }
                         
-                        asyncedLoad(loadTargetPaths, onModulesLoaded, proxy);
+                        //asyncedLoad(loadTargetPaths, onModulesLoaded, proxy);
                     }
                     }
                     
@@ -954,7 +950,7 @@
                     switch(arguments.length) {
                     case 0:
                         throw new Error("At least the 'factory' argument must be passed.");
-                    break;
+                    //break;
                     case 1:
                         result = impl(this, null, null, arguments[0]);
                     break;
@@ -1152,7 +1148,7 @@
                     var loop = true;
                     for(var i = 0; loop && i < len; ) {
                         var cp = comparator.call(thisArg, sortedArray[i], o);                        
-                        if(cp == 0) {
+                        if(cp === 0) {
                             result = false;
                             loop = false;
                         }
@@ -1175,7 +1171,7 @@
             
             /**
              * @function
-             * @param {Array.<Interval>} ranges
+             * @param {Array.<Interval>} intervals
              * @param {Number} [epsilon]
              * @return {Array.<Interval>}
              */
@@ -1240,7 +1236,7 @@
                             var other = sortedListSet[j];
                             
                             if(current._max < other._min) {
-                                endOfNeighborIndex = j
+                                endOfNeighborIndex = j;
                                 loopJ = false;
                             }
                             else {
@@ -1301,7 +1297,7 @@
              * @memberof karbonator.math.Interval
              * @function
              * @param {Array.<Interval>} intervals
-             * @param {Number} [targetIndex = 0]
+             * @param {Number} [targetIndex=0]
              * @param {Number} [epsilon]
              * @return {Array.<Interval>}
              */
@@ -1323,9 +1319,9 @@
                     if(!visitFlags[i]) {
                         visitFlags[i] = true;
                         
-                        var lhs = sortedListSet[i]
+                        var lhs = sortedListSet[i];
                         for(var j = 0; j < len; ++j) {
-                            if(j != i && lhs.intersectsWith(sortedListSet[j])) {
+                            if(j !== i && lhs.intersectsWith(sortedListSet[j])) {
                                 targetIndices.push(j);
                                 
                                 closureStartIndex = (closureStartIndex > j ? j : closureStartIndex);
@@ -1474,9 +1470,9 @@
             var lhsLen = lhs.length, rhsLen = rhs.length;
             var minLen = (lhsLen < rhsLen ? lhsLen : rhsLen);
             var diff = 0;
-            for(var i = 0; i < lhsLen; ++i) {
+            for(var i = 0; i < minLen; ++i) {
                 diff = lhs.charAt(i).charCodeAt(0) - rhs.charAt(i).charCodeAt(0);
-                if(diff != 0) {
+                if(diff !== 0) {
                     break;
                 }
             }
