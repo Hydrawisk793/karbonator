@@ -33,6 +33,30 @@
     
     /**
      * @function
+     * @param {Number} chCode
+     * @return {Interval}
+     */
+    var _createIntervalFromCharCode = function (chCode) {
+        return new Interval(chCode, chCode);
+    };
+    
+    /**
+     * @readonly
+     * @enum {Interval}
+     */
+    var _constInterval = {
+        epsilon : new Interval(Number.MIN_VALUE, Number.MAX_VALUE),
+        anyCharacters : new Interval(0x000000, 0x10FFFF),
+        whiteSpaces : new Interval(0x09, 0x0D),
+        horizontalTab : _createIntervalFromCharCode(0x09),
+        carrigeReturn : _createIntervalFromCharCode(0x0A),
+        lineFeed : _createIntervalFromCharCode(0x0B),
+        verticalTab : _createIntervalFromCharCode(0x0C),
+        formFeed : _createIntervalFromCharCode(0x0D)
+    };
+    
+    /**
+     * @function
      * @param {Number} l
      * @param {Number} r
      * @return {Number}
@@ -578,17 +602,13 @@
                 return l._min - r._min;
             };
             
-            var _epsilonInterval = new Interval(Number.MIN_VALUE, Number.MAX_VALUE);
-            
-            var _anyCharacterInterval = new Interval(0, 0x10FFFF);
-            
             /**
              * @function
              * @param {Interval} edge
              * @reutrn {Nfa}
              */
             var _createNfaFromInterval = function (edge) {
-                var nfa = new Nfa(_epsilonInterval, _edgeComparator);
+                var nfa = new Nfa(_constInterval.epsilon, _edgeComparator);
                 var startKey = nfa.addState();
                 var endKey = nfa.addState();
                 nfa.addTransition(startKey, edge, endKey);
@@ -621,22 +641,43 @@
             
             /**
              * @constructor
-             * @param {String} regExStr
+             * @param {String} [regExStr=""]
              */
             var RegExParser = function (regExStr) {
-                /**@type {String}*/ this._regExStr = regExStr;
-                /**@type {Number}*/ this._regExLen = regExStr.length;
                 /**@type {Array.<String>}*/ this._opStack = [];
                 /**@type {Array.<Token>}*/ this._tokenStack = [];
-                this._lastTokenType = -1;
-                this._pos = 0;
-                this._complete = false;
-                this._parsing = true;
                 this._error = {
                     occured : false,
                     message : "",
                     position : 0
                 };
+                this.initialize(regExStr);
+            };
+            
+            /**
+             * @function
+             * @param {String} [regExStr=""]
+             */
+            RegExParser.prototype.initialize = function (regExStr) {
+                regExStr = karbonator.selectNonUndefined(regExStr, "");
+                
+                /**@type {String}*/ this._regExStr = regExStr;
+                /**@type {Number}*/ this._regExLen = regExStr.length;
+                this._opStack.length = 0;
+                this._tokenStack.length = 0;
+                this._lastTokenType = -1;
+                this._pos = 0;
+                this._complete = false;
+                this._parsing = true;
+                this._error.occured = false;
+            };
+            
+            /**
+             * @function
+             * @returns {Boolean
+             */
+            RegExParser.prototype.isParsingNotComplete = function () {
+                return !this._complete && this._parsing && this._pos < this._regExLen;
             };
             
             /**
@@ -655,7 +696,8 @@
                 ///5. character-term이 입력되면 concat 연산자를 먼저 연산자 스택에 push하고
                 ///   입력된 character-term을 토큰 스택에 push.
                 
-                for(; !this._complete && this._parsing && this._pos > this._regExLen; ) {
+                var intervals = [];
+                for(; this.isParsingNotComplete(); ) {
                     var ch = this._regExStr.charAt(this._pos);
                     var chCode = this._regExStr.charCodeAt(this._pos);
                     switch(ch) {
@@ -670,7 +712,7 @@
                             this._pushOperator('.');
                         }
                         this._pushOperator('(');
-                        ++this._pos;
+                        this._moveToNextCharacter();
                     break;
                     case ')':
                         this._evaluateGroupedTokens();
@@ -679,7 +721,7 @@
                         //1. Get ranges from character set.
                         //2. Push it.
                         
-                        ++this._pos;
+                        this._moveToNextCharacter();
                     break;
                     case ']':
                         //Error - 
@@ -709,7 +751,7 @@
                             }
                             
                             this._pushOperator('.');
-                            ++this._pos;
+                            this._moveToNextCharacter();
                         }
                         else {
                             this._updateErrorAndStopParsing("The repetition opeartor requires 2 character-like arguments.");
@@ -720,20 +762,19 @@
                     break;
                     case '|':
                         this._pushOperator('|');
-                        ++this._pos;
+                        this._moveToNextCharacter();
                     break;
                     case '\\':
-                        if(this._escapeNextToken()) {
-                            ++this._pos;
-                        }
+                        intervals = this._escapeNextCharacter();
+                        //Create nfa with intervals.
                     break;
                     case '.':
-                        this._pushCharacter(_anyCharacterInterval);
-                        ++this._pos;
+                        this._pushCharacter(_constInterval.anyCharacters);
+                        this._moveToNextCharacter();
                     break;
                     default:
-                        this._pushCharacter(new Interval(chCode, chCode));
-                        ++this._pos;
+                        this._pushCharacter(_createIntervalFromCharCode(chCode));
+                        this._moveToNextCharacter();
                     }
                 }
             };
@@ -847,7 +888,7 @@
                         }
                     break;
                     default:
-                        throw new TypeError("An unknown operator has been found.");
+                        this._updateErrorAndStopParsing("An unknown operator has been found.");
                     }
                 }
                 
@@ -859,69 +900,143 @@
             /**
              * @private
              * @function
-             * @param {String} ch
+             * @return {Array.<Interval>}
              */
-            RegExParser.prototype._escapeCharacter = function (ch) {
-                switch(ch) {
-                case 't':
-                    ch = String.fromCharCode(0x09);
-                break;
-                case 'r':
-                    ch = String.fromCharCode(0x0A);
-                break;
-                case 'n':
-                    ch = String.fromCharCode(0x0B);
-                break;
-                case 'v':
-                    ch = String.fromCharCode(0x0C);
-                break;
-                case 'f':
-                    ch = String.fromCharCode(0x0D);
-                break;
-                case 'd':
-                (function () {
-                    var result = scanDecimalInteger(regEx, pos);
-                    if(result.errorOccured) {
-                        //Error - 
+            RegExParser.prototype._escapeNextCharacter = function () {
+                var intervals = [];
+                var chCode = 0;
+                var parsedStr = "";
+                
+                if(this._moveToNextCharacter()) {
+                    switch(this._regExStr[this._pos]) {
+                    case 't':
+                        intervals.push(_constInterval.horizontalTab);
+                    break;
+                    case 'r':
+                        intervals.push(_constInterval.carrigeReturn);
+                    break;
+                    case 'n':
+                        intervals.push(_constInterval.lineFeed);
+                    break;
+                    case 'v':
+                        intervals.push(_constInterval.verticalTab);
+                    break;
+                    case 'f':
+                        intervals.push(_constInterval.formFeed);
+                    break;
+                    case 'd':
+                        parsedStr = this._scanDecimalInteger();
+                        if(!this._error.occured) {
+                            chCode = Number.parseInt(parsedStr, 10);
+                            intervals.push(_createIntervalFromCharCode(chCode));
+                        }
+                    break;
+                    case 'x':
+                        parsedStr = this._scanHexadecimalInteger();
+                        if(!this._error.occured) {
+                            chCode = Number.parseInt(parsedStr, 16);
+                            intervals.push(_createIntervalFromCharCode(chCode));
+                        }
+                    break;
+                    case 's':
+                        intervals.push(_constInterval.whiteSpaces);
+                    break;
+                    case 'S':
+                        //Outputs pre-defined character set.
+                    break;
+                    case 'w':
+                        //Outputs pre-defined character set.
+                    break;
+                    case 'W':
+                        //Outputs pre-defined character set.
+                    break;
+                    case '0': case '1': case '2': case '3': case '4':
+                    case '5': case '6': case '7': case '8': case '9':
+                        this._updateErrorAndStopParsing("Backreferencing is not supported");
+                    break;
+                    case '^': case '$':
+                    case '[': case ']': case '-':
+                    case '(': case ')':
+                    case '*': case '+': case '?':
+                    case '{': case '}': 
+                    case '|':
+                    case '.':
+                    case '\\':
+                    case '"': case '\'':
+                    default:
+                        chCode = ch.charCodeAt(0);
+                        intervals.push(_createIntervalFromCharCode(chCode));
                     }
-                    else {
-                        ch = String.fromCharCode(Number.parseInt(result.value));
-                        stateStack.pop();
-                    }
-                }());
-                break;
-                case 'x':
-                (function () {
-                    var result = scanHexadecimalInteger(regEx, pos);
-                    if(result.errorOccured) {
-                        //Error - 
-                    }
-                    else {
-                        ch = String.fromCharCode(Number.parseInt(result.value, 16));
-                        stateStack.pop();
-                    }
-                }());
-                break;
-                case 's': case 'S':
-                case 'w': case 'W':
-                    //Outputs pre-defined character set.
-                break;
-                case '0': case '1': case '2': case '3': case '4':
-                case '5': case '6': case '7': case '8': case '9':
-                    //ERROR - Backreferencing is not supported.
-                break;
-                case '^': case '$':
-                case '[': case ']': case '-':
-                case '(': case ')':
-                case '*': case '+': case '?':
-                case '{': case '}': 
-                case '|':
-                case '.':
-                case '\\':
-                case '"': case '\'':
-                default:
-                    ch = String.fromCharCode(chCode);
                 }
+                
+                return intervals;
+            };
+            
+            /**
+             * @private
+             * @returns {String}
+             */
+            RegExParser.prototype._scanDecimalInteger = function () {
+                var result = "";
+                var startPos = this._pos;
+                for(
+                    var ch = "", loop = true;
+                    loop && this.isParsingNotComplete();
+                ) {
+                    ch = this._regExStr.charAt(this._pos);
+                    switch(ch) {
+                    case '0': case '1': case '2': case '3': case '4':
+                    case '5': case '6': case '7': case '8': case '9':
+                        if(this._regExStr.charAt(startPos) !== '0') {
+                            result += ch;
+                            this._moveToNextCharacter();
+                        }
+                        else {
+                            if(ch === '0') {
+                                this._updateErrorAndStopParsing("A decimal integer doesn't start with a sequence of '0'.");
+                            }
+                            else {
+                                this._updateErrorAndStopParsing("A decimal integer doesn't start with '0'.");
+                            }
+                        }
+                    break;
+                    default:
+                        loop = false;
+                    }
+                }
+                
+                return result;
+            };
+            
+            /**
+             * @private
+             * @returns {String}
+             */
+            RegExParser.prototype._scanHexadecimalInteger = function () {
+                var result = "";
+                for(
+                    var ch = "", loop = true;
+                    loop && this.isParsingNotComplete();
+                ) {
+                    ch = this._regExStr.charAt(this._pos);
+                    switch(ch) {
+                    case '0':
+                        result += ch;
+                        this._moveToNextCharacter();
+                    break;
+                    case '1': case '2': case '3': case '4':
+                    case '5': case '6': case '7': case '8': case '9':
+                    case 'A': case 'B': case 'C': case 'D': case 'E': case 'F':
+                    case 'a': case 'b': case 'c': case 'd': case 'e': case 'f':
+                        result += ch;
+                        this._moveToNextCharacter();
+                    break;
+                    default:
+                        loop = false;
+                    }
+                }
+                
+                return result;
             };
             
             /**
@@ -935,7 +1050,24 @@
                     message : karbonator.selectNonUndefined(argugments[1], "An error occured."),
                     position : karbonator.selectNonUndefined(arguments[2], this._pos)
                 };
+                
                 this._parsing = false;
+            };
+            
+            /**
+             * @function
+             * @param {Boolean}
+             */
+            RegExParser.prototype._moveToNextCharacter = function () {
+                var hasNext = this._pos < this._regExLen;
+                if(hasNext) {
+                    ++this._pos;
+                }
+                else {
+                    this._complete = true;
+                }
+                
+                return hasNext;
             };
             
             return RegExParser;
