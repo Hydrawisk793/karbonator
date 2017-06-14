@@ -16,7 +16,7 @@
         exports = module.exports = factory(g, require("./karbonator.collection"));
     }
 }(
-(global ? global : (window ? window : this)),
+(typeof(global) !== "undefined" ? global : (typeof(window) !== "undefined" ? window : this)),
 (function (global, karbonator) {
     "use strict";
     
@@ -28,8 +28,8 @@
     karbonator.string = string;
     
     var Interval = karbonator.math.Interval;
-    var ListSet = karbonator.collection.ListSet;
-    var ListMap = karbonator.collection.ListMap;
+    var Set = karbonator.collection.OrderedSet;
+    var Map = karbonator.collection.ListMap;
     
     /**
      * @function
@@ -69,44 +69,46 @@
      * @readonly
      * @enum {Array.<Interval>}
      */
-    var _constIntervalSet = {
-        posixPrint : [
-            _constInterval.space,
-            _constInterval.posixGraph        
-        ],
-        posixAlnum : [
-            _constInterval.posixLower,
-            _constInterval.posixUpper,
-            _constInterval.posixDigit
-        ],
-        posixAlpha : [
-            _constInterval.posixLower,
-            _constInterval.posixUpper
-        ],
-        posixBlank : [
-            _constInterval.space,
-            _constInterval.horizontalTab
-        ],
-        posixSpace : [
+    var _constIntervalSet = (function () {
+        var _posixSpace = [
             _constInterval.space,
             _constInterval.whiteSpaces
-        ],
-        posixXdigit : [
-            new Interval(0x41, 0x46),
-            new Interval(0x61, 0x66),
-            _constInterval.posixDigit
-        ],
-        posixCntrl : [
-            new Interval(0x00, 0x1F),
-            _constInterval.del
-        ],
-        nonWhiteSpaces : Interval.negate(_constIntervalSet.posixSpace),
-        word : [
-            _constIntervalSet.posixAlnum,
-            _constInterval.underscore
-        ],
-        nonWord : Interval.negate(_constIntervalSet.word)
-    };
+        ];
+        var _posixAlpha = [
+            _constInterval.posixLower,
+            _constInterval.posixUpper
+        ];
+        var _posixAlnum = _posixAlpha.slice();
+        _posixAlnum.push(_constInterval.posixDigit);
+        var _word = _posixAlnum.slice();
+        _word.push(_constInterval.underscore);
+        
+        return {
+            posixPrint : [
+                _constInterval.space,
+                _constInterval.posixGraph        
+            ],
+            posixAlnum : _posixAlnum,
+            posixAlpha : _posixAlpha,
+            posixBlank : [
+                _constInterval.space,
+                _constInterval.horizontalTab
+            ],
+            posixSpace : _posixSpace,
+            posixXdigit : [
+                new Interval(0x41, 0x46),
+                new Interval(0x61, 0x66),
+                _constInterval.posixDigit
+            ],
+            posixCntrl : [
+                new Interval(0x00, 0x1F),
+                _constInterval.del
+            ],
+            nonWhiteSpaces : Interval.negate(_posixSpace),
+            word : _word,
+            nonWord : Interval.negate(_word)
+        };
+    }());
     
     /**
      * @function
@@ -232,7 +234,7 @@
              * @param {karbonator.comparator} edgeComparator
              */
             var State = function (edgeComparator) {
-                this._transitionMap = new ListMap(edgeComparator);
+                this._transitionMap = new Map(edgeComparator);
                 this._finalFlag = false;
                 this._action = {
                     code : 0,
@@ -271,8 +273,8 @@
              * @param {Function} callback
              */
             var _doActionIfTransitionSetExists = function (nfa, stateKey, edge, callback) {
-                if(_hasState(this, stateKey)) {
-                    var state = this._states[stateKey];
+                if(_hasState(nfa, stateKey)) {
+                    var state = nfa._states[stateKey];
                     var transitionSet = state._transitionMap.get(edge);
                     if(typeof(transitionSet) !== "undefined") {
                         callback.call(nfa, transitionSet);
@@ -288,11 +290,11 @@
              * @param {Function} callback
              */
             var _getOrAddTransitionSetAndDoAction = function (nfa, stateKey, edge, callback) {
-                if(_hasState(this, stateKey)) {
-                    var state = this._states[stateKey];
+                if(_hasState(nfa, stateKey)) {
+                    var state = nfa._states[stateKey];
                     var transitionSet = state._transitionMap.get(edge);
-                    if(typeof(transitionSet) !== "undefined") {
-                        transitionSet = new ListSet(_numberComparator);
+                    if(typeof(transitionSet) === "undefined") {
+                        transitionSet = new Set(_numberComparator);
                         state._transitionMap.set(edge, transitionSet);
                     }
                     
@@ -326,10 +328,11 @@
              * @return {Number}
              */
             Nfa.prototype.addState = function () {
-                if(this._states.length - 1 < Number.MAX_VALUE) {
+                if(this._states.length - 1 < Number.MAX_SAFE_INTEGER) {
+                    var key = this._states.length;
                     this._states.push(new State(this._edgeComparator));
                     
-                    return this._states.length;
+                    return key;
                 }
                 else {
                     return -1;
@@ -587,14 +590,15 @@
                 };
                 var newStartStateKey = nfa.addState();
                 nfa.addTransition(newStartStateKey, nfa._epsilon, result.prevStartStateKey);
-                nfa._start = newStartStateKey;
+                nfa._startStateKey = newStartStateKey;
                 result.newFinalStateKey = nfa.addState();
                 for(var i = 0; i < result.prevFinalStateKeys.length; ++i) {
                     var prevFinalStateKey = result.prevFinalStateKeys[i];
-                    var prevFinalState = this._states[prevFinalStateKey];
+                    var prevFinalState = nfa._states[prevFinalStateKey];
                     prevFinalState._finalFlag = false;
                     nfa.addTransition(prevFinalStateKey, nfa._epsilon, result.newFinalStateKey);
                 }
+                nfa.setStateAsFinal(result.newFinalStateKey, true);
                 
                 return result;
             };
@@ -607,7 +611,7 @@
                 var result = _wrapWithNewStartAndEnd(this);
                 for(var i = 0; i < result.prevFinalStateKeys.length; ++i) {
                     var prevFinalStateKey = result.prevFinalStateKeys[i];
-                    this.addTransition(prevFinalStateKey, this._epsilon, result.startStateKey);
+                    this.addTransition(prevFinalStateKey, this._epsilon, result.prevStartStateKey);
                 }
                 this.addTransition(this._startStateKey, this._epsilon, result.newFinalStateKey);
                 
@@ -622,7 +626,7 @@
                 var result = _wrapWithNewStartAndEnd(this);
                 for(var i = 0; i < result.prevFinalStateKeys.length; ++i) {
                     var prevFinalStateKey = result.prevFinalStateKeys[i];
-                    this.addTransition(prevFinalStateKey, this._epsilon, result.startStateKey);
+                    this.addTransition(prevFinalStateKey, this._epsilon, result.prevStartStateKey);
                 }
                 
                 return this;
@@ -645,13 +649,17 @@
              * @return {Nfa}
              */
             Nfa.prototype.concatenate = function (rhs) {
+                //TODO : rhs 상태 번호 조정
                 var lhsEndStateKeys = this.getFinalStateKeys();
                 var rhsStartStateKey = this._states.length;
                 _arrayConcatenateAssign(this._states, rhs._states);
                 for(var i = 0; i < lhsEndStateKeys.length; ++i) {
-                    this.addTransition(lhsEndStateKeys[i], this._epsilon, rhsStartStateKey);
+                    var lhsEndStateKey = lhsEndStateKeys[i];
+                    this.setStateAsFinal(lhsEndStateKey, false);
+                    this.addTransition(lhsEndStateKey, this._epsilon, rhsStartStateKey);
                 }
-                this._end = this._states.length - 1;
+                
+                return this;
             };
             
             /**
@@ -660,12 +668,61 @@
              * @return {Nfa}
              */
             Nfa.prototype.alternate = function (rhs) {
+                //TODO : 종료 상태 다시 연결
+                //TODO : rhs 상태 번호 조정
                 _wrapWithNewStartAndEnd(this);
                 var rhsStartStateKey = this._states.length;
                 var rhsEndStateKey = this._end = rhs._states.length;
                 _arrayConcatenateAssign(this._states, rhs._states);
                 this.addTransition(this._startStateKey, this._epsilon, rhsStartStateKey);
                 this.addTransition(rhsEndStateKey, this._epsilon, this._end);
+                
+                return this;
+            };
+            
+            /**
+             * @function
+             * @return {String}
+             */
+            Nfa.prototype.toString = function (rhs) {
+                var str = '{';
+                
+                str += "start : ";
+                str += this._startStateKey;
+                str += ", ";
+                
+                for(var i = 0; i < this._states.length; ++i) {
+                    var state = this._states[i];
+                    str += '[';
+                    str += i;
+                    str += ", ";
+                    
+                    if(state._finalFlag) {
+                        str += "final";
+                        str += ", ";
+                    }
+                    
+                    str += '[';
+                    for(
+                        var mapIter = state._transitionMap.entries(),
+                        mapIterPair = mapIter.next();
+                        !mapIterPair.done;
+                        mapIterPair = mapIter.next()
+                    ) {
+                        str += mapIterPair.value[0];
+                        str += " => ";
+                        str += mapIterPair.value[1];
+                        str += ' ';
+                    }
+                    str += ']';
+                    
+                    str += ']';
+                    str += ' ';
+                }
+                
+                str += '}';
+                
+                return str;
             };
             
             return Nfa;
@@ -714,10 +771,12 @@
             var Token = (function () {
                 /**
                  * @constructor
+                 * @param {Number} type
+                 * @param {Object} value
                  */
-                var Token = function () {
-                    /**@type {Number}*/ this.type = Token.Type.operator;
-                    /**@type {Object}*/ this.value = null;
+                var Token = function (type, value) {
+                    /**@type {Number}*/ this.type = type;
+                    /**@type {Object}*/ this.value = value;
                 };
                 
                 /**
@@ -847,7 +906,6 @@
                                 this._updateErrorAndStopParsing("An unknown repetition operator has been found.");
                             }
                             
-                            this._pushOperator('.');
                             this._moveToNextCharacter();
                         }
                         else {
@@ -961,7 +1019,7 @@
                 var complete = false;
                 
                 for(; !complete && loop && this._opStack.length > 0; ) {
-                    var op = this._tokenStack.pop();
+                    var op = this._opStack.pop();
                     
                     switch(op) {
                     case '(':
@@ -982,7 +1040,7 @@
                                 loop = false;
                             }
                             
-                            lhs.value.concatenate(rhs);
+                            lhs.value.concatenate(rhs.value);
                         }
                         else {
                             this._updateErrorAndStopParsing("The concatenation opeartor requires 2 character-like arguments.");
@@ -1003,7 +1061,7 @@
                                 loop = false;
                             }
                             
-                            lhs.value.alternate(rhs);
+                            lhs.value.alternate(rhs.value);
                         }
                         else {
                             this._updateErrorAndStopParsing("The alternation opeartor requires 2 character-like arguments.");
@@ -1226,7 +1284,7 @@
          * @constructor
          */
         var LexerGenerator = function () {
-            this._tokenMap = new ListMap(_stringComparator);
+            this._tokenMap = new Map(_stringComparator);
             this._regExParser = new RegExParser();
         };
         

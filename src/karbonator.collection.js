@@ -16,7 +16,7 @@
         exports = module.exports = factory(g, require("./karbonator.core"));
     }
 }(
-(global ? global : (window ? window : this)),
+(typeof(global) !== "undefined" ? global : (typeof(window) !== "undefined" ? window : this)),
 (function (global, karbonator) {
     /**
      * @memberof karbonator
@@ -1872,7 +1872,7 @@
         ListMap.prototype.get = function (key) {
             var index = this.findIndex(key);
             if(index >= 0) {
-                return this._pairs[index];
+                return this._pairs[index].value;
             }
         };
         

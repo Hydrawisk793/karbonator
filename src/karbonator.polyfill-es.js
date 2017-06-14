@@ -19,7 +19,7 @@
         factory(g);
     }
 }(
-(global ? global : (window ? window : this)),
+(typeof(global) !== "undefined" ? global : (typeof(window) !== "undefined" ? window : this)),
 (function (global) {
     "use strict";
     

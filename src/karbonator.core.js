@@ -17,7 +17,7 @@
         exports = module.exports = factory(g);
     }
 }(
-(global ? global : (window ? window : this)),
+(typeof(global) !== "undefined" ? global : (typeof(window) !== "undefined" ? window : this)),
 (function (global) {
     "use strict";
     
@@ -1114,6 +1114,23 @@
         
         math.Interval = (function () {
             /**
+             * @function
+             * @param {Number} v
+             * @return {String}
+             */
+            var _intToString = function (v) {
+                if(v === Number.MAX_SAFE_INTEGER) {
+                    return "INT_MAX";
+                }
+                else if(v === Number.MIN_SAFE_INTEGER) {
+                    return "INT_MIN";
+                }
+                else {
+                    return v.toString();
+                }
+            };
+            
+            /**
              * @memberof karbonator.math
              * @constructor
              * @param {Number} value1
@@ -1599,7 +1616,20 @@
                 return negatedIntervals;
             };
             
-            math._insertIfNotExistAndSort = _insertIfNotExistAndSort;
+            /**
+             * @function
+             * @return {String}
+             */
+            Interval.prototype.toString = function () {
+                return '['
+                    + _intToString(this._min)
+                    + ", "
+                    + _intToString(this._max)
+                    + ']'
+                ;
+            };
+            
+            //math._insertIfNotExistAndSort = _insertIfNotExistAndSort;
             
             return Interval;
         })();

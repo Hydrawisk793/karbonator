@@ -17,7 +17,7 @@
         exports = module.exports = factory(g, require("./karbonator.dom"));
     }
 }(
-(global ? global : (window ? window : this)),
+(typeof(global) !== "undefined" ? global : (typeof(window) !== "undefined" ? window : this)),
 (function (global, karbonator) {
     "use strict";
     
