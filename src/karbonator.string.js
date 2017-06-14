@@ -1,4 +1,4 @@
-/**
+﻿/**
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
@@ -28,7 +28,7 @@
     karbonator.string = string;
     
     var Interval = karbonator.math.Interval;
-    var Set = karbonator.collection.OrderedSet;
+    var Set = karbonator.collection.OrderedTreeSet;
     var Map = karbonator.collection.ListMap;
     
     /**
