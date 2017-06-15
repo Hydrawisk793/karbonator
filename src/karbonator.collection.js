@@ -25,6 +25,8 @@
     var collection = karbonator.collection || {};
     karbonator.collection = collection;
     
+    var _selectNonUndefined = karbonator.selectNonUndefined;
+    
     /**
      * @function
      * @param {karbonator.comparator} comparator
@@ -124,11 +126,11 @@
              * @param {Boolean} red
              */
             var _Node = function (parent, leftChild, rightChild, element, red) {
-                this._parent = parent || null;
-                this._leftChild = leftChild || null;
-                this._rightChild = rightChild || null;
-                this._element = element || null;
-                this._red = red || false;
+                this._parent = _selectNonUndefined(parent, null);
+                this._leftChild = _selectNonUndefined(leftChild, null);
+                this._rightChild = _selectNonUndefined(rightChild, null);
+                this._element = _selectNonUndefined(element, null);
+                this._red = _selectNonUndefined(red, false);
             };
             
             /**
@@ -1327,7 +1329,7 @@
          * @return {Boolean}
          */
         OrderedTreeSet.prototype.has = function (value) {
-            return this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.equal).equals(this._rbTreeSet.end());
+            return !this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.equal).equals(this._rbTreeSet.end());
         };
         
         /**
@@ -1416,7 +1418,7 @@
          */
         OrderedTreeSet.prototype.add = function (value) {
             this._rbTreeSet.insert(value);
-
+            
             return this;
         };
         

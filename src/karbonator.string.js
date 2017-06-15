@@ -112,6 +112,22 @@
     
     /**
      * @function
+     * @param {*} o
+     */
+    var _isUndefined = function (o) {
+        return typeof(o) === "undefined";
+    };
+    
+    /**
+     * @function
+     * @param {*} o
+     */
+    var _isNotUndefined = function (o) {
+        return typeof(o) !== "undefined";
+    };
+    
+    /**
+     * @function
      * @param {Interval} o
      */
     var _assertIsInterval = function (o) {
@@ -191,6 +207,193 @@
 
         return l._min - r._min;
     };
+      
+    /**
+     * @function
+     * @param {Array} lhs
+     * @param {Array} rhs
+     */
+    var _arrayConcatenateAssign = function (lhs, rhs) {
+        for(var i = 0; i < rhs.length; ++i) {
+            lhs.push(rhs[i]);
+        }
+        
+        return lhs;
+    };
+    
+    /**
+     * @function
+     * @param {Map} lhs
+     * @param {Map} rhs
+     * @param {Boolean} [overwrite=true]
+     * @return {Number}
+     */
+    var _mapUnionAssign = function (lhs, rhs) {
+        if(typeof(arguments[2]) === "undefined" || !!arguments[2]) {
+            rhs.forEach(
+                function (value, key) {
+                    this.set(key, value);
+                },
+                lhs
+            );
+        }
+        else {
+            //TODO : 다음 줄 삭제
+            throw new Error("What the fuck?");
+            rhs.forEach(
+                function (value, key) {
+                    if(!this.has(key)) {
+                        this.set(key, value);
+                    }
+                },
+                lhs
+            );
+        }
+        
+        return lhs;
+    };
+    
+    var ScannerResult = (function () {
+        /**
+         * @constructor
+         */
+        var ScannerResult = function () {
+            this.error = {
+                code : 0,
+                message : ""
+            };
+            this.position = 0;
+            this.value = "";
+        };
+        
+        /**
+         * @function
+         */
+        ScannerResult.prototype.initialize = function () {
+            this.error.code = 0;
+            this.error.message = "";
+            this.position = 0;
+            this.value = "";
+        };
+        
+        return ScannerResult;
+    }());
+    
+    var DecimalIntegerScanner = (function () {
+        /**
+         * @constructor
+         */
+        var DecimalIntegerScanner = function () {
+            this._result = new ScannerResult();
+        };
+        
+        /**
+         * @function
+         * @param {String} str
+         * @param {Number} [start=0]
+         * @param {Boolean}
+         */
+        DecimalIntegerScanner.prototype.scan = function (str) {
+            var startPos = karbonator.selectNonUndefined(arguments[1], 0);
+            this._result.initialize();
+            this._result.position = 0;
+            
+            for(
+                var ch = '', scanning = true, len = str.length;
+                scanning && this._result.position < len;
+            ) {
+                ch = str.charAt(this._result.position);
+                switch(ch) {
+                case '0': case '1': case '2': case '3': case '4':
+                case '5': case '6': case '7': case '8': case '9':
+                    if(str.charAt(startPos) !== '0') {
+                        this._result.value += ch;
+                        ++this._result.position;
+                    }
+                    else {
+                        this._result.error.code = 1;
+                        this._result.error.message = (
+                            ch === '0'
+                           ? "A decimal integer doesn't start with a sequence of '0'."
+                           : "A decimal integer doesn't start with '0'."
+                        );
+                        
+                        scanning = false;
+                    }
+                break;
+                default:
+                    scanning = false;
+                }
+            }
+            
+            return this._error.code === 0;
+        };
+        
+        /**
+         * @function
+         * @return {ScannerResult}
+         */
+        DecimalIntegerScanner.prototype.getResult = function () {
+            return this._result;
+        };
+        
+        return DecimalIntegerScanner;
+    }());
+    
+    var HexadecimalIntegerScanner = (function () {
+        /**
+         * @constructor
+         */
+        var HexadecimalIntegerScanner = function () {
+            this._result = new ScannerResult();
+        };
+        
+        /**
+         * @function
+         * @param {String} str
+         * @param {Number} [start=0]
+         * @param {Boolean}
+         */
+        HexadecimalIntegerScanner.prototype.scan = function (str) {
+            var startPos = karbonator.selectNonUndefined(arguments[1], 0);
+            this._result.initialize();
+            this._result.position = 0;
+            
+            for(
+                var ch = '', scanning = true, len = str.length;
+                scanning && this._result.position < len
+            ) {
+                ch = str.charAt(this._result.position);
+                switch(ch) {
+                case '0':
+                    this._result.value += ch;
+                    ++this._result.position;
+                break;
+                case '1': case '2': case '3': case '4':
+                case '5': case '6': case '7': case '8': case '9':
+                case 'A': case 'B': case 'C': case 'D': case 'E': case 'F':
+                case 'a': case 'b': case 'c': case 'd': case 'e': case 'f':
+                    this._result.value += ch;
+                    ++this._result.position;
+                break;
+                default:
+                    scanning = false;
+                }
+            }
+            
+            return this._result.error.code === 0;
+        };
+        
+        /**
+         * @function
+         * @return {ScannerResult}
+         */
+        HexadecimalIntegerScanner.prototype.getResult = function () {
+            return this._result;
+        };
+        
+        return HexadecimalIntegerScanner;
+    }());
     
     string.Lexer = (function () {
         /**
@@ -245,38 +448,43 @@
             
             /**
              * @constructor
-             * @param {Object} epsilon
-             * @param {Function} edgeComparator
+             * @param {Object} stateKeyGenerator
+             * @param {karbonator.comparator} stateKeyComparator
+             * @param {Object} epsilonEdge
+             * @param {karbonator.comparator} edgeComparator
              */
-            var Nfa = function (epsilon, edgeComparator) {
-                this._startStateKey = -1;
-                this._states = [];
-                this._epsilon = epsilon;
+            var Nfa = function (stateKeyGenerator, stateKeyComparator, epsilonEdge, edgeComparator) {
+                this._stateKeyGenerator = stateKeyGenerator;
+                this._stateKeyComparator = stateKeyComparator;
+                this._epsilon = epsilonEdge;
                 this._edgeComparator = edgeComparator;
+                
+                this._stateMap = new Map(stateKeyComparator);
+                this._startStateKey = null;
             };
             
             /**
              * @function
              * @param {Nfa} nfa
-             * @param {Number} stateKey
+             * @param {Object} stateKey
              * @return {Boolean}
              */
             var _hasState = function (nfa, stateKey) {
-                return stateKey >= 0 && stateKey < nfa._states.length;
+                return nfa._stateMap.has(stateKey);
             };
             
             /**
              * @function
              * @param {Nfa} nfa
-             * @param {Number} stateKey
+             * @param {Object} stateKey
              * @param {Object} edge
              * @param {Function} callback
              */
             var _doActionIfTransitionSetExists = function (nfa, stateKey, edge, callback) {
-                if(_hasState(nfa, stateKey)) {
-                    var state = nfa._states[stateKey];
+                var state = nfa._stateMap.get(stateKey);
+                if(_isNotUndefined(state)) {
                     var transitionSet = state._transitionMap.get(edge);
-                    if(typeof(transitionSet) !== "undefined") {
+                    if(_isNotUndefined(transitionSet)) {
                         callback.call(nfa, transitionSet);
                     }
                 }
@@ -285,16 +493,16 @@
             /**
              * @function
              * @param {Nfa} nfa
-             * @param {Number} stateKey
+             * @param {Object} stateKey
              * @param {Object} edge
              * @param {Function} callback
              */
             var _getOrAddTransitionSetAndDoAction = function (nfa, stateKey, edge, callback) {
-                if(_hasState(nfa, stateKey)) {
-                    var state = nfa._states[stateKey];
+                var state = nfa._stateMap.get(stateKey);
+                if(_isNotUndefined(state)) {
                     var transitionSet = state._transitionMap.get(edge);
-                    if(typeof(transitionSet) === "undefined") {
-                        transitionSet = new Set(_numberComparator);
+                    if(_isUndefined(transitionSet)) {
+                        transitionSet = new Set(nfa._stateKeyComparator);
                         state._transitionMap.set(edge, transitionSet);
                     }
                     
@@ -304,52 +512,45 @@
             
             /**
              * @function
-             * @param {Array} lhs
-             * @param {Array} rhs
-             */
-            var _arrayConcatenateAssign = function (lhs, rhs) {
-                for(var i = 0; i < rhs.length; ++i) {
-                    lhs.push(rhs[i]);
-                }
-                
-                return lhs;
-            };
-            
-            /**
-             * @function
              * @return {Number}
              */
             Nfa.prototype.getStateCount = function () {
-                return this._states.length;
+                return this._stateMap.getElementCount();
             };
             
             /**
              * @function
-             * @return {Number}
+             * @return {Object|null}
              */
             Nfa.prototype.addState = function () {
-                if(this._states.length - 1 < Number.MAX_SAFE_INTEGER) {
-                    var key = this._states.length;
-                    this._states.push(new State(this._edgeComparator));
-                    
-                    return key;
+                var stateKey = this._stateKeyGenerator.generateKey();
+                if(stateKey !== null) {
+                    if(!_hasState(this, stateKey)) {
+                        this._stateMap.set(stateKey, new State(this._edgeComparator));
+
+                    }
                 }
-                else {
-                    return -1;
-                }
+                
+                return stateKey;
             };
             
             /**
              * @function
-             * @param {Number} stateKey
-             * @param {Number} [newStartStatekey = 0]
+             * @param {Object} stateKey
+             * @param {Object} [newStartStatekey]
              */
             Nfa.prototype.removeState = function (stateKey) {
-                if(_hasState(this, stateKey)) {
-                    for(var i = 0; i < this._states.length; ++i) {
-                        var state = this._states[i];
+                //TODO : 메소드 테스트
+                if(this._stateMap.remove(stateKey)) {
+                    for(
+                        var stateIter = this._stateMap.values(),
+                        stateIterPair = stateIter.next();
+                        !stateIterPair.done;
+                        stateIterPair = stateIter.next()
+                    ) {
+                        var state = stateIterPair.value;
                         for(
-                            var iter = state._transitionMap.entries(), pair = iter.next();
+                            var iter = state._transitionMap.values(), pair = iter.next();
                             !pair.done;
                             pair = iter.next()
                         ) {
@@ -358,17 +559,15 @@
                         }
                     }
                     
-                    this._states.splice(stateKey, 1);
-                    
-                    if(this._startStateKey === stateKey) {
-                        this._startStateKey = (typeof(arguments[1]) !== "undefined" ? arguments[1] : 0);
+                    if(this._stateKeyComparator(this._startStateKey, stateKey) === 0) {
+                        this._startStateKey = karbonator.selectNonUndefined(arguments[1], null);
                     }
                 }
             };
             
             /**
              * @function
-             * @return {Number}
+             * @return {Object}
              */
             Nfa.prototype.getStartStateKey = function () {
                 return this._startStateKey;
@@ -376,7 +575,7 @@
             
             /**
              * @function
-             * @param {Number} stateKey
+             * @param {Object} stateKey
              * @return {Boolean}
              */
             Nfa.prototype.setStartState = function (stateKey) {
@@ -405,29 +604,34 @@
             
             /**
              * @function
-             * @return {Array.<Number>}
+             * @return {Array.<Object>}
              */
             Nfa.prototype.getFinalStateKeys = function () {
+                //TODO : 별도의 Set을 두어 캐싱하는 정책 고려
                 var results = [];
-                for(var i = 0; i < this._states.length; ++i) {
-                    if(this._states[i]._finalFlag) {
-                        results.push(i);
-                    }
-                }
+                this._stateMap.forEach(
+                    function (state, stateKey) {
+                        if(state._finalFlag) {
+                            this.push(stateKey);
+                        }
+                    },
+                    results
+                );
                 
                 return results;
             };
             
             /**
              * @function
-             * @param {Number} stateKey
+             * @param {Object} stateKey
              * @param {Boolean} isFinal
              * @return {Boolean}
              */
             Nfa.prototype.setStateAsFinal = function (stateKey, isFinal) {
-                var result = _hasState(this, stateKey);
+                var state = this._stateMap.get(stateKey);
+                var result = _isNotUndefined(state);
                 if(result) {
-                    this._states[stateKey]._finalFlag = isFinal;
+                    state._finalFlag = isFinal;
                 }
                 
                 return result;
@@ -435,7 +639,7 @@
             
             /**
              * @function
-             * @param {Number} stateKey
+             * @param {Object} stateKey
              * @param {Object} edge
              * @return {Number}
              */
@@ -454,9 +658,9 @@
             /**
              * Returns a non-live list of transitions of {state, edge} pair.
              * @function
-             * @param {Number} stateKey
+             * @param {Object} stateKey
              * @param {Object} edge
-             * @return {Array.<Number>}
+             * @return {Array.<Object>}
              */
             Nfa.prototype.getTransitionsOfEdge = function (stateKey, edge) {
                 var transitions = [];
@@ -478,9 +682,9 @@
             
             /**
              * @function
-             * @param {Number} stateKey
+             * @param {Object} stateKey
              * @param {Object} edge
-             * @param {Number} nextStateKey
+             * @param {Object} nextStateKey
              * @return {Boolean}
              */
             Nfa.prototype.addTransition = function (stateKey, edge, nextStateKey) {
@@ -505,9 +709,9 @@
             
             /**
              * @function
-             * @param {Number} stateKey
+             * @param {Object} stateKey
              * @param {Object} edge
-             * @param {Array.<Number>} nextStateKeys
+             * @param {Array.<Object>} nextStateKeys
              * @return {Number}
              */
             Nfa.prototype.addTransitions = function (stateKey, edge, nextStateKeys) {
@@ -533,9 +737,9 @@
             
             /**
              * @function
-             * @param {Number} stateKey
+             * @param {Object} stateKey
              * @param {Object} edge
-             * @param {Number} nextStateKey
+             * @param {Object} nextStateKey
              */
             Nfa.prototype.removeTransition = function (stateKey, edge, nextStateKey) {
                 _doActionIfTransitionSetExists(
@@ -548,9 +752,9 @@
             
             /**
              * @function
-             * @param {Number} stateKey
+             * @param {Object} stateKey
              * @param {Object} edge
-             * @param {Array.<Number>} nextStateKeys
+             * @param {Array.<Object>} nextStateKeys
              */
             Nfa.prototype.removeTransitions = function (stateKey, edge, nextStateKeys) {
                 _doActionIfTransitionSetExists(
@@ -565,7 +769,7 @@
             
             /**
              * @function
-             * @param {Number} stateKey
+             * @param {Object} stateKey
              * @param {Object} edge
              */
             Nfa.prototype.removeAllTransitions = function (stateKey, edge) {
@@ -588,13 +792,19 @@
                     prevFinalStateKeys : nfa.getFinalStateKeys(),
                     newFinalStateKey : -1
                 };
+                
                 var newStartStateKey = nfa.addState();
                 nfa.addTransition(newStartStateKey, nfa._epsilon, result.prevStartStateKey);
                 nfa._startStateKey = newStartStateKey;
+                
                 result.newFinalStateKey = nfa.addState();
                 for(var i = 0; i < result.prevFinalStateKeys.length; ++i) {
                     var prevFinalStateKey = result.prevFinalStateKeys[i];
-                    var prevFinalState = nfa._states[prevFinalStateKey];
+                    var prevFinalState = nfa._stateMap.get(prevFinalStateKey);
+                    if(_isUndefined(prevFinalState)) {
+                        throw new Error("What the hell?");
+                    }
+                    
                     prevFinalState._finalFlag = false;
                     nfa.addTransition(prevFinalStateKey, nfa._epsilon, result.newFinalStateKey);
                 }
@@ -649,10 +859,11 @@
              * @return {Nfa}
              */
             Nfa.prototype.concatenate = function (rhs) {
-                //TODO : rhs 상태 번호 조정
                 var lhsEndStateKeys = this.getFinalStateKeys();
-                var rhsStartStateKey = this._states.length;
-                _arrayConcatenateAssign(this._states, rhs._states);
+                var rhsStartStateKey = rhs._startStateKey;
+                
+                _mapUnionAssign(this._stateMap, rhs._stateMap);
+                
                 for(var i = 0; i < lhsEndStateKeys.length; ++i) {
                     var lhsEndStateKey = lhsEndStateKeys[i];
                     this.setStateAsFinal(lhsEndStateKey, false);
@@ -668,14 +879,17 @@
              * @return {Nfa}
              */
             Nfa.prototype.alternate = function (rhs) {
-                //TODO : 종료 상태 다시 연결
-                //TODO : rhs 상태 번호 조정
-                _wrapWithNewStartAndEnd(this);
-                var rhsStartStateKey = this._states.length;
-                var rhsEndStateKey = this._end = rhs._states.length;
-                _arrayConcatenateAssign(this._states, rhs._states);
-                this.addTransition(this._startStateKey, this._epsilon, rhsStartStateKey);
-                this.addTransition(rhsEndStateKey, this._epsilon, this._end);
+                var rhsFinalStateKeys = rhs.getFinalStateKeys();
+                var info = _wrapWithNewStartAndEnd(this);
+                
+                _mapUnionAssign(this._stateMap, rhs._stateMap);
+                
+                this.addTransition(this._startStateKey, this._epsilon, rhs._startStateKey);
+                for(var r = 0; r < rhsFinalStateKeys.length; ++r) {
+                    var rhsFinalStateKey = rhsFinalStateKeys[r];
+                    this.setStateAsFinal(rhsFinalStateKey, false);
+                    this.addTransition(rhsFinalStateKey, this._epsilon, info.newFinalStateKey);
+                }
                 
                 return this;
             };
@@ -691,34 +905,34 @@
                 str += this._startStateKey;
                 str += ", ";
                 
-                for(var i = 0; i < this._states.length; ++i) {
-                    var state = this._states[i];
-                    str += '[';
-                    str += i;
-                    str += ", ";
-                    
-                    if(state._finalFlag) {
-                        str += "final";
+                this._stateMap.forEach(
+                    function (state, stateKey) {
+                        str += '[';
+                        str += stateKey;
                         str += ", ";
-                    }
-                    
-                    str += '[';
-                    for(
-                        var mapIter = state._transitionMap.entries(),
-                        mapIterPair = mapIter.next();
-                        !mapIterPair.done;
-                        mapIterPair = mapIter.next()
-                    ) {
-                        str += mapIterPair.value[0];
-                        str += " => ";
-                        str += mapIterPair.value[1];
+                        
+                        if(state._finalFlag) {
+                            str += "final";
+                            str += ", ";
+                        }
+                        
+                        str += '[';
+                        state._transitionMap.forEach(
+                            function (stateKey, edge) {
+                                str += edge;
+                                str += " => ";
+                                str += stateKey;
+                                str += ' ';
+                            },
+                            this
+                        );
+                        str += ']';
+                        
+                        str += ']';
                         str += ' ';
-                    }
-                    str += ']';
-                    
-                    str += ']';
-                    str += ' ';
-                }
+                    },
+                    this
+                );
                 
                 str += '}';
                 
@@ -729,45 +943,6 @@
         }());
         
         var RegExParser = (function () {
-            /**
-             * @function
-             * @param {Interval} edge
-             * @reutrn {Nfa}
-             */
-            var _createNfaFromInterval = function (edge) {
-                _assertIsInterval(edge);
-                
-                var nfa = new Nfa(_constInterval.epsilon, _edgeComparator);
-                var startKey = nfa.addState();
-                var endKey = nfa.addState();
-                nfa.addTransition(startKey, edge, endKey);
-                nfa.setStartState(startKey);
-                nfa.setStateAsFinal(endKey, true);
-                
-                return nfa;
-            };
-            
-            /**
-             * @function
-             * @param {Array.<Interval>} edges
-             * @reutrn {Nfa}
-             */
-            var _createNfaFromIntervals = function (edges) {
-                _assertIsArrayOfIntervals(edges);
-                
-                var nfa = new Nfa(_constInterval.epsilon, _edgeComparator);
-                var startKey = nfa.addState();
-                var endKey = nfa.addState();
-                var disjoinedEdges = Interval.disjoin(edges);
-                for(var i = 0; i < disjoinedEdges.length; ++i) {
-                    nfa.addTransition(startKey, disjoinedEdges[i], endKey);
-                }
-                nfa.setStartState(startKey);
-                nfa.setStateAsFinal(endKey, true);
-                
-                return nfa;
-            };
-            
             var Token = (function () {
                 /**
                  * @constructor
@@ -793,9 +968,15 @@
             
             /**
              * @constructor
+             * @param {Object} stateKeyGenerator
              * @param {String} [regExStr=""]
              */
-            var RegExParser = function (regExStr) {
+            var RegExParser = function (stateKeyGenerator) {
+//                if(typeof(stateKeyGenerator) !== "object" || (stateKeyGenerator === null)) {
+//                    throw new TypeError("The parameter 'stateKeyGenerator' must be a non-null object.");
+//                }
+                
+                this._stateKeyGenerator = stateKeyGenerator;
                 /**@type {Array.<String>}*/ this._opStack = [];
                 /**@type {Array.<Token>}*/ this._tokenStack = [];
                 this._error = {
@@ -803,7 +984,54 @@
                     message : "",
                     position : 0
                 };
-                this.initialize(regExStr);
+                this.initialize(arguments[1]);
+            };
+            
+            /**
+             * @function
+             * @param {RegExParser} oThis
+             * @param {Interval} edge
+             * @reutrn {Nfa}
+             */
+            var _createNfaFromInterval = function (oThis, edge) {
+                _assertIsInterval(edge);
+                
+                var nfa = new Nfa(
+                    oThis._stateKeyGenerator, _numberComparator,
+                    _constInterval.epsilon, _edgeComparator
+                );
+                var startKey = nfa.addState();
+                var endKey = nfa.addState();
+                nfa.addTransition(startKey, edge, endKey);
+                nfa.setStartState(startKey);
+                nfa.setStateAsFinal(endKey, true);
+                
+                return nfa;
+            };
+            
+            /**
+             * @function
+             * @param {RegExParser} oThis
+             * @param {Array.<Interval>} edges
+             * @reutrn {Nfa}
+             */
+            var _createNfaFromIntervals = function (oThis, edges) {
+                _assertIsArrayOfIntervals(edges);
+                
+                var nfa = new Nfa(
+                    oThis._stateKeyGenerator, _numberComparator,
+                    _constInterval.epsilon, _edgeComparator
+                );
+                var startKey = nfa.addState();
+                var endKey = nfa.addState();
+                var disjoinedEdges = Interval.disjoin(edges);
+                for(var i = 0; i < disjoinedEdges.length; ++i) {
+                    nfa.addTransition(startKey, disjoinedEdges[i], endKey);
+                }
+                nfa.setStartState(startKey);
+                nfa.setStateAsFinal(endKey, true);
+                
+                return nfa;
             };
             
             /**
@@ -854,10 +1082,10 @@
                     var chCode = this._regExStr.charCodeAt(this._pos);
                     switch(ch) {
                     case '^':
-                        throw new Error("Not implemented yet...");
+                        this._updateErrorAndStopParsing("Start of string meta character is not implemented yet...");
                     break;
                     case '$':
-                        throw new Error("Not implemented yet...");
+                        this._updateErrorAndStopParsing("End of string meta character is not implemented yet...");
                     break;
                     case '(':
                         if(this._isLastTokenTypeCharacter()) {
@@ -868,18 +1096,7 @@
                     break;
                     case ')':
                         this._evaluateGroupedTokens();
-                    break;
-                    case '[':
-                        //TODO : _parseCharacterSet 메소드 구현.
-//                        intervals = this._parseCharacterSet();
-//                        if(this.isParsingNotComplete()) {
-//                            this._pushCharacterRanges(intervals);
-//                            this._moveToNextCharacter();
-//                        }
-                        throw new Error("Not implemented yet...");
-                    break;
-                    case ']':
-                        this._updateErrorAndStopParsing("An invalid token that specifies end of a character set has been found.");
+                        this._moveToNextCharacter();
                     break;
                     case '*':
                     case '+':
@@ -919,9 +1136,20 @@
                         this._pushOperator('|');
                         this._moveToNextCharacter();
                     break;
+                    case '[':
+                        this._updateErrorAndStopParsing("Character set is not implemented yet...");
+//                        intervals = this._parseCharacterSet();
+//                        if(!this._error.occured) {
+//                            this._pushCharacterRanges(intervals);
+//                            this._moveToNextCharacter();
+//                        }
+                    break;
+                    case ']':
+                        this._updateErrorAndStopParsing("An invalid token that specifies end of a character set has been found.");
+                    break;
                     case '\\':
                         intervals = this._escapeNextCharacter();
-                        if(this.isParsingNotComplete()) {
+                        if(!this._error.occured) {
                             this._pushCharacterRanges(intervals);
                             this._moveToNextCharacter();
                         }
@@ -936,11 +1164,36 @@
                     }
                 }
                 
+                var finalNfa = null;
                 if(!this._complete) {
+                    this._parsing = false;
+                    this._evaluateGroupedTokens();
                     
+                    if(this._tokenStack.length === 1) {
+                        finalNfa = this._tokenStack[0].value;
+                        this._complete = true;
+                    }
+                    else {
+                        this._updateErrorAndStopParsing("An unknown parsing token error has been occured.");
+                    }
                 }
                 
-                return null;
+                return finalNfa;
+            };
+            
+            /**
+             * @function
+             * @param {RegExParser} oThis
+             * @param {String} op
+             */
+            var _hasLowerPriorityThanLast = function (oThis, op) {
+                if(oThis._opStack.length < 1) {
+                    return false;
+                }
+                
+                var lastOp = oThis._opStack[oThis._opStack.length - 1];
+                
+                return op === '|' && lastOp === '.';
             };
             
             /**
@@ -949,8 +1202,18 @@
              * @param {String} op
              */
             RegExParser.prototype._pushOperator = function (op) {
-                this._opStack.push(op);
-                this._lastTokenType = Token.Type.operator;
+                for(; !this._error.occured && this._opStack.length > 0 && _hasLowerPriorityThanLast(this, op); ) {
+                    var lastOp = this._opStack[this._opStack.length - 1];
+                    if(lastOp !== '(') {
+                        this._opStack.pop();
+                        this._evaluateOperator(lastOp);
+                    }
+                }
+                
+                if(!this._error.occured) {
+                    this._opStack.push(op);
+                    this._lastTokenType = Token.Type.operator;
+                }
             };
             
             /**
@@ -959,7 +1222,7 @@
              * @param {Interval} interval
              */
             RegExParser.prototype._pushCharacterRange = function (interval) {
-                this._pushCharacterToken(_createNfaFromInterval(interval));
+                this._pushCharacterToken(_createNfaFromInterval(this, interval));
             };
             
             /**
@@ -968,7 +1231,7 @@
              * @param {Array.<Interval>} intervals
              */
             RegExParser.prototype._pushCharacterRanges = function (intervals) {
-                this._pushCharacterToken(_createNfaFromIntervals(intervals));
+                this._pushCharacterToken(_createNfaFromIntervals(this, intervals));
             };
             
             /**
@@ -1015,68 +1278,148 @@
              * @function
              */
             RegExParser.prototype._evaluateGroupedTokens = function () {
-                var loop = true;
-                var complete = false;
-                
-                for(; !complete && loop && this._opStack.length > 0; ) {
-                    var op = this._opStack.pop();
-                    
+                var complete = false, op;
+                for(; !complete && !this._error.occured && this._opStack.length > 0; ) {
+                    op = this._opStack.pop();
                     switch(op) {
                     case '(':
-                        loop = false;
                         complete = true;
                     break;
-                    case '.':
-                        if(this._tokenStack.length >= 2) {
-                            var rhs = this._tokenStack.pop();
-                            if(rhs.type !== Token.Type.character) {
-                                this._updateErrorAndStopParsing("The concatenation opeartor requires 2 character-like arguments.");
-                                loop = false;
-                            }
-                            
-                            var lhs = this._tokenStack[this._tokenStack.length - 1];
-                            if(lhs.type !== Token.Type.character) {
-                                this._updateErrorAndStopParsing("The concatenation opeartor requires 2 character-like arguments.");
-                                loop = false;
-                            }
-                            
-                            lhs.value.concatenate(rhs.value);
-                        }
-                        else {
-                            this._updateErrorAndStopParsing("The concatenation opeartor requires 2 character-like arguments.");
-                            loop = false;
-                        }
-                    break;
-                    case '|':
-                        if(this._tokenStack.length >= 2) {
-                            var rhs = this._tokenStack.pop();
-                            if(rhs.type !== Token.Type.character) {
-                                this._updateErrorAndStopParsing("The alternation opeartor requires 2 character-like arguments.");
-                                loop = false;
-                            }
-                            
-                            var lhs = this._tokenStack[this._tokenStack.length - 1];
-                            if(lhs.type !== Token.Type.character) {
-                                this._updateErrorAndStopParsing("The alternation opeartor requires 2 character-like arguments.");
-                                loop = false;
-                            }
-                            
-                            lhs.value.alternate(rhs.value);
-                        }
-                        else {
-                            this._updateErrorAndStopParsing("The alternation opeartor requires 2 character-like arguments.");
-                            loop = false;
-                        }
-                    break;
                     default:
-                        this._updateErrorAndStopParsing("An unknown operator has been found.");
-                        loop = false;
+                        this._evaluateOperator(op);
                     }
                 }
                 
-                if(!complete && loop) {
+                if(!complete && this._parsing) {
                     this._updateErrorAndStopParsing("A sub expression must start with '('.");
                 }
+            };
+            
+            /**
+             * @private
+             * @function
+             * @param {String} op
+             */
+            RegExParser.prototype._evaluateOperator = function (op) {
+                switch(op) {
+                case '.':
+                    if(this._tokenStack.length >= 2) {
+                        var rhs = this._tokenStack.pop();
+                        if(rhs.type !== Token.Type.character) {
+                            this._updateErrorAndStopParsing("The concatenation opeartor requires 2 character-like arguments.");
+                        }
+                        
+                        var lhs = this._tokenStack[this._tokenStack.length - 1];
+                        if(lhs.type !== Token.Type.character) {
+                            this._updateErrorAndStopParsing("The concatenation opeartor requires 2 character-like arguments.");
+                        }
+                        
+                        lhs.value.concatenate(rhs.value);
+                    }
+                    else {
+                        this._updateErrorAndStopParsing("The concatenation opeartor requires 2 character-like arguments.");
+                    }
+                break;
+                case '|':
+                    if(this._tokenStack.length >= 2) {
+                        var rhs = this._tokenStack.pop();
+                        if(rhs.type !== Token.Type.character) {
+                            this._updateErrorAndStopParsing("The alternation opeartor requires 2 character-like arguments.");
+                        }
+                        
+                        var lhs = this._tokenStack[this._tokenStack.length - 1];
+                        if(lhs.type !== Token.Type.character) {
+                            this._updateErrorAndStopParsing("The alternation opeartor requires 2 character-like arguments.");
+                        }
+                        
+                        lhs.value.alternate(rhs.value);
+                    }
+                    else {
+                        this._updateErrorAndStopParsing("The alternation opeartor requires 2 character-like arguments.");
+                    }
+                break;
+                default:
+                    this._updateErrorAndStopParsing("An unknown operator has been found.");
+                }
+            };
+            
+            /**
+             * @private
+             * @function
+             * @return {Array.<Interval>}
+             */
+            RegExParser.prototype._parseCharacterSet = function () {
+                var ItemType = {
+                    character : 0,
+                    characterRange : 1,
+                    characterSet : 2
+                };
+                
+                var Item = {
+                    type : ItemType.character,
+                    intervals : []
+                };
+                
+                var finalIntervals = [];
+                
+                /**@type {Array.<Interval>}*/var intervals = null;
+                var opStack = [];
+                var itemStack = [];
+                
+                for(; !this._error.occured && this._moveToNextCharacter(); ) {
+                    var ch = this._regExStr[this._pos];
+                    switch(ch) {
+                    case '^': //Set operator
+                        if(itemStack.length < 1) {
+                            opStack.push('^');
+                        }
+                        else {
+                            //Error - 
+                        }
+                    break;
+                    case '&': //Set operator
+                        
+                    break;
+                    case '[':
+                        
+                    break;
+                    case ']':
+                        
+                    break;
+                    case ':':
+                        
+                    break;
+                    case '.':
+                        
+                    break;
+                    case '=':
+                        
+                    break;
+                    case '-':
+                        opStack.push('-');
+                    break;
+                    case '\\':
+                        intervals = this._escapeNextCharacter();
+                        if(!this._error.occured) {
+                            itemStack.push({
+                                type : (
+                                    intervals.length < 2
+                                    ? ItemType.character
+                                    : ItemType.characterSet
+                                ),
+                                intervals : intervals
+                            });
+                        }
+                    break;
+                    default:
+                        itemStack.push({
+                            type : ItemType.character,
+                            intervals : [_createIntervalFromCharCode(ch)]
+                        });
+                    }
+                }
+                
+                return finalIntervals;
             };
             
             /**
@@ -1162,8 +1505,8 @@
                 var result = "";
                 var startPos = this._pos;
                 for(
-                    var ch = "", loop = true;
-                    loop && this.isParsingNotComplete();
+                    var ch = "", scanning = true;
+                    scanning && this.isParsingNotComplete();
                 ) {
                     ch = this._regExStr.charAt(this._pos);
                     switch(ch) {
@@ -1182,7 +1525,7 @@
                         }
                     break;
                     default:
-                        loop = false;
+                        scanning = false;
                     }
                 }
                 
@@ -1228,7 +1571,7 @@
             RegExParser.prototype._updateErrorAndStopParsing = function () {
                 this._error = {
                     occured : true,
-                    message : karbonator.selectNonUndefined(argugments[1], "An error occured."),
+                    message : karbonator.selectNonUndefined(arguments[1], "An error occured."),
                     position : karbonator.selectNonUndefined(arguments[2], this._pos)
                 };
                 
@@ -1263,6 +1606,7 @@
             var Token = function (name, regExStr) {
                 this._name = name;
                 this._regExStr = regExStr;
+                /**@type {Nfa}*/this._nfa = null;
             };
             
             /**
@@ -1285,7 +1629,22 @@
          */
         var LexerGenerator = function () {
             this._tokenMap = new Map(_stringComparator);
-            this._regExParser = new RegExParser();
+            this._nfaStateKeyGenerator = {
+                generateKey : function () {
+                    var currentKey = this._count;
+                    var nextKey = currentKey + 1;
+                    if(nextKey !== 0) {
+                        this._count = nextKey;
+                        
+                        return currentKey;
+                    }
+                    
+                    return null;
+                },
+                
+                _count : 0
+            };
+            this._regExParser = new RegExParser(this._nfaStateKeyGenerator);
         };
         
         /**
@@ -1324,24 +1683,25 @@
         
         /**
          * @function
-         * @return {Object}
+         * @return {Lexer|null}
          */
         LexerGenerator.prototype.generateLexer = function () {
+            //TODO : 함수 작성
+            //[V] 1. 각 토큰에 대한 NFA 생성
+            //[V] 1-1. RegEx 분석 및 NFA 생성
+            //[-] 1-2. 오류 발생 시 내용을 기록하고 종료
+            //[ ] 2. 별도의 시작 상태를 만들고 각 NFA의 시작 상태를 새로운 시작상태를 오메가로 연결
+            //[ ] 3. NFA -> DFA
+            //[ ] 4. 상태 최적화
             this._tokenMap.forEach(
                 function (token) {
                     this._regExParser.initialize(token._regExStr);
-                    var nfa = this._regExParser.createNfa();
+                    token._nfa = this._regExParser.createNfa();
                 },
                 this
             );
             
-            //TODO : 함수 작성
-            //1. 각 토큰에 대한 NFA 생성
-            //1-1. RegEx 분석 및 NFA 생성
-            //1-2. 오류 발생 시 내용을 기록하고 종료
-            //2. 별도의 시작 상태를 만들고 각 NFA의 시작 상태를 새로운 시작상태에 오메가로 연결
-            //3. NFA -> DFA
-            //4. 상태 최적화
+            return null;
         };
         
         return LexerGenerator;
