@@ -22,7 +22,8 @@
     "use strict";
     
     /*////////////////////////////////////////////////////////////////*/
-    //The 'polyfilled' ECMAScript built-in object snapshots.
+    //The snapshots of 'polyfilled' ECMAScript built-in objects
+    //by 'karbonator.polyfill-es' module.
     
     var Object = global.Object;
     var Array = global.Array;

@@ -45,6 +45,15 @@
         return comparator;
     };
     
+    /**
+     * @function
+     * @param {*} arg
+     * @return {Boolean}
+     */
+    var _isDefaultValueOfArgumentTrue = function (arg) {
+        return (typeof(arguments[2]) === "undefined" || !!arguments[2]);
+    };
+    
     var defaultArrayLikeObjectWrapper = {
         get : function (arr, index) {
             return arr[index];
@@ -271,7 +280,7 @@
              * @function
              * @return {Boolean}
              */
-            _Node.prototype.isNill = function () {
+            _Node.prototype.isNil = function () {
                 return this._element === null;
             };
             
@@ -279,8 +288,8 @@
              * @function
              * @return {Boolean}
              */
-            _Node.prototype.isNonNillRoot = function () {
-                return this._parent === null && !this.isNill();
+            _Node.prototype.isNonNilRoot = function () {
+                return this._parent === null && !this.isNil();
             };
             
             /**
@@ -422,7 +431,7 @@
              * @return {Boolean}
              */
             _Node.prototype.hasNonNilLeftChild = function () {
-                return this.hasLeftChild() && !this._leftChild.isNill();
+                return this.hasLeftChild() && !this._leftChild.isNil();
             };
             
             /**
@@ -430,7 +439,7 @@
              * @return {Boolean}
              */
             _Node.prototype.hasNonNilRightChild = function () {
-                return this.hasRightChild() && !this._rightChild.isNill();
+                return this.hasRightChild() && !this._rightChild.isNil();
             };
             
             /**
@@ -605,7 +614,7 @@
                         }
                     }
                     else {
-                        if(!pCurrentNode.isNill()) {
+                        if(!pCurrentNode.isNil()) {
                             continueTraversal = !handler.call(thisArg, pCurrentNode);
                         }
                         pLastTraversedNode = pCurrentNode;
@@ -623,7 +632,7 @@
             _Node.prototype.getGreater = function () {
                 var pGreater = null;
                 
-                if(!this._rightChild.isNill()) {
+                if(!this._rightChild.isNil()) {
                     pGreater = this._rightChild.findLeftMostNode();
                 }
                 else {
@@ -657,7 +666,7 @@
                         }
                     }
                 }
-                else if(!this._leftChild.isNill()) {
+                else if(!this._leftChild.isNil()) {
                     pLesser = this._leftChild.findRightMostNode();
                 }
                 else {
@@ -699,6 +708,7 @@
          * @function
          * @param {RbTreeSetBase} oThis
          * @param {_Node} node
+         * @param {Boolean} [pushToGarbageList=true]
          */
         var _destructNode = function (oThis, node) {
             node._element =
@@ -707,7 +717,9 @@
             node._rightChild =
             node._red = undefined;
             
-            oThis._garbageNodes.push(node);
+            if(typeof(arguments[2]) === "undefined" || !!arguments[2]) {
+                oThis._garbageNodes.push(node);
+            }
         };
         
         /**
@@ -720,7 +732,7 @@
         var _findNode = function (oThis, element, searchTarget) {
             var pElementKey = oThis._keyGetter(element);
             var pCurrent = oThis._root, pPrevious = null;
-            for(; pCurrent !== null && !pCurrent.isNill(); ) {
+            for(; pCurrent !== null && !pCurrent.isNil(); ) {
                 var pCurrentElementKey = oThis._keyGetter(pCurrent._element);
                 var compResult = oThis._comparator(pElementKey, pCurrentElementKey);
                 if(compResult < 0) {
@@ -740,20 +752,20 @@
             if(
                 searchTarget >= RbTreeSetBase.SearchTarget.greater
                 && pPrevious !== null
-                && !pPrevious.isNill()
+                && !pPrevious.isNil()
                 && oThis._comparator(oThis._keyGetter(pPrevious._element), pElementKey) < 0
             ) {
                 pPrevious = pPrevious.getGreater();
             }
             switch(searchTarget) {
             case RbTreeSetBase.SearchTarget.equal:
-                pFoundNode = (pCurrent !== null && !pCurrent.isNill() ? pCurrent : null);
+                pFoundNode = (pCurrent !== null && !pCurrent.isNil() ? pCurrent : null);
             break;
             case RbTreeSetBase.SearchTarget.greater:
-                pFoundNode = (pPrevious !== null && !pPrevious.isNill() ? pPrevious : null);
+                pFoundNode = (pPrevious !== null && !pPrevious.isNil() ? pPrevious : null);
             break;
             case RbTreeSetBase.SearchTarget.greaterOrEqual:
-                pFoundNode = (pCurrent !== null && !pCurrent.isNill() ? pCurrent : pPrevious);
+                pFoundNode = (pCurrent !== null && !pCurrent.isNil() ? pCurrent : pPrevious);
             break;
             default:
                 throw new Error("An unknown search target has been specified.");
@@ -779,7 +791,7 @@
                 var pElementKey = oThis._keyGetter(element);
                 for(
                     var pCurrent = oThis._root;
-                    !pCurrent.isNill();
+                    !pCurrent.isNil();
                 ) {
                     var pCurrentElementKey = oThis._keyGetter(pCurrent._element);
                     var compResult = oThis._comparator(pElementKey, pCurrentElementKey);
@@ -865,7 +877,7 @@
             else {
                 out.pReplacementChildSlot = null;
             }
-            if(!pSelectedChildSlot.call(out.pRemovalTarget).isNill()) {
+            if(!pSelectedChildSlot.call(out.pRemovalTarget).isNil()) {
                 pSelectedChildSlot.call(out.pRemovalTarget)._parent = pTargetParent;
             }
             
@@ -878,7 +890,7 @@
          * @param {_Node} insertedNode
          */
         var _rebalanceAfterInsertion = function (oThis, insertedNode) {
-            if(insertedNode.isNonNillRoot()) {
+            if(insertedNode.isNonNilRoot()) {
                 insertedNode._red = false;
             }
             else {
@@ -894,7 +906,7 @@
                             pUncle._red = false;
 
                             var pGrandParent = pParent._parent;
-                            if(!pGrandParent.isNonNillRoot()) {
+                            if(!pGrandParent.isNonNilRoot()) {
                                 pGrandParent._red = true;
                                 pCurrent = pGrandParent;
                             }
@@ -923,7 +935,7 @@
                             var pGrandParentOfTarget = pTarget.getGrandParent();
                             pTarget._parent._red = false;
                             pGrandParentOfTarget._red = true;
-                            var isGrandParentRoot = pGrandParentOfTarget.isNonNillRoot();
+                            var isGrandParentRoot = pGrandParentOfTarget.isNonNilRoot();
                             if(pTarget === pTarget._parent._leftChild) {
                                 pGrandParentOfTarget.rotateRight();
                             }
@@ -1223,10 +1235,10 @@
                     if(this._root === pTempNilNode) {
                         this._root = null;
                     }
-                    else if(info.pReplacement.isNonNillRoot()) {
+                    else if(info.pReplacement.isNonNilRoot()) {
                         this._root = info.pReplacement;
                     }
-                    else if(!this._root.isNonNillRoot()) {
+                    else if(!this._root.isNonNilRoot()) {
                         this._root = this._root.getRoot();
                     }
                 }
@@ -2289,7 +2301,7 @@
         ListMap.prototype.values = function () {
             return new ValueIterator(this);
         };
-         
+        
         /**
          * @function
          * @param {Object} key

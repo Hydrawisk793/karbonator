@@ -843,7 +843,7 @@
          * @function
          * @return {String}
          */
-        Nfa.prototype.toString = function (rhs) {
+        Nfa.prototype.toString = function () {
             var str = '{';
             
             str += "start : ";
@@ -1865,7 +1865,7 @@
             /**
              * @constructor
              * @param {String} name
-             * @param {String} regExStr
+             * @param {String} regexStr
              */
             var Token = function (name, regexStr) {
                 this._name = name;
@@ -1931,7 +1931,7 @@
         /**
          * @function
          * @param {String} name
-         * @param {String} regExStr
+         * @param {String} regexStr
          */
         LexerGenerator.prototype.defineToken = function (name, regexStr) {
             this._tokenMap.set(name, new Token(name, regexStr));
@@ -1973,89 +1973,79 @@
                 lexer._addToken(token._name, token._nfa, token._regexStr);
             }
             
-            (function (nfa) {
-                /**
-                 * @function
-                 * @param {Set.<Object>} l
-                 * @param {Set.<Object>} r
-                 * @return {Number}
-                 */
-                var _compoundStateKeyComparator = function (l, r) {
-                    var countDiff = l.getElementCount() - r.getElementCount();
-                    if(countDiff === 0) {
-                        for(
-                            var i = l.keys(), iP = i.next(),
-                            lKey = 0, keyDiff = 0;
-                            !iP.done;
-                            iP = i.next()
-                        ) {
-                            lKey = iP.value;
-                            
-                            for(
-                                var j = l.keys(), jP = j.next();
-                                !jP.done;
-                                jP = j.next()
-                            ) {
-                                keyDiff = this.stateKeyComparator(lKey, jP.value);
-                                if(keyDiff !== 0) {
-                                    return keyDiff;
-                                }
-                            }
-                        }
-                    }
-                    
-                    return countDiff;
-                };
-                
-                /**
-                 * @function
-                 * @param {Object} nfaStateKey
-                 * @param {karbonator.comparator} stateKeyComparator
-                 * @return {Set.<Object>}
-                 */
-                var _createCompoundStateKey = function (nfaStateKey, stateKeyComparator) {
-                    var compoundStateKey = new Set(stateKeyComparator);
-                    compoundStateKey.add(nfaStateKey);
-                    
-                    return compoundStateKey;
-                };
-                
-                /**
-                 * @function
-                 * @param {Nfa} nfa
-                 * @return {Dfa|null}
-                 */
-                var confertNfaToDfa = function (nfa) {
-                    var nfaStartStateKey = nfa.getStartStateKey();
-                    if(typeof(nfaStartStateKey) === "undefined" || nfaStartStateKey === null) {
-                        return null;
-                    }
-                    
-                    var nfaStateKeyComparator = nfa.getStateKeyComparator();
-                    
-                    //Construct a temporary dfa using Nfa object.
-                    var tempDfa = new Nfa(
-                        null,
-                        _compoundStateKeyComparator.bind({
-                            stateKeyComparator : nfaStateKeyComparator
-                        }),
-                        _constInterval.epsilon,
-                        _edgeComparator
-                    );
-                    
-                    var eClosuresOfNfaStates = new Map(nfaStateKeyComparator);
-                    var compoundStateKeyStack = [_createCompoundStateKey(nfaStartStateKey, nfaStateKeyComparator)];
-                    
-                    while(compoundStateKeyStack.length > 0) {
-                        var compoundStateKey = compoundStateKeyStack.pop();
-                        
-                    }
-                    
-                    var dfa = null;
-                    
-                    return dfa;
-                };
-            }(this._tokenMap.get("foo")._nfa));
+//            (function (nfa) {
+//                /**
+//                 * @function
+//                 * @param {Set.<Object>} l
+//                 * @param {Set.<Object>} r
+//                 * @return {Number}
+//                 */
+//                var _compoundStateKeyComparator = function (l, r) {
+//                    var countDiff = l.getElementCount() - r.getElementCount();
+//                    if(countDiff === 0) {
+//                        for(
+//                            var i = l.keys(), iP = i.next(),
+//                            lKey = 0, keyDiff = 0;
+//                            !iP.done;
+//                            iP = i.next()
+//                        ) {
+//                            lKey = iP.value;
+//                            
+//                            for(
+//                                var j = l.keys(), jP = j.next();
+//                                !jP.done;
+//                                jP = j.next()
+//                            ) {
+//                                keyDiff = this.stateKeyComparator(lKey, jP.value);
+//                                if(keyDiff !== 0) {
+//                                    return keyDiff;
+//                                }
+//                            }
+//                        }
+//                    }
+//                    
+//                    return countDiff;
+//                };
+//                
+//                /**
+//                 * @function
+//                 * @param {Object} nfaStateKey
+//                 * @param {karbonator.comparator} stateKeyComparator
+//                 * @return {Set.<Object>}
+//                 */
+//                var _createCompoundStateKey = function (nfaStateKey, stateKeyComparator) {
+//                    var compoundStateKey = new Set(stateKeyComparator);
+//                    compoundStateKey.add(nfaStateKey);
+//                    
+//                    return compoundStateKey;
+//                };
+//                
+//                /**
+//                 * @function
+//                 * @param {Nfa} nfa
+//                 * @return {Dfa|null}
+//                 */
+//                var confertNfaToDfa = function (nfa) {
+//                    var nfaStartStateKey = nfa.getStartStateKey();
+//                    if(typeof(nfaStartStateKey) === "undefined" || nfaStartStateKey === null) {
+//                        return null;
+//                    }
+//                    
+//                    var nfaStateKeyComparator = nfa.getStateKeyComparator();
+//                    
+//                    var eClosuresOfNfaStates = new Map(nfaStateKeyComparator);
+//                    var eClosure = {
+//                        states : [null, null, null],
+//                        transitionMap : [
+//                            {key : null, value : null}
+//                        ]
+//                    };
+//                    
+//                    var dfa = null;
+//                    
+//                    return dfa;
+//                };
+//            }(this._tokenMap.get("foo")._nfa));
             
             return (!this._regexParser._error.occured ? lexer : null);
         };
