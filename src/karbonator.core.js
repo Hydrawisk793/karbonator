@@ -1319,6 +1319,15 @@
                 };
                 
                 return function (intervals) {
+                    switch(intervals.length) {
+                    case 0:
+                        return [];
+                    //break;
+                    case 1:
+                        return [new Interval(intervals[0]._min, intervals[0]._max)];
+                    //break;
+                    }
+                    
                     var disjoinedIntervals = [];
                     
                     var j = 0, sortedPointMaxIndex = 0, endOfClosureIndex = 0;
