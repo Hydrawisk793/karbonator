@@ -25,6 +25,11 @@
     var collection = karbonator.collection || {};
     karbonator.collection = collection;
     
+    var _colStrBegin = '{';
+    var _colStrEnd = '}';
+    var _colStrSeparator = ", ";
+    var _colStrMapTo = " => ";
+    
     var _selectNonUndefined = karbonator.selectNonUndefined;
     
     /**
@@ -88,16 +93,42 @@
         return arr;
     };
     
+    /**
+     * @function 
+     * @param {Object} key
+     * @param {Object} value
+     * @return {String}
+     */
+    var _mapPairToString = function (key, value) {
+        var str = key.toString();
+        str += _colStrMapTo;
+        str += value;
+        
+        return str;
+    };
+    
     /*////////////////////////////////*/
     //RbTreeSetBase
     
     var RbTreeSetBase = (function () {
         /**
+         * @callback keyGetter
+         * @param {Object} element
+         * @return {Object}
+         */
+        var _defaultKeyGetter = function (element) {
+            return element;
+        };
+        
+        /**
          * @constructor
          * @param {karbonator.comparartor} comparator
+         * @param {keyGetter} [keyGetter=_defaultKeyGetter]
+         * @param {keyGetter}
          */
         var RbTreeSetBase = function (comparator) {
             this._comparator = _assertComparatorIsPassed(comparator);
+            this._keyGetter = (typeof(arguments[1]) === "function" ? arguments[1] : _defaultKeyGetter);
             this._elementCount = 0;
             this._root = null;
             this._garbageNodes = [];
@@ -687,10 +718,10 @@
          * @return {_Node}
          */
         var _findNode = function (oThis, element, searchTarget) {
-            var pElementKey = oThis.getKeyFromElement(element);
+            var pElementKey = oThis._keyGetter(element);
             var pCurrent = oThis._root, pPrevious = null;
             for(; pCurrent !== null && !pCurrent.isNill(); ) {
-                var pCurrentElementKey = oThis.getKeyFromElement(pCurrent._element);
+                var pCurrentElementKey = oThis._keyGetter(pCurrent._element);
                 var compResult = oThis._comparator(pElementKey, pCurrentElementKey);
                 if(compResult < 0) {
                     pPrevious = pCurrent;
@@ -710,7 +741,7 @@
                 searchTarget >= RbTreeSetBase.SearchTarget.greater
                 && pPrevious !== null
                 && !pPrevious.isNill()
-                && oThis._comparator(oThis.getKeyFromElement(pPrevious._element), pElementKey) < 0
+                && oThis._comparator(oThis._keyGetter(pPrevious._element), pElementKey) < 0
             ) {
                 pPrevious = pPrevious.getGreater();
             }
@@ -745,12 +776,12 @@
                 oThis._root = newNode;
             }
             else {
-                var pElementKey = oThis.getKeyFromElement(element);
+                var pElementKey = oThis._keyGetter(element);
                 for(
                     var pCurrent = oThis._root;
                     !pCurrent.isNill();
                 ) {
-                    var pCurrentElementKey = oThis.getKeyFromElement(pCurrent._element);
+                    var pCurrentElementKey = oThis._keyGetter(pCurrent._element);
                     var compResult = oThis._comparator(pElementKey, pCurrentElementKey);
                     if(compResult < 0) {
                         if(pCurrent._leftChild === _Node.nil) {
@@ -1229,66 +1260,28 @@
             }
         };
         
-        /**
-         * @protected
-         * @function
-         * @param {Object} element
-         */
-        RbTreeSetBase.prototype.getKeyFromElement = function (element) {
-            return element;
-        };
-        
         return RbTreeSetBase;
     })();
     
     /*////////////////////////////////*/
     
     /*////////////////////////////////*/
-    //OrderedTreeSet
+    //TreeSet
     
-    collection.OrderedTreeSet = (function () {
+    collection.TreeSet = (function () {
         /**
          * @memberof karbonator.collection
          * @constructor
          * @param {karbonator.comparator} comparator
          */
-        var OrderedTreeSet = function (comparator) {
+        var TreeSet = function (comparator) {
             this._rbTreeSet = new RbTreeSetBase(comparator);
         };
-        
-        var ValueIterator = (function () {
-            /**
-             * @constructor
-             * @param {OrderedTreeSet} set
-             */
-            var ValueIterator = function (set) {
-                this._iter = set._rbTreeSet.begin();
-                this._end = set._rbTreeSet.end();
-            };
-            
-            /**
-             * @function
-             * @return {Object}
-             */
-            ValueIterator.prototype.next = function () {
-                var done = this._iter.equals(this._end);
-                var out = {
-                    value : (!done ? this._iter.dereference() : undefined),
-                    done : done
-                };
-                
-                this._iter.moveToNext();
-                
-                return out;
-            };
-            
-            return ValueIterator;
-        })();
         
         var PairIterator = (function () {
             /**
              * @constructor
-             * @param {OrderedTreeSet} set
+             * @param {TreeSet} set
              */
             var PairIterator = function (set) {
                 this._iter = set._rbTreeSet.begin();
@@ -1315,11 +1308,40 @@
             return PairIterator;
         })();
         
+        var ValueIterator = (function () {
+            /**
+             * @constructor
+             * @param {TreeSet} set
+             */
+            var ValueIterator = function (set) {
+                this._iter = set._rbTreeSet.begin();
+                this._end = set._rbTreeSet.end();
+            };
+            
+            /**
+             * @function
+             * @return {Object}
+             */
+            ValueIterator.prototype.next = function () {
+                var done = this._iter.equals(this._end);
+                var out = {
+                    value : (!done ? this._iter.dereference() : undefined),
+                    done : done
+                };
+                
+                this._iter.moveToNext();
+                
+                return out;
+            };
+            
+            return ValueIterator;
+        })();
+        
         /**
          * @function
          * @return {Number}
          */
-        OrderedTreeSet.prototype.getElementCount = function () {
+        TreeSet.prototype.getElementCount = function () {
             return this._rbTreeSet.getElementCount();
         };
         
@@ -1328,7 +1350,7 @@
          * @param {Object} value
          * @return {Boolean}
          */
-        OrderedTreeSet.prototype.has = function (value) {
+        TreeSet.prototype.has = function (value) {
             return !this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.equal).equals(this._rbTreeSet.end());
         };
         
@@ -1337,7 +1359,7 @@
          * @param {Object} value
          * @return {Object|undefined}
          */
-        OrderedTreeSet.prototype.findNotLessThan = function (value) {
+        TreeSet.prototype.findNotLessThan = function (value) {
             var endIter = this._rbTreeSet.end();
             var iter = this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.greaterOrEqual);
             if(!iter.equals(endIter)) {
@@ -1350,7 +1372,7 @@
          * @param {Object} value
          * @return {Object|undefined}
          */
-        OrderedTreeSet.prototype.findGreaterThan = function (value) {
+        TreeSet.prototype.findGreaterThan = function (value) {
             var endIter = this._rbTreeSet.end();
             var iter = this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.greater);
             if(!iter.equals(endIter)) {
@@ -1363,13 +1385,7 @@
          * @param {Function} callback
          * @param {Object} [thisArg]
          */
-        
-        /**
-         * @function
-         * @param {Function} callback
-         * @param {Object} [thisArg]
-         */
-        OrderedTreeSet.prototype.forEach = function (callback, thisArg) {
+        TreeSet.prototype.forEach = function (callback, thisArg) {
             for(
                 var end = this._rbTreeSet.end(), iter = this._rbTreeSet.begin();
                 !iter.equals(end);
@@ -1384,7 +1400,7 @@
          * @function
          * @return {PairIterator}
          */
-        OrderedTreeSet.prototype.entries = function () {
+        TreeSet.prototype.entries = function () {
             return new PairIterator(this);
         };
         
@@ -1392,7 +1408,7 @@
          * @function
          * @return {ValueIterator}
          */
-        OrderedTreeSet.prototype.keys = function () {
+        TreeSet.prototype.keys = function () {
             return new ValueIterator(this);
         };
         
@@ -1400,7 +1416,7 @@
          * @function
          * @return {ValueIterator}
          */
-        OrderedTreeSet.prototype.values = function () {
+        TreeSet.prototype.values = function () {
             return new ValueIterator(this);
         };
         
@@ -1408,7 +1424,7 @@
          * @function
          * @return {ValueIterator}
          */
-        OrderedTreeSet.prototype[global.Symbol.iterator] = function () {
+        TreeSet.prototype[global.Symbol.iterator] = function () {
             return new ValueIterator(this);
         };
         
@@ -1416,7 +1432,7 @@
          * @function
          * @param {Object} value
          */
-        OrderedTreeSet.prototype.add = function (value) {
+        TreeSet.prototype.add = function (value) {
             this._rbTreeSet.insert(value);
             
             return this;
@@ -1427,7 +1443,7 @@
          * @param {Object} value
          * @return {Boolean}
          */
-        OrderedTreeSet.prototype.remove = function (value) {
+        TreeSet.prototype.remove = function (value) {
             return this._rbTreeSet.remove(value);
         };
         
@@ -1436,14 +1452,14 @@
          * @param {Object} value
          * @return {Boolean}
          */
-        OrderedTreeSet.prototype["delete"] = function (value) {
+        TreeSet.prototype["delete"] = function (value) {
             return this._rbTreeSet.remove(value);
         };
         
         /**
          * @function
          */
-        OrderedTreeSet.prototype.clear = function () {
+        TreeSet.prototype.clear = function () {
             this._rbTreeSet.removeAll();
         };
         
@@ -1451,12 +1467,13 @@
          * @function
          * @return {Array.<Object>}
          */
-        OrderedTreeSet.prototype.toArray = function () {
+        TreeSet.prototype.toArray = function () {
             var arr = [];
             this.forEach(
                 function (key) {
-                    arr.push(key);
-                }
+                    this.push(key);
+                },
+                arr
             );
             
             return arr;
@@ -1466,8 +1483,8 @@
          * @function
          * @return {String}
          */
-        OrderedTreeSet.prototype.toString = function () {
-            var str = '[';
+        TreeSet.prototype.toString = function () {
+            var str = _colStrBegin;
             
             var iter = this.keys();
             var pair = iter.next();
@@ -1476,17 +1493,326 @@
             }
             
             for(pair = iter.next(); !pair.done; pair = iter.next()) {
-                str += ", ";
+                str += _colStrSeparator;
                 str += pair.value;
             }
             
-            str += ']';
+            str += _colStrEnd;
             
             return str;
         };
         
-        return OrderedTreeSet;
+        return TreeSet;
     })();
+    
+    /*////////////////////////////////*/
+    
+    /*////////////////////////////////*/
+    //TreeMap
+    
+    collection.TreeMap = (function () {
+        /**
+         * @function
+         * @param {Object} pair
+         * @return {Object}
+         */
+        var _treeMapKeyGetter = function (pair) {
+            return pair.key;
+        };
+        
+        /**
+         * @memberof karbonator.collection
+         * @constructor
+         * @param {karbonator.comparator} comparator
+         */
+        var TreeMap = function (comparator) {
+            this._rbTreeSet = new RbTreeSetBase(comparator, _treeMapKeyGetter);
+        };
+        
+        var PairIterator = (function () {
+            /**
+             * @function
+             * @param {TreeMap} treeMap
+             */
+            var PairIterator = function (treeMap) {
+                this._iter = treeMap._rbTreeSet.begin();
+                this._end = treeMap._rbTreeSet.end();
+            };
+            
+            /**
+             * @function
+             * @return {Object}
+             */
+            PairIterator.prototype.next = function () {
+                var done = this._iter.equals(this._end);
+                var pair = (!done ? this._iter.dereference() : undefined);
+                var out = {
+                    value : (pair ? [pair.key, pair.value] : undefined),
+                    done : done
+                };
+                
+                this._iter.moveToNext();
+                
+                return out;
+            };
+            
+            return PairIterator;
+        }());
+        
+        var KeyIterator = (function () {
+            /**
+             * @function
+             * @param {TreeMap} treeMap
+             */
+            var KeyIterator = function (treeMap) {
+                this._iter = treeMap._rbTreeSet.begin();
+                this._end = treeMap._rbTreeSet.end();
+            };
+            
+            /**
+             * @function
+             * @return {Object}
+             */
+            KeyIterator.prototype.next = function () {
+                var done = this._iter.equals(this._end);
+                var out = {
+                    value : (!done ? this._iter.dereference().key : undefined),
+                    done : done
+                };
+                
+                this._iter.moveToNext();
+                
+                return out;
+            };
+            
+            return KeyIterator;
+        }());
+        
+        var ValueIterator = (function () {
+            /**
+             * @function
+             * @param {TreeMap} treeMap
+             */
+            var ValueIterator = function (treeMap) {
+                this._iter = treeMap._rbTreeSet.begin();
+                this._end = treeMap._rbTreeSet.end();
+            };
+            
+            /**
+             * @function
+             * @return {Object}
+             */
+            ValueIterator.prototype.next = function () {
+                var done = this._iter.equals(this._end);
+                var out = {
+                    value : (!done ? this._iter.dereference().value : undefined),
+                    done : done
+                };
+                
+                this._iter.moveToNext();
+                
+                return out;
+            };
+            
+            return ValueIterator;
+        }());
+        
+        /**
+         * @function
+         * @return {Number}
+         */
+        TreeMap.prototype.getElementCount = function () {
+            return this._rbTreeSet.getElementCount();
+        };
+        
+        /**
+         * @function
+         * @param {Object} key
+         * @return {Object|undefined}
+         */
+        TreeMap.prototype.get = function (key) {
+            var endIter = this._rbTreeSet.end();
+            var iter = this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.equal);
+            if(!iter.equals(endIter)) {
+                return iter.dereference().value;
+            }
+        };
+        
+        /**
+         * @function
+         * @param {Object} key
+         * @param {Object} value
+         * @return {TreeMap}
+         */
+        TreeMap.prototype.set = function (key, value) {
+            var endIter = this._rbTreeSet.end();
+            var iter = this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.equal);
+            if(iter.equals(endIter)) {
+                this._rbTreeSet.insert({key : key, value : value});
+            }
+            else {
+                debugger;
+                iter.dereference().value = value;
+            }
+            
+            return this;
+        };
+        
+        /**
+         * @function
+         * @param {Object} key
+         * @return {Boolean}
+         */
+        TreeMap.prototype.has = function (key) {
+            return !this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.equal).equals(this._rbTreeSet.end());
+        };
+        
+        /**
+         * @function
+         * @param {Object} key
+         * @return {Object|undefined}
+         */
+        TreeMap.prototype.findNotLessThan = function (key) {
+            var endIter = this._rbTreeSet.end();
+            var iter = this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.greaterOrEqual);
+            if(!iter.equals(endIter)) {
+                var pair = iter.dereference();
+                return {
+                    key : pair.key,
+                    value : pair.value
+                };
+            }
+        };
+        
+        /**
+         * @function
+         * @param {Object} key
+         * @return {Object|undefined}
+         */
+        TreeMap.prototype.findGreaterThan = function (key) {
+            var endIter = this._rbTreeSet.end();
+            var iter = this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.greater);
+            if(!iter.equals(endIter)) {
+                var pair = iter.dereference();
+                return {
+                    key : pair.key,
+                    value : pair.value
+                };
+            }
+        };
+        
+        /**
+         * @function
+         * @param {Function} callback
+         * @param {Object} thisArg
+         */
+        TreeMap.prototype.forEach = function (callback, thisArg) {
+            for(
+                var end = this._rbTreeSet.end(), iter = this._rbTreeSet.begin();
+                !iter.equals(end);
+                iter.moveToNext()
+            ) {
+                var pair = iter.dereference();
+                callback.call(thisArg, pair.value, pair.key, this);
+            }
+        };
+        
+        /**
+         * @function
+         * @return {PairIterator}
+         */
+        TreeMap.prototype.entries = function () {
+            return new PairIterator(this);
+        };
+        
+        /**
+         * @function
+         * @return {PairIterator}
+         */
+        TreeMap.prototype[global.Symbol.iterator] = function () {
+            return new PairIterator(this);
+        };
+        
+        /**
+         * @function
+         * @return {KeyIterator}
+         */
+        TreeMap.prototype.keys = function () {
+            return new KeyIterator(this);
+        };
+        
+        /**
+         * @function
+         * @return {ValueIterator}
+         */
+        TreeMap.prototype.values = function () {
+            return new ValueIterator(this);
+        };
+         
+        /**
+         * @function
+         * @param {Object} key
+         * @return {Boolean}
+         */
+        TreeMap.prototype.remove = function (key) {
+            return this._rbTreeSet.remove(key);
+        };
+        
+        /**
+         * @function
+         * @param {Object} key
+         * @return {Boolean}
+         */
+        TreeMap.prototype["delete"] = TreeMap.prototype.remove;
+        
+        /**
+         * @function
+         */
+        TreeMap.prototype.clear = function () {
+            this._rbTreeSet.removeAll();
+        };
+        
+        /**
+         * @function
+         * @return {Array.<Object>}
+         */
+        TreeMap.prototype.toArray = function () {
+            var arr = [];
+            this.forEach(
+                function (value, key) {
+                    this.push([key, value]);
+                },
+                arr
+            );
+            
+            return arr;
+        };
+        
+        /**
+         * @function
+         * @return {String}
+         */
+        TreeMap.prototype.toString = function () {
+            var str = _colStrBegin;
+            
+            var iter = this.entries();
+            var pair = iter.next();
+            if(!pair.done) {
+                str += _mapPairToString(pair.value[0], pair.value[1]);
+            }
+            
+            for(pair = iter.next(); !pair.done; pair = iter.next()) {
+                str += _colStrSeparator;
+                str += _mapPairToString(pair.value[0], pair.value[1]);
+            }
+            
+            str += _colStrEnd;
+            
+            return str;
+        };
+        
+        return TreeMap;
+    }());
     
     /*////////////////////////////////*/
     
@@ -1724,18 +2050,18 @@
          * @return {String}
          */
         ListSet.prototype.toString = function () {
-            var str = "[";
+            var str = _colStrBegin;
             
             var count = this._elements.length;
             if(count > 0) {
                 str += this._elements[0].toString();
             }
             for(var i = 1; i < count; ++i) {
-                str += ", ";
+                str += _colStrSeparator;
                 str += this._elements[i].toString();
             }
             
-            str += "]";
+            str += _colStrEnd;
             
             return str;
         };
@@ -2015,24 +2341,20 @@
          * @return {String}
          */
         ListMap.prototype.toString = function () {
-            var str = "{";
+            var str = _colStrBegin;
             
             var count = this._pairs.length;
             if(count > 0) {
                 var pair = this._pairs[0];
-                str += pair.key;
-                str += " <= ";
-                str += pair.value;
+                str += _mapPairToString(pair.key, pair.value);
             }
             for(var i = 1; i < count; ++i) {
                 var pair = this._pairs[i];
-                str += ", ";
-                str += pair.key;
-                str += " <= ";
-                str += pair.value;
+                str += _colStrSeparator;
+                str += _mapPairToString(pair.key, pair.value);
             }
             
-            str += "}";
+            str += _colStrEnd;
             
             return str;
         };

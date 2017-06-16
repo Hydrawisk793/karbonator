@@ -28,8 +28,12 @@
     karbonator.string = string;
     
     var Interval = karbonator.math.Interval;
-    var Set = karbonator.collection.OrderedTreeSet;
-    var Map = karbonator.collection.ListMap;
+    var Set = karbonator.collection.TreeSet;
+    var Map = karbonator.collection.TreeMap;
+    
+    var _minInt = Number.MIN_SAFE_INTEGER;
+    
+    var _maxInt = Number.MAX_SAFE_INTEGER;
     
     var _charCodeMin = 0x000000;
     
@@ -50,7 +54,7 @@
      * @enum {Interval}
      */
     var _constInterval = {
-        epsilon : new Interval(Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER),
+        epsilon : new Interval(_minInt, _maxInt),
         anyCharacters : new Interval(_charCodeMin, _charCodeMax),
         whiteSpaces : new Interval(0x09, 0x0D),
         posixLower : new Interval(0x61, 0x7A),
@@ -146,7 +150,7 @@
      * @param {Array.<Interval>} o
      */
     var _assertIsArrayOfIntervals = function (o) {
-        if(typeof(o) !== "object" || !(o instanceof Array)) {
+        if(!Array.isArray(o)) {
             throw new TypeError("An array of 'Interval's must be passed.");
         }
         
@@ -213,6 +217,15 @@
 
         return l._min - r._min;
     };
+    
+    /**
+     * @function
+     * @param {Object} o
+     * @return {Object}
+     */
+    var _defaultCloner = function (o) {
+        return o;
+    };
       
     /**
      * @function
@@ -275,7 +288,11 @@
          * @param {karbonator.comparator} edgeComparator
          */
         var Nfa = function (stateKeyGenerator, stateKeyComparator, epsilonEdge, edgeComparator) {
+            if(typeof(stateKeyGenerator) !== "object" || stateKeyGenerator !== null) {
+                throw new TypeError("An instance of 'KeyGenerator' or null must be passed.");
+            }
             this._stateKeyGenerator = stateKeyGenerator;
+            
             this._stateKeyComparator = stateKeyComparator;
             this._epsilon = epsilonEdge;
             this._edgeComparator = edgeComparator;
@@ -285,7 +302,7 @@
         };
         
         /**
-         * @function
+        stateKeyMaphis._stateMap.values(); * @function
          * @return {karbonator.comparator}
          */
         Nfa.prototype.getStateKeyComparator = function () {
@@ -357,14 +374,26 @@
         
         /**
          * @function
+         * @param {Boolean} [finalState=false]
+         * @param {Object} [keyOfNewState]
          * @return {Object|null}
          */
         Nfa.prototype.addState = function () {
-            var stateKey = this._stateKeyGenerator.generateKey();
+            var stateKey = (
+                this._stateKeyGenerator !== null
+                ? this._stateKeyGenerator.generateKey()
+                : (
+                    typeof(arguments[1]) !== "undefined"
+                    ? arguments[1]
+                    : null
+                )
+            );
+            
             if(stateKey !== null) {
                 if(!_hasState(this, stateKey)) {
-                    this._stateMap.set(stateKey, new State(this._edgeComparator));
-
+                    var newState = new State(this._edgeComparator);
+                    newState._finalState = (typeof(arguments[0]) !== "undefined" ? !!arguments[0] : false);
+                    this._stateMap.set(stateKey, newState);
                 }
             }
             
@@ -422,6 +451,17 @@
             }
             
             return result;
+        };
+        
+        /**
+         * @function
+         * @param {Object} stateKey
+         * @return {Boolean}
+         */
+        Nfa.prototype.isStateFinal = function (stateKey) {
+            var state = this._stateMap.get(stateKey);
+            
+            return typeof(state) !== "undefined" && state._finalState;
         };
         
         /**
@@ -732,6 +772,74 @@
         };
         
         /**
+         * 같은 상태 수와 같은 전이를 가지는 새로운 nfa 객체를 생성.<br/>
+         * 상태 키는 키 제네레이터로부터 새로 발급 받으며, 상태 전이에 사용되는 edge는 제공되는 edgeCloner 콜백에 의해 결정.
+         * 만약, edgeCloner가 제공되지 않으면 edge의 레퍼런스를 대입하는 얕은 복사를 수행.
+         * @function
+         * @param {karbonator.cloner} [edgeCloner]
+         * @param {Object} [stateKeyGenerator]
+         * @return {Nfa}
+         */
+        Nfa.prototype.clone = function () {
+            var edgeCloner = (typeof(arguments[0]) === "function" ? arguments[0] : _defaultCloner);
+            var stateKeyGenerator = (typeof(arguments[1]) === "function" ? arguments[1] : this._stateKeyGenerator);
+            
+            var stateKeyMap = new Map(this._stateKeyComparator);
+            var cloneOfThis = new Nfa(
+                stateKeyGenerator,
+                this._stateKeyComparator,
+                edgeCloner(this._epsilon),
+                this._edgeComparator
+            );
+            
+            for(
+                var i = this._stateMap.entries(), iP = i.next();
+                !iP.done;
+                iP = i.next()
+            ) {
+                stateKeyMap.set(iP.value[0], cloneOfThis.addState(iP.value[1]._finalState));
+            }
+            
+            cloneOfThis._startStateKey = stateKeyMap.get(this._startStateKey);
+            
+            for(
+                var i = this._stateMap.entries(), iP = i.next(),
+                srcState = null, srcStateKey = null,
+                clonedEdge = null, srcTransitionSet = null,
+                srcTransitionDestStateKey = null;
+                !iP.done;
+                iP = i.next()
+            ) {
+                srcStateKey = iP.value[0];
+                
+                for(
+                    var j = iP.value[1]._transitionMap.entries(), jP = j.next();
+                    !jP.done;
+                    jP = j.next()
+                ) {
+                    clonedEdge = edgeCloner(jP.value[0]);
+                    srcTransitionSet = jP.value[1];
+                    
+                    for(
+                        var k = srcTransitionSet.keys(), kP = k.next();
+                        !kP.done;
+                        kP = k.next()
+                    ) {
+                        srcTransitionDestStateKey = kP.value;
+                        
+                        cloneOfThis.addTransition(
+                            stateKeyMap.get(srcStateKey),
+                            clonedEdge,
+                            stateKeyMap.get(srcTransitionDestStateKey)
+                        );
+                    }
+                }
+            }
+            
+            return cloneOfThis;
+        };
+        
+        /**
          * @function
          * @return {String}
          */
@@ -778,6 +886,9 @@
         
         return Nfa;
     }());
+    
+    //TODO : 디버그용 코드 제거
+    karbonator.string._Nfa = Nfa;
     
     var Dfa = (function () {
         var State = function () {
@@ -1053,8 +1164,8 @@
                 var pos = _selectNonUndefined(arguments[1], 0);
                 var errorCode = 0;
                 var errorMessage = "";
-                var min = Number.MIN_SAFE_INTEGER;
-                var max = _selectNonUndefined(arguments[2], Number.MAX_SAFE_INTEGER);
+                var min = _minInt;
+                var max = _selectNonUndefined(arguments[2], _maxInt);
                 
                 var len = str.length;
                 var state = 0;
@@ -1092,8 +1203,15 @@
                             ++state;
                         }
                         else {
-                            max = min;
-                            state = 4;
+                            if(min === 0) {
+                                errorCode = 3;
+                                errorMessage = "Repeating a character term zero times is meaningless.";
+                                scanning = false;
+                            }
+                            else {
+                                max = min;
+                                state = 4;
+                            }
                         }
                     break;
                     case 3:
@@ -1106,7 +1224,7 @@
                                 ++state;
                             }
                             else {
-                                errorCode = 3;
+                                errorCode = 4;
                                 errorMessage = "The minimum value must be equal to or less than the maximum value.";
                                 scanning = false;
                             }
@@ -1121,20 +1239,20 @@
                             scanning = false;
                         }
                         else {
-                            errorCode = 4;
+                            errorCode = 5;
                             errorMessage = "A repetition operator must end with '}'.";
                             scanning = false;
                         }
                     break;
                     default:
-                        errorCode = 6;
+                        errorCode = 7;
                         errorMessage = "A fatal error occured when scanning a repetition operator.";
                         scanning = false;
                     }
                 }
                 
                 if(scanning) {
-                    errorCode = 5;
+                    errorCode = 6;
                     errorMessage = "Not enough characters for parsing a repetition operator.";
                 }
                 
@@ -1274,6 +1392,7 @@
             //   입력된 character-term을 토큰 스택에 push.
             
             /**@type {ScannerResult}*/var scannerResult = null;
+            /**@type {Interval}*/var repRange = null;
             var intervals = [];
             for(; this.isParsingNotComplete(); ) {
                 var ch = this._regexStr.charAt(this._pos);
@@ -1305,26 +1424,55 @@
                         switch(ch) {
                         case '*':
                             lastToken.value.wrapWithZeroOrMore();
+                            this._moveToNextCharacter();
                         break;
                         case '+':
                             lastToken.value.wrapWithOneOrMore();
+                            this._moveToNextCharacter();
                         break;
                         case '?':
                             lastToken.value.wrapWithZeroOrOne();
+                            this._moveToNextCharacter();
                         break;
                         case '{':
-                            //1. parse constrained repetition.
-                            //2. convert the nfa of the character token.
-                            throw new Error("Not implemented yet...");
+                            scannerResult = this._primitiveScanner.scanRepetitionOperator(this._regexStr, this._pos);
+                            if(scannerResult.error.code === 0) {
+                                repRange = scannerResult.value;
+                                if(repRange.getMinimum() >= 2) {
+                                    var repeatedNfa = lastToken.value.clone();
+                                    
+                                    for(var j = 2; j < repRange.getMinimum(); ++j) {
+                                        repeatedNfa.concatenate(lastToken.value.clone());
+                                    }
+                                    
+                                    if(repRange.getMaximum() >= _maxInt) {
+                                        repeatedNfa.concatenate(lastToken.value.clone().wrapWithZeroOrMore());
+                                    }
+                                    else {
+                                        for(
+                                            var j = 0, repCount = repRange.getMaximum() - repRange.getMinimum();
+                                            j < repCount;
+                                            ++j
+                                        ) {
+                                            repeatedNfa.concatenate(lastToken.value.clone().wrapWithZeroOrOne());
+                                        }
+                                    }
+                                    
+                                    lastToken.value.concatenate(repeatedNfa);
+                                }
+                                
+                                this._pos = scannerResult.position;
+                            }
+                            else {
+                                this._updateErrorAndStopParsing(scannerResult.error.message);
+                            }
                         break;
                         default:
                             this._updateErrorAndStopParsing("An unknown repetition operator has been found.");
                         }
-                        
-                        this._moveToNextCharacter();
                     }
                     else {
-                        this._updateErrorAndStopParsing("The repetition opeartor requires 2 character-like arguments.");
+                        this._updateErrorAndStopParsing("The repetition opeartor requires a character-like argument.");
                     }
                 break;
                 case '}':
@@ -1625,13 +1773,52 @@
     }());
     
     string.Lexer = (function () {
+        var Token = (function () {
+            /**
+             * @constructor
+             * @param {String} name
+             * @param {Nfa} fa
+             * @param {String} regexStr
+             */
+            var Token = function (name, fa, regexStr) {
+                this._name = name;
+                this._fa = fa;
+                this._regexStr = regexStr;
+            };
+            
+            /**
+             * @function
+             * @return {String}
+             */
+            Token.prototype.toString = function () {
+                var str = '{';
+                
+                str += '"';
+                str += this._name;
+                str += '"';
+                
+                str += ", ";
+                str += this._fa.toString();
+                
+                str += ", ";
+                str += '/';
+                str += this._regexStr;
+                str += '/';
+                
+                str += '}';
+                
+                return str;
+            };
+            
+            return Token;
+        }());
+        
         /**
          * @memberof karbonator.string
          * @constructor
          */
         var Lexer = function () {
-            this._nfas = [];
-            this._dfa = null;
+            this._tokenMap = new Map(_stringComparator);
             this._inStr = "";
             this._pos = 0;
         };
@@ -1657,6 +1844,17 @@
          */
         Lexer.prototype.rewind = function () {
             this._pos = 0;
+        };
+        
+        /**
+         * @private
+         * @function
+         * @param {String} name
+         * @param {Nfa} fa
+         * @param {String} regexStr
+         */
+        Lexer.prototype._addToken = function (name, fa, regexStr) {
+            this._tokenMap.set(name, new Token(name, fa, regexStr));
         };
         
         return Lexer;
@@ -1757,10 +1955,9 @@
             //TODO : 함수 작성
             //[V] 1. 각 토큰에 대한 NFA 생성
             //[V] 1-1. Regex 분석 및 NFA 생성
-            //[-] 1-2. 오류 발생 시 내용을 기록하고 종료
+            //[V] 1-2. 오류 발생 시 내용을 기록하고 종료
             //[ ] 2. 별도의 시작 상태를 만들고 각 NFA의 시작 상태를 새로운 시작상태를 오메가로 연결
             //[ ] 3. NFA -> DFA
-            //[ ] 4. 상태 최적화
             for(
                 var iter = this._tokenMap.values(), iterPair = iter.next();
                 !iterPair.done;
@@ -1772,57 +1969,95 @@
                 if(this._regexParser._error.occured) {
                     break;
                 }
+                
+                lexer._addToken(token._name, token._nfa, token._regexStr);
             }
-                        
-//            (function (nfa) {                
-//                var TempDfa = (function () {                
-//                    var State = function () {
-//                        this._transitionMap = new Map();
-//                        this._finalState = false;
-//                    };
-//                    
-//                    var TempDfa = function () {
-//                        this._stateMap = new Map();
-//                        this._edgeComparator = null;jkj
-//                    };
-//                    
-//                    return TempDfa;
-//                }());
-//                
-//                /**
-//                 * @function
-//                 * @param {Nfa} nfa
-//                 * @return {Dfa|null}
-//                 */
-//                var confertNfaToDfa = function (nfa) {
-//                    var nfaStartStateKey = nfa.getStartStateKey();
-//                    if(typeof(nfaStartStateKey) === "undefined" || nfaStartStateKey === null) {
-//                        return null;
-//                    }
-//                    
-//                    var dfa = new Dfa();
-//                    
-//                    var eClosures = new Map();
-//                    var dfaStateMap = new Map();
-//                    
-//                    var dfaStateKeyStack = [];
-//                    var dfaStartState = new Set(nfa.getStateKeyComparator());
-//                    dfaStartState.add(nfaStartStateKey);
-//                    dfaStateKeyStack.push(dfaStartState);
-//                    
-//                    while(dfaStateKeyStack.length > 0) {
-//                        var stateKey = dfaStateKeyStack.pop();
-//                        var eClosure = new Set(_numberComparator);
-//                        
-//                        eClosure.add(nfaStateKey);
-//                    }
-//                    
-//                    return dfa;
-//                };
-//                
-//            }(this._tokenMap.get("foo")._nfa));
             
-            return (this._regexParser._error.occured ? lexer : null);
+            (function (nfa) {
+                /**
+                 * @function
+                 * @param {Set.<Object>} l
+                 * @param {Set.<Object>} r
+                 * @return {Number}
+                 */
+                var _compoundStateKeyComparator = function (l, r) {
+                    var countDiff = l.getElementCount() - r.getElementCount();
+                    if(countDiff === 0) {
+                        for(
+                            var i = l.keys(), iP = i.next(),
+                            lKey = 0, keyDiff = 0;
+                            !iP.done;
+                            iP = i.next()
+                        ) {
+                            lKey = iP.value;
+                            
+                            for(
+                                var j = l.keys(), jP = j.next();
+                                !jP.done;
+                                jP = j.next()
+                            ) {
+                                keyDiff = this.stateKeyComparator(lKey, jP.value);
+                                if(keyDiff !== 0) {
+                                    return keyDiff;
+                                }
+                            }
+                        }
+                    }
+                    
+                    return countDiff;
+                };
+                
+                /**
+                 * @function
+                 * @param {Object} nfaStateKey
+                 * @param {karbonator.comparator} stateKeyComparator
+                 * @return {Set.<Object>}
+                 */
+                var _createCompoundStateKey = function (nfaStateKey, stateKeyComparator) {
+                    var compoundStateKey = new Set(stateKeyComparator);
+                    compoundStateKey.add(nfaStateKey);
+                    
+                    return compoundStateKey;
+                };
+                
+                /**
+                 * @function
+                 * @param {Nfa} nfa
+                 * @return {Dfa|null}
+                 */
+                var confertNfaToDfa = function (nfa) {
+                    var nfaStartStateKey = nfa.getStartStateKey();
+                    if(typeof(nfaStartStateKey) === "undefined" || nfaStartStateKey === null) {
+                        return null;
+                    }
+                    
+                    var nfaStateKeyComparator = nfa.getStateKeyComparator();
+                    
+                    //Construct a temporary dfa using Nfa object.
+                    var tempDfa = new Nfa(
+                        null,
+                        _compoundStateKeyComparator.bind({
+                            stateKeyComparator : nfaStateKeyComparator
+                        }),
+                        _constInterval.epsilon,
+                        _edgeComparator
+                    );
+                    
+                    var eClosuresOfNfaStates = new Map(nfaStateKeyComparator);
+                    var compoundStateKeyStack = [_createCompoundStateKey(nfaStartStateKey, nfaStateKeyComparator)];
+                    
+                    while(compoundStateKeyStack.length > 0) {
+                        var compoundStateKey = compoundStateKeyStack.pop();
+                        
+                    }
+                    
+                    var dfa = null;
+                    
+                    return dfa;
+                };
+            }(this._tokenMap.get("foo")._nfa));
+            
+            return (!this._regexParser._error.occured ? lexer : null);
         };
         
         return LexerGenerator;

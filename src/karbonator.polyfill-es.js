@@ -29,14 +29,39 @@
     var Function = global.Function;
     var Number = global.Number;
     var Boolean = global.Boolean;
+    var Math = global.Math;
     var Date = global.Date;
     var RegExp = global.RegExp;
     var Error = global.Error;
     var TypeError = global.TypeError;
     
+    var _NaN = (typeof(global.NaN) !== "undefined" ? global.NaN : undefined);
+    
+    var _posInf = global.Infinity;
+    
+    var _negInf = -_posInf;
+    
     var _polyfillPropNamePrefix = "_krbntr";
     
     var _hasOwnPropertyFunction = Object.prototype.hasOwnProperty;
+    
+    /**
+     * @function
+     * @param {Number} n
+     * @return {Boolean}
+     */
+    var _isPositiveZero = function (n) {
+        return 1 / n === _posInf;
+    };
+    
+    /**
+     * @function
+     * @param {Number} n
+     * @return {Boolean}
+     */
+    var _isNegativeZero = function (n) {
+        return 1 / n === _negInf;
+    };
     
     /**
      * @constructor
@@ -108,7 +133,7 @@
         }
         
         return result;
-    }
+    };
     
     /**
      * @function
@@ -538,7 +563,7 @@
     
     Array.prototype.entries = Array.prototype.entries || function () {
         return new ArrayEntryIterator(this);
-    }
+    };
     
     Array.prototype.keys = Array.prototype.keys || function () {
         return new ArrayKeyIterator(this);
@@ -644,7 +669,7 @@
     if(!Number.isNaN) {
         Number.isNaN = global.isNaN
             || (function (v) {
-                throw new Error("Not polyfilled yet...")
+                throw new Error("Not polyfilled yet...");
             })
         ;
     }
@@ -652,7 +677,7 @@
     if(!Number.isFinite) {
         Number.isFinite = global.isFinite
             || (function (v) {
-                throw new Error("Not polyfilled yet...")
+                throw new Error("Not polyfilled yet...");
             })
         ;
     }
@@ -683,6 +708,32 @@
                 throw new Error("Not polyfilled yet...");
             })
         ;
+    }
+    
+    if(!Math.sign) {
+        Math.sign = function (n) {
+            if(Number.isNaN(n)) {
+                return _NaN;
+            }
+            
+            var isNegZero = _isNegativeZero(n);
+            if(isNegZero) {
+                return -0;
+            }
+            
+            var isPosZero = _isPositiveZero(n);
+            if(isPosZero) {
+                return +0;
+            }
+            
+            if(n < 0 && !isNegZero) {
+                return -1;
+            }
+            
+            if(n > 0 && !isPosZero) {
+                return +0;
+            }
+        };
     }
     
     if(!Date.now) {
@@ -812,7 +863,7 @@
             
             //A non-standard behaviour to distinguish each symbol instances...
             this._id = ++globalIdCounter;
-            if(this._id == 0) {
+            if(this._id === 0) {
                 throw new Error("The Symbol polyfill cannot instantiate additional distinguishing symbols...");
             }
         };
