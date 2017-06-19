@@ -2,7 +2,7 @@
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
- * last-modified : 2017-06-07
+ * last-modified : 2017-06-17
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
@@ -35,14 +35,11 @@
     /**
      * @function
      * @param {karbonator.comparator} comparator
-     * @return {karbonator.comparator}
      */
-    var _assertComparatorIsPassed = function (comparator) {
+    var _assertIsComparator = function (comparator) {
         if(typeof(comparator) !== "function" || comparator.length < 2) {
-            throw new TypeError("A valid comparator function for keys must be specified.");
+            throw new TypeError("A valid comparator function for key comparision must be specified.");
         }
-        
-        return comparator;
     };
     
     /**
@@ -103,6 +100,162 @@
     };
     
     /**
+     * @function
+     * @param {Function} SetClass
+     * @param {o} set
+     * @return {Set}
+     */
+    var _setShallowCopy = function (SetClass, o) {
+        var copyOfThis = new SetClass(o._comparator);
+        
+        for(
+            var i = o.keys(), iP = i.next();
+            !iP.done;
+            iP = i.next()
+        ) {
+            copyOfThis.add(iP.value);
+        }
+        
+        return copyOfThis;
+    };
+    
+    /**
+     * @function
+     * @param {Set} lhs
+     * @param {Set} rhs
+     * @return {Set}
+     */
+    var _setUniteAssign = function (lhs, rhs) {
+        for(
+            var i = rhs.keys(), iP = i.next();
+            !iP.done;
+            iP = i.next()
+        ) {
+            lhs.add(iP.value);
+        }
+        
+        return lhs;
+    };
+    
+    /**
+     * @function
+     * @param {Function} SetClass
+     * @param {Set} lhs
+     * @param {Set} rhs
+     * @return {Set}
+     */
+    var _setUnite = function (SetClass, lhs, rhs) {
+        return _setUniteAssign(_setShallowCopy(SetClass, lhs), rhs);
+    };
+    
+    /**
+     * @function
+     * @param {Function} SetClass
+     * @param {Set} lhs
+     * @param {Set} rhs
+     * @return {Set}
+     */
+    var _setSubtractAssign = function (lhs, rhs) {
+        for(
+            var i = rhs.keys(), iP = i.next();
+            !iP.done;
+            iP = i.next()
+        ) {
+            lhs["delete"](iP.value);
+        }
+        
+        return lhs;
+    };
+    
+    /**
+     * @function
+     * @param {Function} SetClass
+     * @param {Set} lhs
+     * @param {Set} rhs
+     * @return {Set}
+     */
+    var _setSubtract = function (SetClass, lhs, rhs) {
+        return _setSubtractAssign(_setShallowCopy(SetClass, lhs), rhs);
+    };
+    
+    /**
+     * @function
+     * @param {Function} SetClass
+     * @param {Set} lhs
+     * @param {Set} rhs
+     * @return {Set}
+     */
+    var _setIntersectAssign = function (SetClass, lhs, rhs) {
+        return _setSubtractAssign(lhs, _setSubtract(SetClass, lhs, rhs));
+        
+//        for(
+//            var i = lhs.keys(), iP = i.next();
+//            !iP.done;
+//            iP = i.next()
+//        ) {
+//            if(!rhs.has(iP.value)) {
+//                lhs["delete"](iP.value);                
+//            }
+//        }
+//        
+//        return lhs;
+    };
+    
+    /**
+     * @function
+     * @param {Function} SetClass
+     * @param {Set} lhs
+     * @param {Set} rhs
+     * @return {Set}
+     */
+    var _setIntersect = function (SetClass, lhs, rhs) {
+        return _setIntersectAssign(SetClass, _setShallowCopy(SetClass, lhs), rhs);
+    };
+    
+    /**
+     * @function
+     * @return {String}
+     */
+    var _setToStringMethod = function () {
+        var str = _colStrBegin;
+        
+        var iter = this.keys();
+        var pair = iter.next();
+        if(!pair.done) {
+            str += pair.value;
+        }
+        
+        for(pair = iter.next(); !pair.done; pair = iter.next()) {
+            str += _colStrSeparator;
+            str += pair.value;
+        }
+        
+        str += _colStrEnd;
+        
+        return str;
+    };
+    
+    /**
+     * @function
+     * @param {Function} MapClass
+     * @param {o} map
+     * @return {Map}
+     */
+    var _mapShallowCopy = function (MapClass, o) {
+        var copyOfThis = new MapClass(o._comparator);
+        
+        for(
+            var i = o.entries(), iP = i.next();
+            !iP.done;
+            iP = i.next()
+        ) {
+            copyOfThis.set(iP.value[0], iP.value[1]);
+        }
+        
+        return copyOfThis;
+    };
+    
+    /**
      * @function 
      * @param {Object} key
      * @param {Object} value
@@ -112,6 +265,29 @@
         var str = key.toString();
         str += _colStrMapTo;
         str += value;
+        
+        return str;
+    };
+    
+    /**
+     * @function
+     * @return {String}
+     */
+    var _mapToStringMethod = function () {
+        var str = _colStrBegin;
+        
+        var iter = this.entries();
+        var pair = iter.next();
+        if(!pair.done) {
+            str += _mapPairToString(pair.value[0], pair.value[1]);
+        }
+        
+        for(pair = iter.next(); !pair.done; pair = iter.next()) {
+            str += _colStrSeparator;
+            str += _mapPairToString(pair.value[0], pair.value[1]);
+        }
+        
+        str += _colStrEnd;
         
         return str;
     };
@@ -136,7 +312,9 @@
          * @param {keyGetter}
          */
         var RbTreeSetBase = function (comparator) {
-            this._comparator = _assertComparatorIsPassed(comparator);
+            _assertIsComparator(comparator);
+            
+            this._comparator = comparator;
             this._keyGetter = (typeof(arguments[1]) === "function" ? arguments[1] : _defaultKeyGetter);
             this._elementCount = 0;
             this._root = null;
@@ -159,18 +337,18 @@
             /**
              * @constructor
              * @function
-             * @param {_Node} parent
-             * @param {_Node} leftChild
-             * @param {_Node} rightChild
-             * @param {Object} element
-             * @param {Boolean} red
+             * @param {_Node} [parent=null]
+             * @param {_Node} [leftChild=null]
+             * @param {_Node} [rightChild=null]
+             * @param {Object} [element=null]
+             * @param {Boolean} [red=false]
              */
-            var _Node = function (parent, leftChild, rightChild, element, red) {
-                this._parent = _selectNonUndefined(parent, null);
-                this._leftChild = _selectNonUndefined(leftChild, null);
-                this._rightChild = _selectNonUndefined(rightChild, null);
-                this._element = _selectNonUndefined(element, null);
-                this._red = _selectNonUndefined(red, false);
+            var _Node = function () {
+                this._parent = _selectNonUndefined(arguments[0], null);
+                this._leftChild = _selectNonUndefined(arguments[1], null);
+                this._rightChild = _selectNonUndefined(arguments[2], null);
+                this._element = _selectNonUndefined(arguments[3], null);
+                this._red = _selectNonUndefined(arguments[4], false);
             };
             
             /**
@@ -1209,7 +1387,7 @@
          * @return {Boolean}
          */
         RbTreeSetBase.prototype.remove = function (element) {
-            var pTarget = _findNode(this, element, RbTreeSetBase.SearchTarget.equal)._node;
+            var pTarget = _findNode(this, element, RbTreeSetBase.SearchTarget.equal);
             var targetFound = pTarget !== null;
             if(targetFound) {
                 --this._elementCount;
@@ -1287,13 +1465,14 @@
          * @param {karbonator.comparator} comparator
          */
         var TreeSet = function (comparator) {
+            this._comparator = comparator;
             this._rbTreeSet = new RbTreeSetBase(comparator);
         };
         
         var PairIterator = (function () {
             /**
              * @constructor
-             * @param {TreeSet} set
+             * @param {karbonator.collection.TreeSet} set
              */
             var PairIterator = function (set) {
                 this._iter = set._rbTreeSet.begin();
@@ -1323,7 +1502,7 @@
         var ValueIterator = (function () {
             /**
              * @constructor
-             * @param {TreeSet} set
+             * @param {karbonator.collection.TreeSet} set
              */
             var ValueIterator = function (set) {
                 this._iter = set._rbTreeSet.begin();
@@ -1348,6 +1527,14 @@
             
             return ValueIterator;
         })();
+        
+        /**
+         * @function
+         * @return {karbonator.collection.TreeSet}
+         */
+        TreeSet.prototype[karbonator.shallowCopy] = function () {
+            return _setShallowCopy(TreeSet, this);
+        };
         
         /**
          * @function
@@ -1455,6 +1642,15 @@
          * @param {Object} value
          * @return {Boolean}
          */
+        TreeSet.prototype.tryAdd = function (value) {
+            return !this._rbTreeSet.insert(value).equals(this._rbTreeSet.end());
+        };
+        
+        /**
+         * @function
+         * @param {Object} value
+         * @return {Boolean}
+         */
         TreeSet.prototype.remove = function (value) {
             return this._rbTreeSet.remove(value);
         };
@@ -1476,43 +1672,76 @@
         };
         
         /**
+         * lhs = (lhs ∪ rhs).<br>
+         * This method tries to add rhs's elements, so it uses <b>lhs</b>'s comparator to check if lhs lacks rhs's elements.<br>
          * @function
-         * @return {Array.<Object>}
+         * @param {karbonator.collection.TreeSet} rhs
+         * @return {karbonator.collection.TreeSet}
          */
-        TreeSet.prototype.toArray = function () {
-            var arr = [];
-            this.forEach(
-                function (key) {
-                    this.push(key);
-                },
-                arr
-            );
-            
-            return arr;
+        TreeSet.prototype.uniteAssign = function (rhs) {
+            return _setUniteAssign(this, rhs);
+        };
+        
+        /**
+         * Creates a new set of (lhs ∪ rhs).<br>
+         * This method tries to add rhs's elements, so it uses <b>lhs</b>'s comparator to check if lhs lacks rhs's elements.<br>
+         * @function
+         * @param {karbonator.collection.TreeSet} rhs
+         * @return {karbonator.collection.TreeSet}
+         */
+        TreeSet.prototype.unite = function (rhs) {
+            return _setUnite(TreeSet, this, rhs);
+        };
+        
+        /**
+         * lhs = (lhs - rhs).<br>
+         * This method uses <b>lhs</b>'s comparator to check if lhs has rhs's elements.<br>
+         * @function
+         * @param {karbonator.collection.TreeSet} rhs
+         * @return {karbonator.collection.TreeSet}
+         */
+        TreeSet.prototype.subtractAssign = function (rhs) {
+            return _setSubtractAssign(this, rhs);
+        };
+        
+        /**
+         * Creates a new set of (lhs - rhs).
+         * This method uses <b>lhs</b>'s comparator to check if lhs has rhs's elements.<br>
+         * @function
+         * @param {karbonator.collection.TreeSet} rhs
+         * @return {karbonator.collection.TreeSet}
+         */
+        TreeSet.prototype.subtract = function (rhs) {
+            return _setSubtract(TreeSet, this, rhs);
+        };
+        
+        /**
+         * lhs = (lhs ∩ rhs).<br>
+         * This method will actually calculate <b>(lhs - (lhs - rhs))</b> instead to consistently use <b>lhs</b>'s comparator.
+         * @function
+         * @param {karbonator.collection.TreeSet} rhs
+         * @return {karbonator.collection.TreeSet}
+         */
+        TreeSet.prototype.intersectAssign = function (rhs) {
+            return _setIntersectAssign(TreeSet, this, rhs);
+        };
+        
+        /**
+         * Creates a new set of (lhs ∩ rhs).<br>
+         * This method will actually calculate <b>(lhs - (lhs - rhs))</b> instead to consistently use <b>lhs</b>'s comparator.
+         * @function
+         * @param {karbonator.collection.TreeSet} rhs
+         * @return {karbonator.collection.TreeSet}
+         */
+        TreeSet.prototype.intersect = function (rhs) {
+            return _setIntersect(TreeSet, this, rhs);
         };
         
         /**
          * @function
          * @return {String}
          */
-        TreeSet.prototype.toString = function () {
-            var str = _colStrBegin;
-            
-            var iter = this.keys();
-            var pair = iter.next();
-            if(!pair.done) {
-                str += pair.value;
-            }
-            
-            for(pair = iter.next(); !pair.done; pair = iter.next()) {
-                str += _colStrSeparator;
-                str += pair.value;
-            }
-            
-            str += _colStrEnd;
-            
-            return str;
-        };
+        TreeSet.prototype.toString = _setToStringMethod;
         
         return TreeSet;
     })();
@@ -1539,6 +1768,7 @@
          */
         var TreeMap = function (comparator) {
             this._rbTreeSet = new RbTreeSetBase(comparator, _treeMapKeyGetter);
+            this._comparator = comparator;
         };
         
         var PairIterator = (function () {
@@ -1631,6 +1861,14 @@
         
         /**
          * @function
+         * @return {TreeMap}
+         */
+        TreeMap.prototype[karbonator.shallowCopy] = function () {
+            return _mapShallowCopy(TreeMap, this);
+        };
+        
+        /**
+         * @function
          * @return {Number}
          */
         TreeMap.prototype.getElementCount = function () {
@@ -1654,6 +1892,25 @@
          * @function
          * @param {Object} key
          * @param {Object} value
+         * @return {Object}
+         */
+        TreeMap.prototype.getIfExistOrSet = function (key, value) {
+            var endIter = this._rbTreeSet.end();
+            var iter = this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.equal);
+            if(iter.equals(endIter)) {
+                this._rbTreeSet.insert({key : key, value : value});
+            }
+            else {
+                value = iter.dereference().value;
+            }
+            
+            return value;
+        };
+        
+        /**
+         * @function
+         * @param {Object} key
+         * @param {Object} value
          * @return {TreeMap}
          */
         TreeMap.prototype.set = function (key, value) {
@@ -1663,11 +1920,27 @@
                 this._rbTreeSet.insert({key : key, value : value});
             }
             else {
-                debugger;
                 iter.dereference().value = value;
             }
             
             return this;
+        };
+        
+        /**
+         * @function
+         * @param {Object} key
+         * @param {Object} value
+         * @return {Boolean}
+         */
+        TreeMap.prototype.setIfNotExist = function (key, value) {
+            var endIter = this._rbTreeSet.end();
+            var iter = this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.equal);
+            var result = iter.equals(endIter);
+            if(result) {
+                this._rbTreeSet.insert({key : key, value : value});
+            }
+            
+            return result;
         };
         
         /**
@@ -1786,42 +2059,9 @@
         
         /**
          * @function
-         * @return {Array.<Object>}
-         */
-        TreeMap.prototype.toArray = function () {
-            var arr = [];
-            this.forEach(
-                function (value, key) {
-                    this.push([key, value]);
-                },
-                arr
-            );
-            
-            return arr;
-        };
-        
-        /**
-         * @function
          * @return {String}
          */
-        TreeMap.prototype.toString = function () {
-            var str = _colStrBegin;
-            
-            var iter = this.entries();
-            var pair = iter.next();
-            if(!pair.done) {
-                str += _mapPairToString(pair.value[0], pair.value[1]);
-            }
-            
-            for(pair = iter.next(); !pair.done; pair = iter.next()) {
-                str += _colStrSeparator;
-                str += _mapPairToString(pair.value[0], pair.value[1]);
-            }
-            
-            str += _colStrEnd;
-            
-            return str;
-        };
+        TreeMap.prototype.toString = _mapToStringMethod;
         
         return TreeMap;
     }());
@@ -1838,14 +2078,16 @@
          * @param {karbonator.comparator} comparator
          */
         var ListSet = function (comparator) {
-            this._comparator = _assertComparatorIsPassed(comparator);
+            _assertIsComparator(comparator);
+            
+            this._comparator = comparator;
             this._elements = [];
         };
         
         var ValueIterator = (function () {
             /**
              * @constructor
-             * @param {ListSet} listSet
+             * @param {karbonator.collection.ListSet} listSet
              * @param {Number} [index = 0]
              */
             var ValueIterator = function (listSet) {
@@ -1875,7 +2117,7 @@
         var PairIterator = (function () {
             /**
              * @constructor
-             * @param {ListSet} listSet
+             * @param {karbonator.collection.ListSet} listSet
              * @param {Number} [index = 0]
              */
             var PairIterator = function (listSet) {
@@ -1902,6 +2144,14 @@
             
             return PairIterator;
         })();
+        
+        /**
+         * @function
+         * @return {karbonator.collection.ListSet}
+         */
+        ListSet.prototype[karbonator.shallowCopy] = function () {
+            return _setShallowCopy(ListSet, this);
+        };
         
         /**
          * @function
@@ -2013,6 +2263,20 @@
         
         /**
          * @function
+         * @param {Object} element
+         * @return {Boolean}
+         */
+        ListSet.prototype.tryAdd = function (element) {
+            var result = !this.has(element);
+            if(result) {
+                this._elements.push(element);
+            }
+            
+            return result;
+        };
+        
+        /**
+         * @function
          * @param {Number} index
          */
         ListSet.prototype.removeAt = function (index) {
@@ -2050,33 +2314,76 @@
         };
         
         /**
+         * lhs = (lhs ∪ rhs).<br>
+         * This method tries to add rhs's elements, so it uses <b>lhs</b>'s comparator to check if lhs lacks rhs's elements.<br>
          * @function
-         * @return {Array.<Object>}
+         * @param {karbonator.collection.ListSet} rhs
+         * @return {karbonator.collection.ListSet}
          */
-        ListSet.prototype.toArray = function () {
-            return this._elements.slice();
+        ListSet.prototype.uniteAssign = function (rhs) {
+            return _setUniteAssign(this, rhs);
+        };
+        
+        /**
+         * Creates a new set of (lhs ∪ rhs).<br>
+         * This method tries to add rhs's elements, so it uses <b>lhs</b>'s comparator to check if lhs lacks rhs's elements.<br>
+         * @function
+         * @param {karbonator.collection.ListSet} rhs
+         * @return {karbonator.collection.ListSet}
+         */
+        ListSet.prototype.unite = function (rhs) {
+            return _setUnite(ListSet, this, rhs);
+        };
+        
+        /**
+         * lhs = (lhs - rhs).<br>
+         * This method uses <b>lhs</b>'s comparator to check if lhs has rhs's elements.<br>
+         * @function
+         * @param {karbonator.collection.ListSet} rhs
+         * @return {karbonator.collection.ListSet}
+         */
+        ListSet.prototype.subtractAssign = function (rhs) {
+            return _setSubtractAssign(this, rhs);
+        };
+        
+        /**
+         * Creates a new set of (lhs - rhs).
+         * This method uses <b>lhs</b>'s comparator to check if lhs has rhs's elements.<br>
+         * @function
+         * @param {karbonator.collection.ListSet} rhs
+         * @return {karbonator.collection.ListSet}
+         */
+        ListSet.prototype.subtract = function (rhs) {
+            return _setSubtract(ListSet, this, rhs);
+        };
+        
+        /**
+         * lhs = (lhs ∩ rhs).<br>
+         * This method will actually calculate <b>(lhs - (lhs - rhs))</b> instead to consistently use <b>lhs</b>'s comparator.
+         * @function
+         * @param {karbonator.collection.ListSet} rhs
+         * @return {karbonator.collection.ListSet}
+         */
+        ListSet.prototype.intersectAssign = function (rhs) {
+            return _setIntersectAssign(ListSet, this, rhs);
+        };
+        
+        /**
+         * Creates a new set of (lhs ∩ rhs).<br>
+         * This method will actually calculate <b>(lhs - (lhs - rhs))</b> instead to consistently use <b>lhs</b>'s comparator.
+         * @function
+         * @param {karbonator.collection.ListSet} rhs
+         * @return {karbonator.collection.ListSet}
+         */
+        ListSet.prototype.intersect = function (rhs) {
+            return _setIntersect(ListSet, this, rhs);
         };
         
         /**
          * @function
          * @return {String}
          */
-        ListSet.prototype.toString = function () {
-            var str = _colStrBegin;
-            
-            var count = this._elements.length;
-            if(count > 0) {
-                str += this._elements[0].toString();
-            }
-            for(var i = 1; i < count; ++i) {
-                str += _colStrSeparator;
-                str += this._elements[i].toString();
-            }
-            
-            str += _colStrEnd;
-            
-            return str;
-        };
+        ListSet.prototype.toString = _setToStringMethod;
         
         return ListSet;
     })();
@@ -2093,7 +2400,9 @@
          * @param {karbonator.comparator} comparator
          */
         var ListMap = function (comparator) {
-            this._comparator = _assertComparatorIsPassed(comparator);
+            _assertIsComparator(comparator);
+            
+            this._comparator = comparator;
             this._pairs = [];
         };
         
@@ -2198,6 +2507,14 @@
         
         /**
          * @function
+         * @return {TreeMap}
+         */
+        ListMap.prototype[karbonator.shallowCopy] = function () {
+            return _mapShallowCopy(ListMap, this);
+        };
+        
+        /**
+         * @function
          * @return {Number}
          */
         ListMap.prototype.getElementCount = function () {
@@ -2220,6 +2537,24 @@
          * @function
          * @param {Object} key
          * @param {Object} value
+         * @return {Object}
+         */
+        ListMap.prototype.getIfExistOrSet = function (key, value) {
+            var index = this.findIndex(key);
+            if(index < 0) {
+                this._pairs.push({key : key, value : value});
+            }
+            else {
+                value = this._pairs[index].value;
+            }
+            
+            return value;
+        };
+        
+        /**
+         * @function
+         * @param {Object} key
+         * @param {Object} value
          * @return {ListMap}
          */
         ListMap.prototype.set = function (key, value) {
@@ -2232,6 +2567,22 @@
             }
             
             return this;
+        };
+        
+        /**
+         * @function
+         * @param {Object} key
+         * @param {Object} value
+         * @return {Boolean}
+         */
+        ListMap.prototype.setIfNotExist = function (key, value) {
+            var index = this.findIndex(key);
+            var result = index < 0;
+            if(result) {
+                this._pairs.push({key : key, value : value});
+            }
+            
+            return result;
         };
         
         /**
@@ -2333,49 +2684,15 @@
         
         /**
          * @function
-         * @return {Array.<Object>}
-         */
-        ListMap.prototype.toArray = function () {
-            var arr = [];
-            for(
-                var iter = this.entries(), iterPair = iter.next();
-                !iterPair.done;
-                iterPair = iter.next()
-            ) {
-                arr.push(iterPair.value);
-            }
-            
-            return arr;
-        };
-        
-        /**
-         * @function
          * @return {String}
          */
-        ListMap.prototype.toString = function () {
-            var str = _colStrBegin;
-            
-            var count = this._pairs.length;
-            if(count > 0) {
-                var pair = this._pairs[0];
-                str += _mapPairToString(pair.key, pair.value);
-            }
-            for(var i = 1; i < count; ++i) {
-                var pair = this._pairs[i];
-                str += _colStrSeparator;
-                str += _mapPairToString(pair.key, pair.value);
-            }
-            
-            str += _colStrEnd;
-            
-            return str;
-        };
+        ListMap.prototype.toString = _mapToStringMethod;
         
         return ListMap;
     })();
-
+    
     /*////////////////////////////////*/
-
+    
     return karbonator;
 })
 ));

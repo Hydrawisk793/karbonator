@@ -2,7 +2,7 @@
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
- * last-modified : 2017-06-07
+ * last-modified : 2017-06-17
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
@@ -63,6 +63,21 @@
          * @param {Object} o
          * @return {Object}
          */
+        
+        /**
+         * @memberof karbonator
+         * @readonly
+         * @type {Symbol}
+         */
+        karbonator.shallowCopy = Symbol("karbonator.shallowCopy");
+        
+        /**
+         * @memberof karbonator
+         * @readonly
+         * @readonly
+         * @type {Symbol}
+         */
+        karbonator.deepCopy = Symbol("karbonator.shallowCopy");
         
         /*////////////////////////////////*/
         
@@ -1584,16 +1599,6 @@
                 default:
                     throw new TypeError("The parameter must be either an Interval instance, an array, a string or a number.");
                 }
-            };
-            
-            /**
-             * @function
-             * @param {Number} offset
-             */
-            Interval.prototype.shift = function (offset) {
-                //TODO : refactor.
-                this._min -= offset;
-                this._max -= offset;
             };
             
             /**

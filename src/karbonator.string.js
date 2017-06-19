@@ -2,7 +2,7 @@
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
- * last-modified : 2017-06-07
+ * last-modified : 2017-06-17
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
@@ -28,8 +28,8 @@
     karbonator.string = string;
     
     var Interval = karbonator.math.Interval;
-    var Set = karbonator.collection.TreeSet;
-    var Map = karbonator.collection.TreeMap;
+    var Set = karbonator.collection.ListSet;
+    var Map = karbonator.collection.ListMap;
     
     var _minInt = Number.MIN_SAFE_INTEGER;
     
@@ -48,7 +48,6 @@
         return new Interval(chCode, chCode);
     };
     
-    //TODO : Unicode 문자 및 Unicode surrogate 영역 관련 처리
     /**
      * @readonly
      * @enum {Interval}
@@ -71,7 +70,6 @@
         del : _createIntervalFromCharCode(0x7F)
     };
     
-    //TODO : Unicode 문자 및 Unicode surrogate 영역 관련 처리
     /**
      * @readonly
      * @enum {Array.<Interval>}
@@ -122,7 +120,7 @@
      * @param {*} o
      */
     var _isUndefined = function (o) {
-        return typeof(o) === "undefined";
+        return "undefined" === typeof(o);
     };
     
     /**
@@ -130,7 +128,7 @@
      * @param {*} o
      */
     var _isNotUndefined = function (o) {
-        return typeof(o) !== "undefined";
+        return "undefined" !== typeof(o);
     };
     
     var _selectNonUndefined = karbonator.selectNonUndefined;
@@ -159,6 +157,16 @@
             if(typeof(elem) !== "object" || !(elem instanceof Interval)) {
                 throw new TypeError("An array of 'Interval's must be passed.");
             }
+        }
+    };
+    
+    /**
+     * @function
+     * @param {*} o
+     */
+    var _assertIsNonNullIterable = function (o) {
+        if(_isUndefined(o[global.Symbol.iterator]) || o === null) {
+            throw new TypeError("The parameter must be an iterable object which has the property 'Symbol.iterator'.");
         }
     };
     
@@ -248,7 +256,7 @@
      * @return {Number}
      */
     var _mapUnionAssign = function (lhs, rhs) {
-        if(typeof(arguments[2]) === "undefined" || !!arguments[2]) {
+        if(_isUndefined(arguments[2]) || !!arguments[2]) {
             rhs.forEach(
                 function (value, key) {
                     this.set(key, value);
@@ -270,7 +278,66 @@
         return lhs;
     };
     
-    var Nfa = (function () {
+    var NfaAndDfa = (function () {
+        var DfaState = null;
+        
+        var Dfa = (function () {
+            var State = (function () {
+                var State = function () {
+                    this._finalState = false;
+                    this._transitionMap = null;
+                };
+                
+                State.prototype.toString = function () {
+                    var str = '{';
+                    
+                    str += "isFinal";
+                    str += " : ";
+                    str += this._finalState;
+                    
+                    str += ", ";
+                    str += "transitionMap";
+                    str += " : ";
+                    str += this._transitionMap;
+                    
+                    str += '}';
+                    
+                    return str;
+                };
+                
+                return State;
+            }());
+            DfaState = State;
+            
+            var Dfa = function () {
+                this._states = null;
+            };
+            
+            Dfa.prototype.toString = function () {
+                var str = '[';
+                
+                var count = this._states.length;
+                if(count > 0) {
+                    str += "0";
+                    str += " => ";
+                    str += this._states[0];
+                }
+                
+                for(var i = 1; i < count; ++i) {
+                    str += ", ";
+                    str += i;
+                    str += " => ";
+                    str += this._states[i];
+                }
+                
+                str += ']';
+                
+                return str;
+            };
+            
+            return Dfa;
+        }());
+        
         /**
          * @constructor
          * @param {karbonator.comparator} edgeComparator
@@ -288,9 +355,9 @@
          * @param {karbonator.comparator} edgeComparator
          */
         var Nfa = function (stateKeyGenerator, stateKeyComparator, epsilonEdge, edgeComparator) {
-            if(typeof(stateKeyGenerator) !== "object" || stateKeyGenerator !== null) {
-                throw new TypeError("An instance of 'KeyGenerator' or null must be passed.");
-            }
+//            if(stateKeyGenerator !== null || typeof(stateKeyGenerator) !== "object") {
+//                throw new TypeError("An instance of 'KeyGenerator' or null must be passed.");
+//            }
             this._stateKeyGenerator = stateKeyGenerator;
             
             this._stateKeyComparator = stateKeyComparator;
@@ -315,6 +382,14 @@
          */
         Nfa.prototype.getEdgeComparator = function () {
             return this._edgeComparator;
+        };
+        
+        /**
+         * @function
+         * @return {Object}
+         */
+        Nfa.prototype.getEpsilonEdge = function () {
+            return this._epsilon;
         };
         
         /**
@@ -398,37 +473,6 @@
             }
             
             return stateKey;
-        };
-        
-        /**
-         * @function
-         * @param {Object} stateKey
-         * @param {Object} [newStartStatekey]
-         */
-        Nfa.prototype.removeState = function (stateKey) {
-            //TODO : 메소드 테스트
-            if(this._stateMap.remove(stateKey)) {
-                for(
-                    var stateIter = this._stateMap.values(),
-                    stateIterPair = stateIter.next();
-                    !stateIterPair.done;
-                    stateIterPair = stateIter.next()
-                ) {
-                    var state = stateIterPair.value;
-                    for(
-                        var iter = state._transitionMap.values(), pair = iter.next();
-                        !pair.done;
-                        pair = iter.next()
-                    ) {
-                        var transitionSet = pair.value;
-                        transitionSet.remove(stateKey);
-                    }
-                }
-                
-                if(this._stateKeyComparator(this._startStateKey, stateKey) === 0) {
-                    this._startStateKey = _selectNonUndefined(arguments[1], null);
-                }
-            }
         };
         
         /**
@@ -582,80 +626,6 @@
             }
             
             return result;
-        };
-        
-        /**
-         * @function
-         * @param {Object} stateKey
-         * @param {Object} edge
-         * @param {Array.<Object>} nextStateKeys
-         * @return {Number}
-         */
-        Nfa.prototype.addTransitions = function (stateKey, edge, nextStateKeys) {
-            var count = 0;
-            _getOrAddTransitionSetAndDoAction(
-                this, stateKey, edge,
-                function (transitionSet) {
-                    for(var i = 0; i < nextStateKeys.length; ++i) {
-                        var nextStateKey = nextStateKeys[i];
-                        if(
-                            _hasState(this, nextStateKey)
-                            && !transitionSet.has(nextStateKey)
-                        ) {
-                            transitionSet.add(nextStateKey);
-                            ++count;
-                        }
-                    }
-                }
-            );
-            
-            return count;
-        };
-        
-        /**
-         * @function
-         * @param {Object} stateKey
-         * @param {Object} edge
-         * @param {Object} nextStateKey
-         */
-        Nfa.prototype.removeTransition = function (stateKey, edge, nextStateKey) {
-            _doActionIfTransitionSetExists(
-                this, stateKey, edge,
-                function (transitionSet) {
-                    transitionSet.remove(nextStateKey);
-                }
-            );
-        };
-        
-        /**
-         * @function
-         * @param {Object} stateKey
-         * @param {Object} edge
-         * @param {Array.<Object>} nextStateKeys
-         */
-        Nfa.prototype.removeTransitions = function (stateKey, edge, nextStateKeys) {
-            _doActionIfTransitionSetExists(
-                this, stateKey, edge,
-                function (transitionSet) {
-                    for(var i = 0; i < nextStateKeys.length; ++i) {
-                        transitionSet.remove(nextStateKeys[i]);
-                    }
-                }
-            );
-        };
-        
-        /**
-         * @function
-         * @param {Object} stateKey
-         * @param {Object} edge
-         */
-        Nfa.prototype.removeAllTransitions = function (stateKey, edge) {
-            _doActionIfTransitionSetExists(
-                this, stateKey, edge,
-                function (transitionSet) {
-                    transitionSet.clear();
-                }
-            );
         };
         
         /**
@@ -839,6 +809,296 @@
             return cloneOfThis;
         };
         
+        var _createContext = function (stateKey) {
+            var context = {
+                stateKey : stateKey,
+                transitionMapIter : null,
+                transitionSetIter : null
+            };
+            
+            return context;
+        };
+        
+        var _createEpsilonClosure = function (stateKey) {
+            var obj = {
+                complete : false,
+                stateSet : new Set(this._stateKeyComparator),
+                transitionMap : new Map(this._edgeComparator)
+            }
+            
+            obj.stateSet.add(stateKey);
+            
+            return obj;
+        };
+        
+        /**
+         * @function
+         * @param {Nfa} nfa
+         * @param {Array.<StateKey>} stateKeyStack
+         * @return {Object}
+         */
+        var _findingEpsilonClosure = function (nfa, stateKeyStack) {
+            var stateSet = new Set(nfa._stateKeyComparator);
+            var hasFinalState = false;
+            var transitionMap = new Map(nfa._edgeComparator);
+            
+            for(; stateKeyStack.length > 0; ) {
+                var stateKey = stateKeyStack.pop();
+                if(stateSet.tryAdd(stateKey)) {
+                    var state = nfa._stateMap.get(stateKey);
+                    hasFinalState = (hasFinalState || state._finalState);
+                    
+                    for(
+                        var i = state._transitionMap.entries(), iP = i.next();
+                        !iP.done;
+                        iP = i.next()
+                    ) {
+                        var edge = iP.value[0];
+                        var nextStateSet = iP.value[1];
+                        if(nfa._edgeComparator(edge, nfa._epsilon) === 0) {
+                            _arrayConcatenateAssign(stateKeyStack, Array.from(nextStateSet));
+                        }
+                        else {
+                            var transitionSet = transitionMap.get(edge);
+                            if(_isUndefined(transitionSet)) {
+                                transitionSet = new Set(nfa._stateKeyComparator);
+                                transitionMap.set(edge, transitionSet);
+                            }
+                            
+                            transitionSet.uniteAssign(nextStateSet);
+                        }
+                    }
+                }
+            }
+            
+            return ({
+                stateSet : stateSet,
+                hasFinalState : hasFinalState,
+                transitionMap : transitionMap,
+                toString : function () {
+                    var str = '{';
+                    
+                    str += "stateSet";
+                    str += " : ";
+                    str += this.stateSet;
+                    
+                    str += ", ";
+                    str += "hasFinalState";
+                    str += " : ";
+                    str += this.hasFinalState;
+                    
+                    str += ", ";
+                    str += "transitionMap";
+                    str += " : ";
+                    str += this.transitionMap;
+                    
+                    str += '}';
+                    
+                    return str;
+                }
+            });
+        };
+        
+        /**
+         * @function
+         * @param {Object} stateKey
+         * @return {Object}
+         */
+        Nfa.prototype.findEpsilonClosureOfState = function (stateKey) {
+            var stateKeyStack = [stateKey];
+            
+            return _findingEpsilonClosure(this, stateKeyStack);
+        };
+        
+        /**
+         * @function
+         * @param {iterable} iterable
+         * @return {Object}
+         */
+        Nfa.prototype.findEpsilonClosureOfStateSet = function (iterable) {
+            _assertIsNonNullIterable(iterable);
+            
+            var stateKeyStack = [];
+            _arrayConcatenateAssign(stateKeyStack, Array.from(iterable));
+            
+            return _findingEpsilonClosure(this, stateKeyStack);
+        };
+        
+        /**
+         * Set l and Set r must have exactly same comparator.<br>
+         * @function
+         * @param {Set.<Object>} l
+         * @param {Set.<Object>} r
+         * @return {Number}
+         */
+        var _stateKeySetComparator = function (l, r) {
+            var lCount = l.getElementCount();
+            var countDiff = lCount - r.getElementCount();
+            if(countDiff === 0) {
+                var intersectionCount = 0;
+                for(
+                    var rIter = r.keys(), rIterPair = rIter.next();
+                    !rIterPair.done;
+                    rIterPair = rIter.next()
+                ) {
+                    if(l.has(rIterPair.value)) {
+                        ++intersectionCount;
+                    }
+                }
+                
+                return lCount - intersectionCount;
+            }
+            
+            return countDiff;
+        };
+        
+        /**
+         * @function
+         * @param {Nfa} nfa
+         * @param {Set}
+         * @return {Boolean}
+         */
+        var _stateSetContainsFinalState = function (nfa, s) {
+            for(
+                var i = s.keys(), iP = i.next();
+                !iP.done;
+                iP = i.next()
+            ) {
+                if(nfa.isStateFinal(iP.value)) {
+                    return true;
+                }
+            }
+            
+            return false;
+        };
+        
+        /**
+         * @function
+         * @param {Nfa} nfa
+         * @param {Map} map
+         * @param {Set} dfaStateKey
+         * @param {Boolean} isFinal
+         * @param {Number} counter
+         * @return {Number}
+         */
+        var _labelDfaState = function (nfa, map, dfaStateKey, isFinal, counter) {
+            map.set(
+                dfaStateKey,
+                {
+                    stateNumber : counter,
+                    isFinal : isFinal,
+                    toString : function () {
+                        var str = '{';
+                        
+                        str += "stateNumber";
+                        str += " : ";
+                        str += this.stateNumber;
+                        
+                        str += ", ";
+                        str += "isFinal";
+                        str += " : ";
+                        str += this.isFinal;
+                        
+                        str += '}';
+                        
+                        return str;
+                    }
+                }
+            );
+            
+            return ++counter;
+        };
+        
+        /**
+         * @function
+         * @return {Dfa}
+         */
+        Nfa.prototype.toDfa = function () {
+            var tempDfa = new Map(_stateKeySetComparator);
+            
+            var eClosureOfStartState = this.findEpsilonClosureOfState(this._startStateKey);
+            var dfaStartStateKey = new Set(this._stateKeyComparator);
+            dfaStartStateKey.add(this._startStateKey);
+            tempDfa.set(dfaStartStateKey, eClosureOfStartState.transitionMap);
+            
+            var dfaStateKeyStack = [];
+            for(
+                var i = eClosureOfStartState.transitionMap.values(), iP = i.next();
+                !iP.done;
+                iP = i.next()
+            ) {
+                dfaStateKeyStack.push(iP.value);
+            }
+            
+            var dfaStateNumber = 0;
+            var labeledDfaStateMap = new Map(_stateKeySetComparator);
+            dfaStateNumber = _labelDfaState(
+                this,
+                labeledDfaStateMap, dfaStartStateKey,
+                this.isStateFinal(this._startStateKey), dfaStateNumber
+            );
+            
+            for(; dfaStateKeyStack.length > 0; ) {
+                var dfaStateKey = dfaStateKeyStack.pop();
+                
+                var dfaStateTransitionMap = tempDfa.get(dfaStateKey);
+                if(_isUndefined(dfaStateTransitionMap)) {
+                    //TODO : eClosureOfStartState를 재활용 하도록 수정
+                    var eClosureOfCompoundNfaStates = this.findEpsilonClosureOfStateSet(dfaStateKey);
+                    dfaStateTransitionMap = eClosureOfCompoundNfaStates.transitionMap;
+                    tempDfa.set(dfaStateKey, eClosureOfCompoundNfaStates.transitionMap);
+                    
+                    dfaStateNumber = _labelDfaState(
+                        this,
+                        labeledDfaStateMap, dfaStateKey,
+                        eClosureOfCompoundNfaStates.hasFinalState, dfaStateNumber
+                    );
+                    
+                    for(
+                        var i = dfaStateTransitionMap.values(), iP = i.next();
+                        !iP.done;
+                        iP = i.next()
+                    ) {
+                        dfaStateKeyStack.push(iP.value);
+                    }
+                }
+            }
+            
+            var dfa = new Dfa();
+            dfa._states = new Array(tempDfa.getElementCount());
+            for(
+                var i = tempDfa.entries(), iP = i.next();
+                !iP.done;
+                iP = i.next()
+            ) {
+                var compoundStateKey = iP.value[0];
+                var label = labeledDfaStateMap.get(compoundStateKey);
+                var dfaState = new DfaState();
+                dfaState._finalState = label.isFinal;
+                dfaState._transitionMap = new Map(this._edgeComparator);
+                
+                var transitionMap = iP.value[1];
+                for(
+                    var j = transitionMap.entries(), jP = j.next();
+                    !jP.done;
+                    jP = j.next()
+                ) {
+                    dfaState._transitionMap.set(
+                        jP.value[0],
+                        labeledDfaStateMap.get(jP.value[1]).stateNumber
+                    );
+                }
+                
+                dfa._states[label.stateNumber] = dfaState;
+            }
+            
+            //TODO : Do i really need these lines...?
+            tempDfa.clear();
+            labeledDfaStateMap.clear();
+            
+            return dfa;
+        };
+        
         /**
          * @function
          * @return {String}
@@ -884,23 +1144,15 @@
             return str;
         };
         
-        return Nfa;
+        return ({
+            Nfa : Nfa,
+            Dfa : Dfa
+        });
     }());
     
-    //TODO : 디버그용 코드 제거
-    karbonator.string._Nfa = Nfa;
+    var Nfa = NfaAndDfa.Nfa;
     
-    var Dfa = (function () {
-        var State = function () {
-            this._transitionMap = new Map(_edgeComparator);
-        };
-        
-        var Dfa = function () {
-            this._states = [];
-        };
-        
-        return Dfa;
-    }());
+    var Dfa = NfaAndDfa.Dfa;
     
     var ScannerResult = (function () {
         /**
@@ -962,7 +1214,7 @@
                     switch(ch) {
                     case '0': case '1': case '2': case '3': case '4':
                     case '5': case '6': case '7': case '8': case '9':
-                        if(str.charAt(startPos) !== '0') {
+                        if(value.length < 1 || str.charAt(startPos) !== '0') {
                             value += ch;
                             ++pos;
                         }
@@ -1203,15 +1455,8 @@
                             ++state;
                         }
                         else {
-                            if(min === 0) {
-                                errorCode = 3;
-                                errorMessage = "Repeating a character term zero times is meaningless.";
-                                scanning = false;
-                            }
-                            else {
-                                max = min;
-                                state = 4;
-                            }
+                            max = min;
+                            state = 4;
                         }
                     break;
                     case 3:
@@ -1375,6 +1620,10 @@
             return this._parsing && this._pos < this._regexLen;
         };
         
+        var _zeroOrMoreInterval = new Interval(0, Number.MAX_SAFE_INTEGER);
+        var _oneOrMoreInterval = new Interval(1, Number.MAX_SAFE_INTEGER);
+        var _zeroOrOneInterval = new Interval(0, 1);
+        
         /**
          * @function
          * @return {Nfa}
@@ -1438,30 +1687,45 @@
                             scannerResult = this._primitiveScanner.scanRepetitionOperator(this._regexStr, this._pos);
                             if(scannerResult.error.code === 0) {
                                 repRange = scannerResult.value;
-                                if(repRange.getMinimum() >= 2) {
-                                    var repeatedNfa = lastToken.value.clone();
-                                    
-                                    for(var j = 2; j < repRange.getMinimum(); ++j) {
-                                        repeatedNfa.concatenate(lastToken.value.clone());
+                                if(repRange.getMaximum() < 1) {
+                                    this._updateErrorAndStopParsing("The maximum value argument of a repetition operator must be greater than or equal to one.");
+                                }
+                                else {
+                                    //TODO : Refactor this ugly and sutpid code...
+                                    if(repRange.equals(_zeroOrMoreInterval)) {
+                                        lastToken.value.wrapWithZeroOrMore();
                                     }
-                                    
-                                    if(repRange.getMaximum() >= _maxInt) {
-                                        repeatedNfa.concatenate(lastToken.value.clone().wrapWithZeroOrMore());
+                                    else if(repRange.equals(_oneOrMoreInterval)) {
+                                        lastToken.value.wrapWithOneOrMore();
+                                    }
+                                    else if(repRange.equals(_zeroOrOneInterval)) {
+                                        lastToken.value.wrapWithZeroOrOne();
                                     }
                                     else {
-                                        for(
-                                            var j = 0, repCount = repRange.getMaximum() - repRange.getMinimum();
-                                            j < repCount;
-                                            ++j
-                                        ) {
-                                            repeatedNfa.concatenate(lastToken.value.clone().wrapWithZeroOrOne());
+                                        var repeatedNfa = lastToken.value.clone();
+                                        
+                                        for(var j = 2; j < repRange.getMinimum(); ++j) {
+                                            repeatedNfa.concatenate(lastToken.value.clone());
                                         }
+                                        
+                                        if(repRange.getMaximum() >= _maxInt) {
+                                            repeatedNfa.concatenate(lastToken.value.clone().wrapWithZeroOrMore());
+                                        }
+                                        else {
+                                            for(
+                                                var j = 0, repCount = repRange.getMaximum() - repRange.getMinimum();
+                                                j < repCount;
+                                                ++j
+                                            ) {
+                                                repeatedNfa.concatenate(lastToken.value.clone().wrapWithZeroOrOne());
+                                            }
+                                        }
+                                        
+                                        lastToken.value.concatenate(repeatedNfa);
                                     }
                                     
-                                    lastToken.value.concatenate(repeatedNfa);
+                                    this._pos = scannerResult.position;
                                 }
-                                
-                                this._pos = scannerResult.position;
                             }
                             else {
                                 this._updateErrorAndStopParsing(scannerResult.error.message);
@@ -1588,7 +1852,6 @@
             return nfa;
         };
         
-        //TODO : 디버그
         /**
          * @function
          * @param {RegexParser} oThis
@@ -1957,7 +2220,7 @@
             //[V] 1-1. Regex 분석 및 NFA 생성
             //[V] 1-2. 오류 발생 시 내용을 기록하고 종료
             //[ ] 2. 별도의 시작 상태를 만들고 각 NFA의 시작 상태를 새로운 시작상태를 오메가로 연결
-            //[ ] 3. NFA -> DFA
+            //[V] 3. NFA -> DFA
             for(
                 var iter = this._tokenMap.values(), iterPair = iter.next();
                 !iterPair.done;
@@ -1972,80 +2235,6 @@
                 
                 lexer._addToken(token._name, token._nfa, token._regexStr);
             }
-            
-//            (function (nfa) {
-//                /**
-//                 * @function
-//                 * @param {Set.<Object>} l
-//                 * @param {Set.<Object>} r
-//                 * @return {Number}
-//                 */
-//                var _compoundStateKeyComparator = function (l, r) {
-//                    var countDiff = l.getElementCount() - r.getElementCount();
-//                    if(countDiff === 0) {
-//                        for(
-//                            var i = l.keys(), iP = i.next(),
-//                            lKey = 0, keyDiff = 0;
-//                            !iP.done;
-//                            iP = i.next()
-//                        ) {
-//                            lKey = iP.value;
-//                            
-//                            for(
-//                                var j = l.keys(), jP = j.next();
-//                                !jP.done;
-//                                jP = j.next()
-//                            ) {
-//                                keyDiff = this.stateKeyComparator(lKey, jP.value);
-//                                if(keyDiff !== 0) {
-//                                    return keyDiff;
-//                                }
-//                            }
-//                        }
-//                    }
-//                    
-//                    return countDiff;
-//                };
-//                
-//                /**
-//                 * @function
-//                 * @param {Object} nfaStateKey
-//                 * @param {karbonator.comparator} stateKeyComparator
-//                 * @return {Set.<Object>}
-//                 */
-//                var _createCompoundStateKey = function (nfaStateKey, stateKeyComparator) {
-//                    var compoundStateKey = new Set(stateKeyComparator);
-//                    compoundStateKey.add(nfaStateKey);
-//                    
-//                    return compoundStateKey;
-//                };
-//                
-//                /**
-//                 * @function
-//                 * @param {Nfa} nfa
-//                 * @return {Dfa|null}
-//                 */
-//                var confertNfaToDfa = function (nfa) {
-//                    var nfaStartStateKey = nfa.getStartStateKey();
-//                    if(typeof(nfaStartStateKey) === "undefined" || nfaStartStateKey === null) {
-//                        return null;
-//                    }
-//                    
-//                    var nfaStateKeyComparator = nfa.getStateKeyComparator();
-//                    
-//                    var eClosuresOfNfaStates = new Map(nfaStateKeyComparator);
-//                    var eClosure = {
-//                        states : [null, null, null],
-//                        transitionMap : [
-//                            {key : null, value : null}
-//                        ]
-//                    };
-//                    
-//                    var dfa = null;
-//                    
-//                    return dfa;
-//                };
-//            }(this._tokenMap.get("foo")._nfa));
             
             return (!this._regexParser._error.occured ? lexer : null);
         };

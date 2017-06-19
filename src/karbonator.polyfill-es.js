@@ -2,7 +2,7 @@
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
- * last-modified : 2017-06-07
+ * last-modified : 2017-06-17
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
@@ -185,7 +185,7 @@
      * @param {Number} n
      * @return {Number}
      */
-    var _adjustIndexIfNegative = function (i, n) {
+    var _adjustNegativeIndex = function (i, n) {
         return (i < 0 ? i + n : i);
     };
     
@@ -197,6 +197,24 @@
      */
     var _arrayLikeGetAt = function (arrayLike, index) {
         return (_isString(arrayLike) ? arrayLike.charAt(index) : arrayLike[index]);
+    };
+    
+    /**
+     * @function
+     * @param {String} l
+     * @param {String} r
+     */
+    var _stringComparator = function (l, r) {
+        var diff = 0;
+        var minLen = (l.length < r.length ? l.length : r.length);
+        for(var i = 0; i < minLen; ++i) {
+            diff = l.charCodeAt(i) - r.charCodeAt(i);
+            if(diff !== 0) {
+                break;
+            }
+        }
+        
+        return diff;
     };
     
     /**
@@ -216,6 +234,16 @@
     var _assertIsNotNullAndUndefined = function (o) {
         if(typeof(o) === "undefined" || o === null) {
             throw new Error("A non-null object must be passed.");
+        }
+    };
+    
+    /**
+     * @function
+     * @param {*} o
+     */
+    var _assertIsNotRegExp = function (o) {
+        if(o instanceof RegExp) {
+            throw new TypeError("The parameter must not be a regular expression");
         }
     };
     
@@ -456,10 +484,10 @@
             Derived.prototype = proto;
             
             var newObject = new Derived();
+            newObject.constructor = proto.constructor;
             if(arguments.length > 1) {
                 Object.defineProperties(Derived.prototype, arguments[1]);
             }
-            newObject.constructor = proto.constructor;
             
             return newObject;
         });
@@ -482,7 +510,7 @@
             if(proto !== null && _isObjectOrFunction(proto)) {
                 _assertIsNotNullAndUndefined(o);
                 
-                if(!_hasOwnPropertyFunction.call(o, "__proto__")) {
+                if(!Object.prototype.hasOwnProperty("__proto__")) {
                     throw new Error("This environment doesn't support replacing prototype.");
                 }
                 
@@ -615,6 +643,89 @@
         Array.isArray = _isArray;
     }
     
+    Array.prototype.sort = (function () {
+        var _originalSort = Array.prototype.sort;
+        if(_originalSort) {
+            var _allowsNonFunctionArg = (function () {
+                var result = false;
+                
+                try {
+                    [7, 9, 3].sort(null);
+                    
+                    result = true;
+                }
+                catch(e) {}
+                
+                return result;
+            }());
+            
+            if(_allowsNonFunctionArg) {
+                return function (comparator) {
+                    switch(typeof(comparator)) {
+                    case "undefined":
+                        return _originalSort.call(this);
+                    break;
+                    case "function":
+                        return _originalSort.call(this, comparator);
+                    break;
+                    default:
+                        throw new TypeError("The 'comparator' must be a function or an undefined value.");
+                    }
+                };
+            }
+            else {
+                return _originalSort;
+            }
+        }
+        else {
+            return function (comparator) {
+                throw new Error("Not polyfilled yet...");
+            };
+        }
+    }());
+    
+    if(!Array.prototype.copyWithin) {
+        Array.prototype.copyWithin = function (target) {
+            var len = this.length;
+            target = _adjustNegativeIndex(target, len);
+            var start = _adjustNegativeIndex(_selectNonUndefined(arguments[1], 0), len);
+            var end = _adjustNegativeIndex(_selectNonUndefined(arguments[2], len), len);
+            
+            for(var i = target + (end - start), j = end; i > target && j > start; ) {
+                --i, --j;
+                if(i < len && (j in this)) {
+                    this[i] = this[j];
+                }
+            }
+            
+            return this;
+        };
+    }
+    
+    if(!Array.prototype.fill) {
+        Array.prototype.fill = function (value) {
+            var len = this.length;
+            var start = _adjustNegativeIndex(_selectNonUndefined(arguments[1], 0), len);
+            var end = _adjustNegativeIndex(_selectNonUndefined(arguments[2], len), len);
+            
+            if(_isString(this)) {
+                if(len < 1) {
+                    return this;
+                }
+                else {
+                    throw new Error("Cannot modify readonly property '0'.");
+                }
+            }
+            else {
+                for(var i = start; i < end; ++i) {
+                    this[i] = value;
+                }
+            }
+            
+            return this;
+        };
+    }
+    
     if(!Array.prototype.map) {
         Array.prototype.map = function (callback) {
             var thisArg = arguments[1];
@@ -743,45 +854,19 @@
         };
     }
     
-    if(!Array.prototype.copyWithin) {
-        Array.prototype.copyWithin = function (target) {
-            var len = this.length;
-            target = _adjustIndexIfNegative(target, len);
-            var start = _adjustIndexIfNegative(_selectNonUndefined(arguments[1], 0), len);
-            var end = _adjustIndexIfNegative(_selectNonUndefined(arguments[2], len), len);
-            
-            for(var i = target + (end - start), j = end; i > target && j > start; ) {
-                --i, --j;
-                if(i < len && (j in this)) {
-                    this[i] = this[j];
-                }
+    if(!String.prototype.repeat) {
+        String.prototype.repeat = function (count) {
+            count = Math.trunc(count);
+            if(count < 0 || count === _posInf) {
+                throw new RangeError("The parameter 'count' must be greater than or equal to zero and less than positive infinity.");
             }
             
-            return this;
-        };
-    }
-    
-    if(!Array.prototype.fill) {
-        Array.prototype.fill = function (value) {
-            var len = this.length;
-            var start = _adjustIndexIfNegative(_selectNonUndefined(arguments[1], 0), len);
-            var end = _adjustIndexIfNegative(_selectNonUndefined(arguments[2], len), len);
-            
-            if(_isString(this)) {
-                if(len < 1) {
-                    return this;
-                }
-                else {
-                    throw new Error("Cannot modify readonly property '0'.");
-                }
-            }
-            else {
-                for(var i = start; i < end; ++i) {
-                    this[i] = value;
-                }
+            var str = "";
+            for(var i = 0; i < count; ++i) {
+                str += this;
             }
             
-            return this;
+            return str;
         };
     }
     
@@ -800,6 +885,8 @@
     
     if(!String.prototype.startsWith) {
         String.prototype.startsWith = function (other) {
+            _assertIsNotRegExp(other);
+            
             return this.substr(
                 (arguments.length > 1 ? arguments[1] : 0),
                 other.length
@@ -809,6 +896,8 @@
     
     if(!String.prototype.endsWith) {
         String.prototype.endsWith = function (other) {
+            _assertIsNotRegExp(other);
+            
             var s = this.substr(0, (arguments.length > 1 ? arguments[1] : this.length));
             
             return s.substr(s.length - other.length, other.length) === other;
@@ -898,6 +987,20 @@
         ;
     }
     
+    if(!Math.trunc) {
+        Math.trunc = function (x) {
+            return (
+                Number.isNaN(x)
+                ? _NaN
+                : (
+                    x < 0
+                    ? Math.ceil(x)
+                    : Math.floor(x)
+                )
+            );
+        };
+    }
+    
     if(!Math.sign) {
         Math.sign = function (n) {
             if(Number.isNaN(n)) {
@@ -921,6 +1024,58 @@
             if(n > 0 && !isPosZero) {
                 return +0;
             }
+        };
+    }
+    
+//    if(!Math.clz32) {
+//        Math.clz32 = function (x) {
+//            
+//        };
+//    }
+        
+//    if(!Math.imul) {
+//        Math.imul = function (x, y) {
+//            
+//        };
+//    }
+    
+    if(!Math.expm1) {
+        Math.expm1 = function (x) {
+            return Math.exp(x) - 1
+        };
+    }
+    
+    if(!Math.log1p) {
+        Math.log1p = function (x) {
+            return Math.log(1 + x);
+        };
+    }
+    
+    if(!Math.log10) {
+        Math.log10 = function (x) {
+            return Math.log(x) * Math.LOG10E;
+        };
+    }
+    
+    if(!Math.log2) {
+        Math.log2 = function (x) {
+            return Math.log(x) * Math.LOG2E;
+        };
+    }
+    
+    if(!Math.hypot) {
+        Math.hypot = function () {
+            var sum = 0;
+            for(var i = 0, len = arguments.length; i < len; ++i) {
+                var n = Number(arguments[i]);
+                if(Number.isNaN(n)) {
+                    return _NaN;
+                }
+                
+                sum += n * n;
+            }
+            
+            return Math.sqrt(sum);
         };
     }
     
@@ -1006,30 +1161,14 @@
     
     if(!global.Symbol) {
         global.Symbol = (function () {
-            var symbolKeyPrefix = _polyfillPropNamePrefix + "Symbol";
-            
-            var knownSymbolKeys = [
-                "iterator",
-                "match",
-                "replace",
-                "search",
-                "split",
-                "hasInstance",
-                "isConcatSpreadable",
-                "unscopables",
-                "species",
-                "toPrimitive",
-                "toStringTag"
-            ];
-            
-            var globalIdCounter = 0;
+            var _symbolKeyPrefix = _polyfillPropNamePrefix + "Symbol";
             
             /**
              * @function
              * @param {*} arg
              * @return {String}
              */
-            var createKey = function (arg) {
+            var _createKey = function (arg) {
                 var key = "";
                 
                 switch(typeof(arg)) {
@@ -1049,23 +1188,29 @@
                 return key;
             };
             
-            var FakeSymbolCtor = function () {
-                this._key = createKey(arguments[0]);
+            var _globalIdCounter = 0;
+            
+            var _FakeSymbolCtor = function () {
+                this._key = _createKey(arguments[0]);
                 
                 //A non-standard behaviour to distinguish each symbol instances...
-                this._id = ++globalIdCounter;
+                this._id = ++_globalIdCounter;
                 if(this._id === 0) {
                     throw new Error("The Symbol polyfill cannot instantiate additional distinguishing symbols...");
                 }
             };
-            FakeSymbolCtor.prototype = Object.create(Object.prototype);
+            _FakeSymbolCtor.prototype = Object.create(Object.prototype);
             
             /**
-             * references:
-             * - http://ecma-international.org/ecma-262/5.1/#sec-9.12
-             * - https://www.keithcirkel.co.uk/metaprogramming-in-es6-symbols/
+             * Creates and returns a new symbol using a optional parameter 'description' as a key.<br/>
+             * There is no way to force not using the new operator 
+             * because the 'new.target' virtual property does not exist in Es3 environment.<br/>
+             * references: <br/>
+             * - http://ecma-international.org/ecma-262/5.1/#sec-9.12 <br/>
+             * - https://www.keithcirkel.co.uk/metaprogramming-in-es6-symbols/ <br/>
              * @constructor
-             * @param {String} [description = ""]
+             * @param {String} [description=""]
+             * @return {Symbol}
              */
             var Symbol = function () {
                 //This code can't be a complete alternative of 'new.target' proposed in Es6 spec
@@ -1080,15 +1225,18 @@
                 if(arg instanceof Symbol) {
                     throw new TypeError("Cannot convert symbol value to string.");
                 }
-                var newSymbol = new FakeSymbolCtor(arg);
+                var newSymbol = new _FakeSymbolCtor(arg);
                 
                 return newSymbol;
             };
-            Symbol.prototype = FakeSymbolCtor.prototype;
+            Symbol.prototype = _FakeSymbolCtor.prototype;
             Symbol.prototype.constructor = Symbol;
             
-            var Registry = (function () {
-                var Registry = function () {
+            var _Registry = (function () {
+                /**
+                 * @constructor
+                 */
+                var _Registry = function () {
                     this._registry = [];
                 };
                 
@@ -1097,7 +1245,7 @@
                  * @param {String} key
                  * @return {Boolean}
                  */
-                Registry.prototype.hasSymbol = function (key) {
+                _Registry.prototype.hasSymbol = function (key) {
                     return this._findPairIndexByKey(key) >= 0;
                 };
                 
@@ -1106,10 +1254,11 @@
                  * @param {Symbol} symbol
                  * @return {String|undefined}
                  */
-                Registry.prototype.findKeyBySymbol = function (symbol) {
+                _Registry.prototype.findKeyBySymbol = function (symbol) {
                     var index = this._registry.findIndex(
                         function (pair) {
-                            return pair.value === symbol //Es6 스펙 19.4.2.5절에 따라 === 사용.
+                            //Es6 스펙 19.4.2.5절에 따라 === 사용.
+                            return pair.value === symbol
                                 //&& pair.key === symbol._key
                             ;
                         }
@@ -1124,7 +1273,7 @@
                  * @param {String} key
                  * @return {Symbol}
                  */
-                Registry.prototype.getOrCreateSymbolByKey = function (key) {
+                _Registry.prototype.getOrCreateSymbolByKey = function (key) {
                     var index = this._findPairIndexByKey(key);
                     if(index < 0) {
                         index = this._registry.length;
@@ -1139,7 +1288,7 @@
                  * @param {String} key
                  * @return {Number}
                  */
-                Registry.prototype._findPairIndexByKey = function (key) {
+                _Registry.prototype._findPairIndexByKey = function (key) {
                     return this._registry.findIndex(
                         function (pair) {
                             return pair.key === key;
@@ -1147,15 +1296,31 @@
                     );
                 };
                 
-                return Registry;
+                return _Registry;
             })();
             
-            var globalRegistry = new Registry();
+            var _globalRegistry = new _Registry();
             
-            for(var i = 0; i < knownSymbolKeys.length; ++i) {
-                var knownSymbolKey = knownSymbolKeys[i];
-                Symbol[knownSymbolKey] = Symbol(knownSymbolKey);
-            }
+            (function () {
+                var _knownSymbolKeys = [
+                    "iterator",
+                    "match",
+                    "replace",
+                    "search",
+                    "split",
+                    "hasInstance",
+                    "isConcatSpreadable",
+                    "unscopables",
+                    "species",
+                    "toPrimitive",
+                    "toStringTag"
+                ];
+                
+                for(var i = 0; i < _knownSymbolKeys.length; ++i) {
+                    var knownSymbolKey = _knownSymbolKeys[i];
+                    Symbol[knownSymbolKey] = Symbol(knownSymbolKey);
+                }
+            }());
             
             /**
              * @memberof Symbol
@@ -1164,8 +1329,8 @@
              * @return {Symbol}
              */
             Symbol["for"] = function (key) {
-                return globalRegistry.getOrCreateSymbolByKey(
-                    createKey(_selectNonUndefined(key, "undefined"))
+                return _globalRegistry.getOrCreateSymbolByKey(
+                    _createKey(_selectNonUndefined(key, "undefined"))
                 );
             };
             
@@ -1176,7 +1341,7 @@
              * @return {String|undefined}
              */
             Symbol.keyFor = function (symbol) {
-                return globalRegistry.findKeyBySymbol(symbol);
+                return _globalRegistry.findKeyBySymbol(symbol);
             };
             
             /**
@@ -1189,15 +1354,15 @@
             };
             
             /**
-             * Outputs 'non-standard' string for distinguishing each symbol instances.
-             * To get 'SymbolDescriptiveString' of the standard, 
-             * use a non-standard function 'Symbol.prototype.toSymbolDescriptiveString'.
+             * Outputs a 'non-standard' string for distinguishing each symbol instances.
+             * To get a 'SymbolDescriptiveString' described in the standard,
+             * use a non-standard function 'Symbol.prototype.toSymbolDescriptiveString' instead.
              * @function
              * @return {String}
              * @see Symbol.prototype.toSymbolDescriptiveString
              */
             Symbol.prototype.toString = function () {
-                return symbolKeyPrefix + this._id + "_" + this.toSymbolDescriptiveString();
+                return _symbolKeyPrefix + this._id + "_" + this.toSymbolDescriptiveString();
             };
             
             /**
@@ -1217,27 +1382,17 @@
     //            return this.valueOf();
     //        };
             
-            var symbolKeyPattern = new RegExp("^" + symbolKeyPrefix + "[0-9]+_");
+            var _symbolKeyPattern = new RegExp("^" + _symbolKeyPrefix + "[0-9]+_");
             
-            Object.getOwnPropertySymbols = Object.getOwnPropertySymbols || (function (o) {
-                var symbolKeys = [];
-                for(var key in o) {
-                    if(
-                        Object.prototype.hasOwnProperty.call(o, key)
-                        && symbolKeyPattern.test(key)
-                    ) {
-                        symbolKeys.push(key.replace(symbolKeyPattern, ""));
-                    }
-                }
-                
-                return symbolKeys;
-            });
+            if(!Array.prototype[Symbol.iterator]) {
+                Array.prototype[Symbol.iterator] = Array.prototype.values;
+            }
             
-            Array.prototype[Symbol.iterator] = Array.prototype[Symbol.iterator] || Array.prototype.values;
-            
-            String.prototype[Symbol.iterator] = String.prototype[Symbol.iterator] || function () {
-                return new StringValueIterator(this);
-            };
+            if(!String.prototype[Symbol.iterator]) {
+                String.prototype[Symbol.iterator] = function () {
+                    return new StringValueIterator(this);
+                };
+            }
             
             return Symbol;
         }());
