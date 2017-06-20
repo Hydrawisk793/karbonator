@@ -34,11 +34,14 @@
     
     /**
      * @function
-     * @param {karbonator.comparator} comparator
+     * @param {karbonator.comparator} o
      */
-    var _assertIsComparator = function (comparator) {
-        if(typeof(comparator) !== "function" || comparator.length < 2) {
-            throw new TypeError("A valid comparator function for key comparision must be specified.");
+    var _assertIsComparator = function (o) {
+        if(typeof(o) !== "function" || o.length < 2) {
+            throw new TypeError(_selectNonUndefined(
+                arguments[1],
+                "A valid comparator function for key comparision must be specified."
+            ));
         }
     };
     
@@ -187,18 +190,6 @@
      */
     var _setIntersectAssign = function (SetClass, lhs, rhs) {
         return _setSubtractAssign(lhs, _setSubtract(SetClass, lhs, rhs));
-        
-//        for(
-//            var i = lhs.keys(), iP = i.next();
-//            !iP.done;
-//            iP = i.next()
-//        ) {
-//            if(!rhs.has(iP.value)) {
-//                lhs["delete"](iP.value);                
-//            }
-//        }
-//        
-//        return lhs;
     };
     
     /**
@@ -1269,7 +1260,9 @@
              * @return {Boolean}
              */
             IteratorBase.prototype.equals = function (rhs) {
-                return this._tree === rhs._tree && this._node === rhs._node;
+                return this._tree === rhs._tree
+                    && this._node === rhs._node
+                ;
             };
             
             /**
@@ -1892,25 +1885,6 @@
          * @function
          * @param {Object} key
          * @param {Object} value
-         * @return {Object}
-         */
-        TreeMap.prototype.getIfExistOrSet = function (key, value) {
-            var endIter = this._rbTreeSet.end();
-            var iter = this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.equal);
-            if(iter.equals(endIter)) {
-                this._rbTreeSet.insert({key : key, value : value});
-            }
-            else {
-                value = iter.dereference().value;
-            }
-            
-            return value;
-        };
-        
-        /**
-         * @function
-         * @param {Object} key
-         * @param {Object} value
          * @return {TreeMap}
          */
         TreeMap.prototype.set = function (key, value) {
@@ -1932,7 +1906,7 @@
          * @param {Object} value
          * @return {Boolean}
          */
-        TreeMap.prototype.setIfNotExist = function (key, value) {
+        TreeMap.prototype.tryAdd = function (key, value) {
             var endIter = this._rbTreeSet.end();
             var iter = this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.equal);
             var result = iter.equals(endIter);
@@ -2537,24 +2511,6 @@
          * @function
          * @param {Object} key
          * @param {Object} value
-         * @return {Object}
-         */
-        ListMap.prototype.getIfExistOrSet = function (key, value) {
-            var index = this.findIndex(key);
-            if(index < 0) {
-                this._pairs.push({key : key, value : value});
-            }
-            else {
-                value = this._pairs[index].value;
-            }
-            
-            return value;
-        };
-        
-        /**
-         * @function
-         * @param {Object} key
-         * @param {Object} value
          * @return {ListMap}
          */
         ListMap.prototype.set = function (key, value) {
@@ -2575,7 +2531,7 @@
          * @param {Object} value
          * @return {Boolean}
          */
-        ListMap.prototype.setIfNotExist = function (key, value) {
+        ListMap.prototype.tryAdd = function (key, value) {
             var index = this.findIndex(key);
             var result = index < 0;
             if(result) {

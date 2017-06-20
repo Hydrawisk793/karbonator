@@ -91,7 +91,7 @@
         return {
             posixPrint : [
                 _constInterval.space,
-                _constInterval.posixGraph        
+                _constInterval.posixGraph
             ],
             posixAlnum : _posixAlnum,
             posixAlpha : _posixAlpha,
@@ -118,6 +118,7 @@
     /**
      * @function
      * @param {*} o
+     * @return {Boolean}
      */
     var _isUndefined = function (o) {
         return "undefined" === typeof(o);
@@ -126,20 +127,68 @@
     /**
      * @function
      * @param {*} o
+     * @return {Boolean}
      */
-    var _isNotUndefined = function (o) {
-        return "undefined" !== typeof(o);
+    var _isNullOrUndefined = function (o) {
+        return null === o || "undefined" === typeof(o);
+    };
+    
+    /**
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    var _isObject = function (o) {
+        return "object" === typeof(o) && null !== o;
     };
     
     var _selectNonUndefined = karbonator.selectNonUndefined;
     
     /**
      * @function
+     * @param {*} o
+     * @param {String} [message]
+     */
+    var _assertIsNotNullAndUndefined = function (o) {
+        if(_isNullOrUndefined(o)) {
+            throw new TypeError(_selectNonUndefined(arguments[1], "The parameter must not be undefined and null."));
+        }
+    };
+
+    /**
+     * @function
+     * @param {karbonator.comparator} o
+     */
+    var _assertIsComparator = function (o) {
+        if(typeof(o) !== "function" || o.length < 2) {
+            throw new TypeError(_selectNonUndefined(
+                arguments[1],
+                "A valid comparator function for key comparision must be specified."
+            ));
+        }
+    };
+    
+    /**
+     * @function
      * @param {Interval} o
      */
     var _assertIsInterval = function (o) {
-        if(typeof(o) !== "object" || !(o instanceof Interval)) {
+        if(!(o instanceof Interval)) {
             throw new TypeError("A instance of 'Interval' must be passed.");
+        }
+    };
+    
+    /**
+     * @function
+     * @param {o}
+     * @param {String} [message]
+     */
+    var _assertIsKeyGenerator = function (o) {
+        if(!_isObject(o) || (typeof(o.generateKey) !== "function")) {
+            throw new TypeError(_selectNonUndefined(
+                arguments[1],
+                "The argument must be a key generator."
+            ));
         }
     };
     
@@ -164,9 +213,9 @@
      * @function
      * @param {*} o
      */
-    var _assertIsNonNullIterable = function (o) {
-        if(_isUndefined(o[global.Symbol.iterator]) || o === null) {
-            throw new TypeError("The parameter must be an iterable object which has the property 'Symbol.iterator'.");
+    var _assertIsIterable = function (o) {
+        if(_isNullOrUndefined(o) || _isNullOrUndefined(o[global.Symbol.iterator])) {
+            throw new TypeError("The parameter must be an object that has the property 'Symbol.iterator'.");
         }
     };
     
@@ -338,14 +387,78 @@
             return Dfa;
         }());
         
-        /**
-         * @constructor
-         * @param {karbonator.comparator} edgeComparator
-         */
-        var State = function (edgeComparator) {
-            this._transitionMap = new Map(edgeComparator);
-            this._finalState = false;
-        };
+        var State = (function () {
+            /**
+             * @constructor
+             * @param {karbonator.comparator} edgeComparator
+             * @param {karbonator.comparator} transitionComparator
+             * @param {Boolean} [isFinal]
+             */
+            var State = function (edgeComparator, transitionComparator) {
+                _assertIsComparator(
+                    edgeComparator,
+                    "The parameter 'edgeComparator' must be a comparator function."
+                );
+                _assertIsComparator(
+                    transitionComparator,
+                    "The parameter 'transitionComparator' must be a comparator function."
+                );
+                
+                this._edgeComparator = edgeComparator;
+                this._transitionComparator = transitionComparator;
+                
+                this._transitionMap = new Map(edgeComparator);
+                this._finalState = ("undefined" !== typeof(arguments[2]) ? !!arguments[2] : false);
+            };
+            
+            /**
+             * @function
+             * @return {karbonator.comparator}
+             */
+            State.prototype.getEdgeComparator = function () {
+                return this._edgeComparator;
+            };
+            
+            /**
+             * @function
+             * @return {karbonator.comparator}
+             */
+            State.prototype.getTransitionComparator = function () {
+                return this._transitionComparator;
+            };
+            
+            /**
+             * @function
+             * @return {Boolean}
+             */
+            State.prototype.isFinal = function () {
+                return this._finalState;
+            };
+            
+            /**
+             * @function
+             * @param {Boolean} isFinal
+             */
+            State.prototype.setFinal = function (isFinal) {
+                this._finalState = !!isFinal;
+            };
+            
+            /**
+             * @function
+             * @param {Object} edge
+             */
+            State.prototype.getTransitionSet = function (edge) {
+                var transitionSet = this._transitionMap.get(edge);
+                if(_isUndefined(transitionSet)) {
+                    transitionSet = new Set(this._transitionComparator);
+                    this._transitionMap.set(edge, transitionSet);
+                }
+                
+                return transitionSet;
+            };
+            
+            return State;
+        }());
         
         /**
          * @constructor
@@ -355,13 +468,26 @@
          * @param {karbonator.comparator} edgeComparator
          */
         var Nfa = function (stateKeyGenerator, stateKeyComparator, epsilonEdge, edgeComparator) {
-//            if(stateKeyGenerator !== null || typeof(stateKeyGenerator) !== "object") {
-//                throw new TypeError("An instance of 'KeyGenerator' or null must be passed.");
-//            }
-            this._stateKeyGenerator = stateKeyGenerator;
+            _assertIsKeyGenerator(
+                stateKeyGenerator,
+                "The parameter 'stateKeyGenerator' must be a key generator object."
+            );
+            _assertIsNotNullAndUndefined(
+                epsilonEdge,
+                "The parameter 'epsilonEdge' must not be undefined and null."
+            );
+            _assertIsComparator(
+                stateKeyComparator,
+                "The parameter 'stateKeyComparator' must be a comparator function."
+            );
+            _assertIsComparator(
+                edgeComparator,
+                "The parameter 'edgeComparator' must be a comparator function."
+            );
             
+            this._stateKeyGenerator = stateKeyGenerator;
             this._stateKeyComparator = stateKeyComparator;
-            this._epsilon = epsilonEdge;
+            this._epsilonEdge = epsilonEdge;
             this._edgeComparator = edgeComparator;
             
             this._stateMap = new Map(stateKeyComparator);
@@ -369,7 +495,7 @@
         };
         
         /**
-        stateKeyMaphis._stateMap.values(); * @function
+         * @function
          * @return {karbonator.comparator}
          */
         Nfa.prototype.getStateKeyComparator = function () {
@@ -389,54 +515,7 @@
          * @return {Object}
          */
         Nfa.prototype.getEpsilonEdge = function () {
-            return this._epsilon;
-        };
-        
-        /**
-         * @function
-         * @param {Nfa} nfa
-         * @param {Object} stateKey
-         * @return {Boolean}
-         */
-        var _hasState = function (nfa, stateKey) {
-            return nfa._stateMap.has(stateKey);
-        };
-        
-        /**
-         * @function
-         * @param {Nfa} nfa
-         * @param {Object} stateKey
-         * @param {Object} edge
-         * @param {Function} callback
-         */
-        var _doActionIfTransitionSetExists = function (nfa, stateKey, edge, callback) {
-            var state = nfa._stateMap.get(stateKey);
-            if(_isNotUndefined(state)) {
-                var transitionSet = state._transitionMap.get(edge);
-                if(_isNotUndefined(transitionSet)) {
-                    callback.call(nfa, transitionSet);
-                }
-            }
-        };
-        
-        /**
-         * @function
-         * @param {Nfa} nfa
-         * @param {Object} stateKey
-         * @param {Object} edge
-         * @param {Function} callback
-         */
-        var _getOrAddTransitionSetAndDoAction = function (nfa, stateKey, edge, callback) {
-            var state = nfa._stateMap.get(stateKey);
-            if(_isNotUndefined(state)) {
-                var transitionSet = state._transitionMap.get(edge);
-                if(_isUndefined(transitionSet)) {
-                    transitionSet = new Set(nfa._stateKeyComparator);
-                    state._transitionMap.set(edge, transitionSet);
-                }
-                
-                callback.call(nfa, transitionSet);
-            }
+            return this._epsilonEdge;
         };
         
         /**
@@ -449,26 +528,41 @@
         
         /**
          * @function
+         * @param {Object} stateKey
+         * @return {Boolean}
+         */
+        Nfa.prototype.hasState = function (stateKey) {
+            _assertIsNotNullAndUndefined(stateKey);
+            
+            return this._stateMap.has(stateKey);
+        };
+        
+        /**
+         * @function
+         * @param {Object} [stateKey]
          * @param {Boolean} [finalState=false]
-         * @param {Object} [keyOfNewState]
          * @return {Object|null}
          */
-        Nfa.prototype.addState = function () {
-            var stateKey = (
-                this._stateKeyGenerator !== null
-                ? this._stateKeyGenerator.generateKey()
+        Nfa.prototype.addState = function (stateKey) {
+            stateKey = (
+                (!_isNullOrUndefined(stateKey))
+                ? stateKey
                 : (
-                    typeof(arguments[1]) !== "undefined"
-                    ? arguments[1]
+                    this._stateKeyGenerator !== null
+                    ? this._stateKeyGenerator.generateKey()
                     : null
                 )
             );
             
             if(stateKey !== null) {
-                if(!_hasState(this, stateKey)) {
-                    var newState = new State(this._edgeComparator);
-                    newState._finalState = (typeof(arguments[0]) !== "undefined" ? !!arguments[0] : false);
-                    this._stateMap.set(stateKey, newState);
+                var state = this._stateMap.get(stateKey);
+                if(_isUndefined(state)) {
+                    state = new State(
+                        this._edgeComparator,
+                        this._stateKeyComparator,
+                        arguments[1]
+                    );
+                    this._stateMap.set(stateKey, state);
                 }
             }
             
@@ -489,7 +583,9 @@
          * @return {Boolean}
          */
         Nfa.prototype.setStartState = function (stateKey) {
-            var result = _hasState(this, stateKey);
+            _assertIsNotNullAndUndefined(stateKey);
+            
+            var result = this.hasState(stateKey);
             if(result) {
                 this._startStateKey = stateKey;
             }
@@ -503,9 +599,11 @@
          * @return {Boolean}
          */
         Nfa.prototype.isStateFinal = function (stateKey) {
+            _assertIsNotNullAndUndefined(stateKey);
+            
             var state = this._stateMap.get(stateKey);
             
-            return typeof(state) !== "undefined" && state._finalState;
+            return !_isUndefined(state) && state.isFinal();
         };
         
         /**
@@ -514,8 +612,12 @@
          */
         Nfa.prototype.getFinalStateCount = function () {
             var count = 0;
-            for(var i = 0; i < this._states.length; ++i) {
-                if(this._states[i]._finalState) {
+            for(
+                var i = this._stateMap.values(), iP = i.next();
+                !iP.done;
+                iP = i.next()
+            ) {
+                if(iP.value.isFinal()) {
                     ++count;
                 }
             }
@@ -528,18 +630,18 @@
          * @return {Array.<Object>}
          */
         Nfa.prototype.getFinalStateKeys = function () {
-            //TODO : 별도의 Set을 두어 캐싱하는 정책 고려
-            var results = [];
-            this._stateMap.forEach(
-                function (state, stateKey) {
-                    if(state._finalState) {
-                        this.push(stateKey);
-                    }
-                },
-                results
-            );
+            var finalStateKeys = [];
+            for(
+                var i = this._stateMap.entries(), iP = i.next();
+                !iP.done;
+                iP = i.next()
+            ) {
+                if(iP.value[1].isFinal()) {
+                    finalStateKeys.push(iP.value[0]);
+                }
+            }
             
-            return results;
+            return finalStateKeys;
         };
         
         /**
@@ -549,56 +651,15 @@
          * @return {Boolean}
          */
         Nfa.prototype.setStateAsFinal = function (stateKey, isFinal) {
+            _assertIsNotNullAndUndefined(stateKey);
+            
             var state = this._stateMap.get(stateKey);
-            var result = _isNotUndefined(state);
+            var result = !_isUndefined(state);
             if(result) {
-                state._finalState = isFinal;
+                state.setFinal(isFinal);
             }
             
             return result;
-        };
-        
-        /**
-         * @function
-         * @param {Object} stateKey
-         * @param {Object} edge
-         * @return {Number}
-         */
-        Nfa.prototype.getTransitionCountOfEdge = function (stateKey, edge) {
-            var count = 0;
-            _doActionIfTransitionSetExists(
-                this, stateKey, edge,
-                function (transitionSet) {
-                    count = transitionSet.getElementCount();
-                }
-            );
-            
-            return count;
-        };
-        
-        /**
-         * Returns a non-live list of transitions of {state, edge} pair.
-         * @function
-         * @param {Object} stateKey
-         * @param {Object} edge
-         * @return {Array.<Object>}
-         */
-        Nfa.prototype.getTransitionsOfEdge = function (stateKey, edge) {
-            var transitions = [];
-            _doActionIfTransitionSetExists(
-                this, stateKey, edge,
-                function (transitionSet) {
-                    for(
-                        var iter = transitionSet.keys(), iterPair = iter.next();
-                        !iterPair.done;
-                        iterPair = iter.next()
-                    ) {
-                        transitions.push(iterPair.value);
-                    }
-                }
-            );
-            
-            return transitions;
         };
         
         /**
@@ -609,20 +670,16 @@
          * @return {Boolean}
          */
         Nfa.prototype.addTransition = function (stateKey, edge, nextStateKey) {
+            _assertIsNotNullAndUndefined(stateKey);
+            _assertIsNotNullAndUndefined(edge);
+            _assertIsNotNullAndUndefined(nextStateKey);
+            
             var result = false;
-            if(_hasState(this, nextStateKey)) {
-                _getOrAddTransitionSetAndDoAction(
-                    this, stateKey, edge,
-                    function (transitionSet) {
-                        if(
-                            _hasState(this, nextStateKey)
-                            && !transitionSet.has(nextStateKey)
-                        ) {
-                            transitionSet.add(nextStateKey);
-                            result = true;
-                        }
-                    }
-                );
+            if(this.hasState(nextStateKey)) {
+                var state = this._stateMap.get(stateKey);
+                if(!_isUndefined(state)) {
+                    state.getTransitionSet(edge).add(nextStateKey);
+                }
             }
             
             return result;
@@ -641,19 +698,15 @@
             };
             
             var newStartStateKey = nfa.addState();
-            nfa.addTransition(newStartStateKey, nfa._epsilon, result.prevStartStateKey);
-            nfa._startStateKey = newStartStateKey;
-            
             result.newFinalStateKey = nfa.addState();
+            
+            nfa.addTransition(newStartStateKey, nfa._epsilonEdge, result.prevStartStateKey);
+            nfa.setStartState(newStartStateKey);
+            
             for(var i = 0; i < result.prevFinalStateKeys.length; ++i) {
                 var prevFinalStateKey = result.prevFinalStateKeys[i];
-                var prevFinalState = nfa._stateMap.get(prevFinalStateKey);
-                if(_isUndefined(prevFinalState)) {
-                    throw new Error("What the hell?");
-                }
-                
-                prevFinalState._finalState = false;
-                nfa.addTransition(prevFinalStateKey, nfa._epsilon, result.newFinalStateKey);
+                nfa._stateMap.get(prevFinalStateKey).setFinal(false);
+                nfa.addTransition(prevFinalStateKey, nfa._epsilonEdge, result.newFinalStateKey);
             }
             nfa.setStateAsFinal(result.newFinalStateKey, true);
             
@@ -668,9 +721,9 @@
             var result = _wrapWithNewStartAndEnd(this);
             for(var i = 0; i < result.prevFinalStateKeys.length; ++i) {
                 var prevFinalStateKey = result.prevFinalStateKeys[i];
-                this.addTransition(prevFinalStateKey, this._epsilon, result.prevStartStateKey);
+                this.addTransition(prevFinalStateKey, this._epsilonEdge, result.prevStartStateKey);
             }
-            this.addTransition(this._startStateKey, this._epsilon, result.newFinalStateKey);
+            this.addTransition(this._startStateKey, this._epsilonEdge, result.newFinalStateKey);
             
             return this;
         };
@@ -683,7 +736,7 @@
             var result = _wrapWithNewStartAndEnd(this);
             for(var i = 0; i < result.prevFinalStateKeys.length; ++i) {
                 var prevFinalStateKey = result.prevFinalStateKeys[i];
-                this.addTransition(prevFinalStateKey, this._epsilon, result.prevStartStateKey);
+                this.addTransition(prevFinalStateKey, this._epsilonEdge, result.prevStartStateKey);
             }
             
             return this;
@@ -695,7 +748,7 @@
          */
         Nfa.prototype.wrapWithZeroOrOne = function () {
             var result = _wrapWithNewStartAndEnd(this);
-            this.addTransition(this._startStateKey, this._epsilon, result.newFinalStateKey);
+            this.addTransition(this._startStateKey, this._epsilonEdge, result.newFinalStateKey);
             
             return this;
         };
@@ -706,6 +759,8 @@
          * @return {Nfa}
          */
         Nfa.prototype.concatenate = function (rhs) {
+            _assertIsNotNullAndUndefined(rhs);
+            
             var lhsEndStateKeys = this.getFinalStateKeys();
             var rhsStartStateKey = rhs._startStateKey;
             
@@ -714,7 +769,7 @@
             for(var i = 0; i < lhsEndStateKeys.length; ++i) {
                 var lhsEndStateKey = lhsEndStateKeys[i];
                 this.setStateAsFinal(lhsEndStateKey, false);
-                this.addTransition(lhsEndStateKey, this._epsilon, rhsStartStateKey);
+                this.addTransition(lhsEndStateKey, this._epsilonEdge, rhsStartStateKey);
             }
             
             return this;
@@ -726,16 +781,18 @@
          * @return {Nfa}
          */
         Nfa.prototype.alternate = function (rhs) {
+            _assertIsNotNullAndUndefined(rhs);
+            
             var rhsFinalStateKeys = rhs.getFinalStateKeys();
             var info = _wrapWithNewStartAndEnd(this);
             
             _mapUnionAssign(this._stateMap, rhs._stateMap);
             
-            this.addTransition(this._startStateKey, this._epsilon, rhs._startStateKey);
+            this.addTransition(this._startStateKey, this._epsilonEdge, rhs._startStateKey);
             for(var r = 0; r < rhsFinalStateKeys.length; ++r) {
                 var rhsFinalStateKey = rhsFinalStateKeys[r];
                 this.setStateAsFinal(rhsFinalStateKey, false);
-                this.addTransition(rhsFinalStateKey, this._epsilon, info.newFinalStateKey);
+                this.addTransition(rhsFinalStateKey, this._epsilonEdge, info.newFinalStateKey);
             }
             
             return this;
@@ -758,7 +815,7 @@
             var cloneOfThis = new Nfa(
                 stateKeyGenerator,
                 this._stateKeyComparator,
-                edgeCloner(this._epsilon),
+                edgeCloner(this._epsilonEdge),
                 this._edgeComparator
             );
             
@@ -767,10 +824,10 @@
                 !iP.done;
                 iP = i.next()
             ) {
-                stateKeyMap.set(iP.value[0], cloneOfThis.addState(iP.value[1]._finalState));
+                stateKeyMap.set(iP.value[0], cloneOfThis.addState(null, iP.value[1].isFinal()));
             }
             
-            cloneOfThis._startStateKey = stateKeyMap.get(this._startStateKey);
+            cloneOfThis.setStartState(stateKeyMap.get(this._startStateKey));
             
             for(
                 var i = this._stateMap.entries(), iP = i.next(),
@@ -837,7 +894,7 @@
          * @param {Array.<StateKey>} stateKeyStack
          * @return {Object}
          */
-        var _findingEpsilonClosure = function (nfa, stateKeyStack) {
+        var _findEpsilonClosure = function (nfa, stateKeyStack) {
             var stateSet = new Set(nfa._stateKeyComparator);
             var hasFinalState = false;
             var transitionMap = new Map(nfa._edgeComparator);
@@ -846,7 +903,7 @@
                 var stateKey = stateKeyStack.pop();
                 if(stateSet.tryAdd(stateKey)) {
                     var state = nfa._stateMap.get(stateKey);
-                    hasFinalState = (hasFinalState || state._finalState);
+                    hasFinalState = (hasFinalState || state.isFinal());
                     
                     for(
                         var i = state._transitionMap.entries(), iP = i.next();
@@ -855,7 +912,7 @@
                     ) {
                         var edge = iP.value[0];
                         var nextStateSet = iP.value[1];
-                        if(nfa._edgeComparator(edge, nfa._epsilon) === 0) {
+                        if(nfa._edgeComparator(edge, nfa._epsilonEdge) === 0) {
                             _arrayConcatenateAssign(stateKeyStack, Array.from(nextStateSet));
                         }
                         else {
@@ -905,9 +962,11 @@
          * @return {Object}
          */
         Nfa.prototype.findEpsilonClosureOfState = function (stateKey) {
+            _assertIsNotNullAndUndefined(stateKey);
+            
             var stateKeyStack = [stateKey];
             
-            return _findingEpsilonClosure(this, stateKeyStack);
+            return _findEpsilonClosure(this, stateKeyStack);
         };
         
         /**
@@ -916,12 +975,12 @@
          * @return {Object}
          */
         Nfa.prototype.findEpsilonClosureOfStateSet = function (iterable) {
-            _assertIsNonNullIterable(iterable);
+            _assertIsIterable(iterable);
             
             var stateKeyStack = [];
             _arrayConcatenateAssign(stateKeyStack, Array.from(iterable));
             
-            return _findingEpsilonClosure(this, stateKeyStack);
+            return _findEpsilonClosure(this, stateKeyStack);
         };
         
         /**
@@ -1112,28 +1171,18 @@
             
             this._stateMap.forEach(
                 function (state, stateKey) {
-                    str += '[';
+                    str += '{';
                     str += stateKey;
                     str += ", ";
                     
-                    if(state._finalState) {
+                    if(state.isFinal()) {
                         str += "final";
                         str += ", ";
                     }
                     
-                    str += '[';
-                    state._transitionMap.forEach(
-                        function (stateKey, edge) {
-                            str += edge;
-                            str += " => ";
-                            str += stateKey;
-                            str += ' ';
-                        },
-                        this
-                    );
-                    str += ']';
+                    str += state._transitionMap;
                     
-                    str += ']';
+                    str += '}';
                     str += ' ';
                 },
                 this
