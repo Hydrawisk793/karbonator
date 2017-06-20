@@ -2,14 +2,14 @@
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
- * last-modified : 2017-06-17
+ * last-modified : 2017-06-21
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
 (function (g, factory) {
     if(typeof(define) === "function" && define.amd) {
-        define(["./karbonator.core"], function (core) {
-            return factory(g, core);
+        define(["./karbonator.core"], function (karbonator) {
+            return factory(g, karbonator);
         });
     }
     else if(typeof(module) !== "undefined" && module.exports) {
@@ -18,31 +18,57 @@
 }(
 (typeof(global) !== "undefined" ? global : (typeof(window) !== "undefined" ? window : this)),
 (function (global, karbonator) {
-    /**
-     * @memberof karbonator
-     * @namespace
-     */
-    var collection = karbonator.collection || {};
-    karbonator.collection = collection;
+    "use strict";
+    
+    var detail = karbonator.detail;
+    
+    var Symbol = detail._selectSymbol();
+    
+    var _selectNonUndefined = detail._selectNonUndefined;
     
     var _colStrBegin = '{';
+    
     var _colStrEnd = '}';
+    
     var _colStrSeparator = ", ";
+    
     var _colStrMapTo = " => ";
     
-    var _selectNonUndefined = karbonator.selectNonUndefined;
+    /**
+     * @memberof karbonator.detail
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    detail._isEsIterable = function (o) {
+        return !detail._isUndefinedOrNull(o)
+            && !detail._isUndefinedOrNull(o[Symbol.iterator])
+        ;
+    };
+    
+    /**
+     * @memberof karbonator.detail
+     * @function
+     * @param {Number} l
+     * @param {Number} r
+     * @return {Number}
+     */
+    detail._numberComparator = function (l, r) {
+        return l - r;
+    };
     
     /**
      * @function
-     * @param {karbonator.comparator} o
+     * @param {Object} l
+     * @param {Object} r
+     * @return {Number}
      */
-    var _assertIsComparator = function (o) {
-        if(typeof(o) !== "function" || o.length < 2) {
-            throw new TypeError(_selectNonUndefined(
-                arguments[1],
-                "A valid comparator function for key comparision must be specified."
-            ));
-        }
+    detail._objectComparator = function (l, r) {
+        return (
+            l === r
+            ? 0
+            : detail._stringComparator(l.toString(), r.toString())
+        );
     };
     
     /**
@@ -53,6 +79,13 @@
     var _isDefaultValueOfArgumentTrue = function (arg) {
         return (typeof(arguments[2]) === "undefined" || !!arguments[2]);
     };
+    
+    /**
+     * @memberof karbonator
+     * @namespace
+     */
+    var collection = karbonator.collection || {};
+    karbonator.collection = collection;
     
     var defaultArrayLikeObjectWrapper = {
         get : function (arr, index) {
@@ -303,7 +336,7 @@
          * @param {keyGetter}
          */
         var RbTreeSetBase = function (comparator) {
-            _assertIsComparator(comparator);
+            detail._assertIsComparator(comparator);
             
             this._comparator = comparator;
             this._keyGetter = (typeof(arguments[1]) === "function" ? arguments[1] : _defaultKeyGetter);
@@ -1616,7 +1649,7 @@
          * @function
          * @return {ValueIterator}
          */
-        TreeSet.prototype[global.Symbol.iterator] = function () {
+        TreeSet.prototype[Symbol.iterator] = function () {
             return new ValueIterator(this);
         };
         
@@ -1988,7 +2021,7 @@
          * @function
          * @return {PairIterator}
          */
-        TreeMap.prototype[global.Symbol.iterator] = function () {
+        TreeMap.prototype[Symbol.iterator] = function () {
             return new PairIterator(this);
         };
         
@@ -2052,7 +2085,7 @@
          * @param {karbonator.comparator} comparator
          */
         var ListSet = function (comparator) {
-            _assertIsComparator(comparator);
+            detail._assertIsComparator(comparator);
             
             this._comparator = comparator;
             this._elements = [];
@@ -2192,7 +2225,7 @@
          * @function
          * @return {ValueIterator}
          */
-        ListSet.prototype[global.Symbol.iterator] = function () {
+        ListSet.prototype[Symbol.iterator] = function () {
             return new ValueIterator(this);
         };
         
@@ -2374,7 +2407,7 @@
          * @param {karbonator.comparator} comparator
          */
         var ListMap = function (comparator) {
-            _assertIsComparator(comparator);
+            detail._assertIsComparator(comparator);
             
             this._comparator = comparator;
             this._pairs = [];
@@ -2589,7 +2622,7 @@
          * @function
          * @return {PairIterator}
          */
-        ListMap.prototype[global.Symbol.iterator] = function () {
+        ListMap.prototype[Symbol.iterator] = function () {
             return new PairIterator(this);
         };
         

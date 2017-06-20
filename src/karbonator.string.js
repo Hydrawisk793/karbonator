@@ -2,14 +2,14 @@
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
- * last-modified : 2017-06-17
+ * last-modified : 2017-06-21
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
 (function (g, factory) {
     if(typeof(define) === "function" && define.amd) {
-        define(["./karbonator.collection"], function (collection) {
-            return factory(g, collection);
+        define(["./karbonator.collection"], function (karbonator) {
+            return factory(g, karbonator);
         });
     }
     else if(typeof(module) !== "undefined" && module.exports) {
@@ -19,6 +19,28 @@
 (typeof(global) !== "undefined" ? global : (typeof(window) !== "undefined" ? window : this)),
 (function (global, karbonator) {
     "use strict";
+    
+    var detail = karbonator.detail;
+    
+    var Symbol = detail._selectSymbol();
+    
+    var _charCodeMin = 0x000000;
+    
+    var _charCodeMax = 0x10FFFF;
+    
+    /**
+     * @function
+     * @param {*} o
+     * @param {String} [message]
+     */
+    var _assertIsKeyGenerator = function (o) {
+        if(!detail._isObject(o) || !detail._isCallable(o.generateKey)) {
+            throw new TypeError(detail._selectNonUndefined(
+                arguments[1],
+                "The argument must be a key generator."
+            ));
+        }
+    };
     
     /**
      * @memberof karbonator
@@ -30,14 +52,6 @@
     var Interval = karbonator.math.Interval;
     var Set = karbonator.collection.ListSet;
     var Map = karbonator.collection.ListMap;
-    
-    var _minInt = Number.MIN_SAFE_INTEGER;
-    
-    var _maxInt = Number.MAX_SAFE_INTEGER;
-    
-    var _charCodeMin = 0x000000;
-    
-    var _charCodeMax = 0x10FFFF;
     
     /**
      * @function
@@ -53,7 +67,7 @@
      * @enum {Interval}
      */
     var _constInterval = {
-        epsilon : new Interval(_minInt, _maxInt),
+        epsilon : new Interval(detail._minInt, detail._maxInt),
         anyCharacters : new Interval(_charCodeMin, _charCodeMax),
         whiteSpaces : new Interval(0x09, 0x0D),
         posixLower : new Interval(0x61, 0x7A),
@@ -117,78 +131,11 @@
     
     /**
      * @function
-     * @param {*} o
-     * @return {Boolean}
-     */
-    var _isUndefined = function (o) {
-        return "undefined" === typeof(o);
-    };
-    
-    /**
-     * @function
-     * @param {*} o
-     * @return {Boolean}
-     */
-    var _isNullOrUndefined = function (o) {
-        return null === o || "undefined" === typeof(o);
-    };
-    
-    /**
-     * @function
-     * @param {*} o
-     * @return {Boolean}
-     */
-    var _isObject = function (o) {
-        return "object" === typeof(o) && null !== o;
-    };
-    
-    var _selectNonUndefined = karbonator.selectNonUndefined;
-    
-    /**
-     * @function
-     * @param {*} o
-     * @param {String} [message]
-     */
-    var _assertIsNotNullAndUndefined = function (o) {
-        if(_isNullOrUndefined(o)) {
-            throw new TypeError(_selectNonUndefined(arguments[1], "The parameter must not be undefined and null."));
-        }
-    };
-
-    /**
-     * @function
-     * @param {karbonator.comparator} o
-     */
-    var _assertIsComparator = function (o) {
-        if(typeof(o) !== "function" || o.length < 2) {
-            throw new TypeError(_selectNonUndefined(
-                arguments[1],
-                "A valid comparator function for key comparision must be specified."
-            ));
-        }
-    };
-    
-    /**
-     * @function
      * @param {Interval} o
      */
     var _assertIsInterval = function (o) {
         if(!(o instanceof Interval)) {
             throw new TypeError("A instance of 'Interval' must be passed.");
-        }
-    };
-    
-    /**
-     * @function
-     * @param {o}
-     * @param {String} [message]
-     */
-    var _assertIsKeyGenerator = function (o) {
-        if(!_isObject(o) || (typeof(o.generateKey) !== "function")) {
-            throw new TypeError(_selectNonUndefined(
-                arguments[1],
-                "The argument must be a key generator."
-            ));
         }
     };
     
@@ -207,72 +154,6 @@
                 throw new TypeError("An array of 'Interval's must be passed.");
             }
         }
-    };
-    
-    /**
-     * @function
-     * @param {*} o
-     */
-    var _assertIsIterable = function (o) {
-        if(_isNullOrUndefined(o) || _isNullOrUndefined(o[global.Symbol.iterator])) {
-            throw new TypeError("The parameter must be an object that has the property 'Symbol.iterator'.");
-        }
-    };
-    
-    /**
-     * @function
-     * @param {Number} l
-     * @param {Number} r
-     * @return {Number}
-     */
-    var _numberComparator = function (l, r) {
-        return l - r;
-    };
-    
-    /**
-     * @function
-     * @param {String} l
-     * @param {String} r
-     */
-    var _stringComparator = function (l, r) {
-        var diff = 0;
-        var minLen = (l.length < r.length ? l.length : r.length);
-        for(var i = 0; i < minLen; ++i) {
-            diff = l.charCodeAt(i) - r.charCodeAt(i);
-            if(diff !== 0) {
-                break;
-            }
-        }
-        
-        return diff;
-    };
-    
-    /**
-     * @function
-     * @param {Object} l
-     * @param {Object} r
-     * @return {Number}
-     */
-    var _objectComparator = function (l, r) {
-        return (
-            l === r
-            ? 0
-            : _stringComparator(l.toString(), r.toString())
-        );
-    };
-    
-    /**
-     * @function
-     * @param {Interval} l
-     * @param {Interval} r
-     * @return {Number}
-     */
-    var _edgeComparator = function (l, r) {
-        if(l.equals(r)) {
-            return 0;
-        }
-
-        return l._min - r._min;
     };
     
     /**
@@ -305,7 +186,7 @@
      * @return {Number}
      */
     var _mapUnionAssign = function (lhs, rhs) {
-        if(_isUndefined(arguments[2]) || !!arguments[2]) {
+        if(detail._isUndefined(arguments[2]) || !!arguments[2]) {
             rhs.forEach(
                 function (value, key) {
                     this.set(key, value);
@@ -395,11 +276,11 @@
              * @param {Boolean} [isFinal]
              */
             var State = function (edgeComparator, transitionComparator) {
-                _assertIsComparator(
+                detail._assertIsComparator(
                     edgeComparator,
                     "The parameter 'edgeComparator' must be a comparator function."
                 );
-                _assertIsComparator(
+                detail._assertIsComparator(
                     transitionComparator,
                     "The parameter 'transitionComparator' must be a comparator function."
                 );
@@ -449,7 +330,7 @@
              */
             State.prototype.getTransitionSet = function (edge) {
                 var transitionSet = this._transitionMap.get(edge);
-                if(_isUndefined(transitionSet)) {
+                if(detail._isUndefined(transitionSet)) {
                     transitionSet = new Set(this._transitionComparator);
                     this._transitionMap.set(edge, transitionSet);
                 }
@@ -464,25 +345,25 @@
          * @constructor
          * @param {Object} stateKeyGenerator
          * @param {karbonator.comparator} stateKeyComparator
-         * @param {Object} epsilonEdge
          * @param {karbonator.comparator} edgeComparator
+         * @param {Object} epsilonEdge
          */
-        var Nfa = function (stateKeyGenerator, stateKeyComparator, epsilonEdge, edgeComparator) {
+        var Nfa = function (stateKeyGenerator, stateKeyComparator, edgeComparator, epsilonEdge) {
             _assertIsKeyGenerator(
                 stateKeyGenerator,
                 "The parameter 'stateKeyGenerator' must be a key generator object."
             );
-            _assertIsNotNullAndUndefined(
-                epsilonEdge,
-                "The parameter 'epsilonEdge' must not be undefined and null."
-            );
-            _assertIsComparator(
+            detail._assertIsComparator(
                 stateKeyComparator,
                 "The parameter 'stateKeyComparator' must be a comparator function."
             );
-            _assertIsComparator(
+            detail._assertIsComparator(
                 edgeComparator,
                 "The parameter 'edgeComparator' must be a comparator function."
+            );
+            detail._assertIsNotUndefinedAndNull(
+                epsilonEdge,
+                "The parameter 'epsilonEdge' must not be undefined and null."
             );
             
             this._stateKeyGenerator = stateKeyGenerator;
@@ -532,7 +413,7 @@
          * @return {Boolean}
          */
         Nfa.prototype.hasState = function (stateKey) {
-            _assertIsNotNullAndUndefined(stateKey);
+            detail._assertIsNotUndefinedAndNull(stateKey);
             
             return this._stateMap.has(stateKey);
         };
@@ -545,7 +426,7 @@
          */
         Nfa.prototype.addState = function (stateKey) {
             stateKey = (
-                (!_isNullOrUndefined(stateKey))
+                (!detail._isUndefinedOrNull(stateKey))
                 ? stateKey
                 : (
                     this._stateKeyGenerator !== null
@@ -556,7 +437,7 @@
             
             if(stateKey !== null) {
                 var state = this._stateMap.get(stateKey);
-                if(_isUndefined(state)) {
+                if(detail._isUndefined(state)) {
                     state = new State(
                         this._edgeComparator,
                         this._stateKeyComparator,
@@ -583,7 +464,7 @@
          * @return {Boolean}
          */
         Nfa.prototype.setStartState = function (stateKey) {
-            _assertIsNotNullAndUndefined(stateKey);
+            detail._assertIsNotUndefinedAndNull(stateKey);
             
             var result = this.hasState(stateKey);
             if(result) {
@@ -599,11 +480,11 @@
          * @return {Boolean}
          */
         Nfa.prototype.isStateFinal = function (stateKey) {
-            _assertIsNotNullAndUndefined(stateKey);
+            detail._assertIsNotUndefinedAndNull(stateKey);
             
             var state = this._stateMap.get(stateKey);
             
-            return !_isUndefined(state) && state.isFinal();
+            return !detail._isUndefined(state) && state.isFinal();
         };
         
         /**
@@ -651,10 +532,10 @@
          * @return {Boolean}
          */
         Nfa.prototype.setStateAsFinal = function (stateKey, isFinal) {
-            _assertIsNotNullAndUndefined(stateKey);
+            detail._assertIsNotUndefinedAndNull(stateKey);
             
             var state = this._stateMap.get(stateKey);
-            var result = !_isUndefined(state);
+            var result = !detail._isUndefined(state);
             if(result) {
                 state.setFinal(isFinal);
             }
@@ -670,14 +551,14 @@
          * @return {Boolean}
          */
         Nfa.prototype.addTransition = function (stateKey, edge, nextStateKey) {
-            _assertIsNotNullAndUndefined(stateKey);
-            _assertIsNotNullAndUndefined(edge);
-            _assertIsNotNullAndUndefined(nextStateKey);
+            detail._assertIsNotUndefinedAndNull(stateKey);
+            detail._assertIsNotUndefinedAndNull(edge);
+            detail._assertIsNotUndefinedAndNull(nextStateKey);
             
             var result = false;
             if(this.hasState(nextStateKey)) {
                 var state = this._stateMap.get(stateKey);
-                if(!_isUndefined(state)) {
+                if(!detail._isUndefined(state)) {
                     state.getTransitionSet(edge).add(nextStateKey);
                 }
             }
@@ -759,7 +640,7 @@
          * @return {Nfa}
          */
         Nfa.prototype.concatenate = function (rhs) {
-            _assertIsNotNullAndUndefined(rhs);
+            detail._assertIsNotUndefinedAndNull(rhs);
             
             var lhsEndStateKeys = this.getFinalStateKeys();
             var rhsStartStateKey = rhs._startStateKey;
@@ -781,7 +662,7 @@
          * @return {Nfa}
          */
         Nfa.prototype.alternate = function (rhs) {
-            _assertIsNotNullAndUndefined(rhs);
+            detail._assertIsNotUndefinedAndNull(rhs);
             
             var rhsFinalStateKeys = rhs.getFinalStateKeys();
             var info = _wrapWithNewStartAndEnd(this);
@@ -815,8 +696,8 @@
             var cloneOfThis = new Nfa(
                 stateKeyGenerator,
                 this._stateKeyComparator,
-                edgeCloner(this._epsilonEdge),
-                this._edgeComparator
+                this._edgeComparator,
+                edgeCloner(this._epsilonEdge)
             );
             
             for(
@@ -917,7 +798,7 @@
                         }
                         else {
                             var transitionSet = transitionMap.get(edge);
-                            if(_isUndefined(transitionSet)) {
+                            if(detail._isUndefined(transitionSet)) {
                                 transitionSet = new Set(nfa._stateKeyComparator);
                                 transitionMap.set(edge, transitionSet);
                             }
@@ -962,7 +843,7 @@
          * @return {Object}
          */
         Nfa.prototype.findEpsilonClosureOfState = function (stateKey) {
-            _assertIsNotNullAndUndefined(stateKey);
+            detail._assertIsNotUndefinedAndNull(stateKey);
             
             var stateKeyStack = [stateKey];
             
@@ -975,7 +856,7 @@
          * @return {Object}
          */
         Nfa.prototype.findEpsilonClosureOfStateSet = function (iterable) {
-            _assertIsIterable(iterable);
+            detail._assertIsEsIterable(iterable);
             
             var stateKeyStack = [];
             _arrayConcatenateAssign(stateKeyStack, Array.from(iterable));
@@ -1018,17 +899,20 @@
          * @return {Boolean}
          */
         var _stateSetContainsFinalState = function (nfa, s) {
+            var result = false;
+            
             for(
                 var i = s.keys(), iP = i.next();
                 !iP.done;
                 iP = i.next()
             ) {
                 if(nfa.isStateFinal(iP.value)) {
-                    return true;
+                    result = true;
+                    break;
                 }
             }
             
-            return false;
+            return result;
         };
         
         /**
@@ -1101,7 +985,7 @@
                 var dfaStateKey = dfaStateKeyStack.pop();
                 
                 var dfaStateTransitionMap = tempDfa.get(dfaStateKey);
-                if(_isUndefined(dfaStateTransitionMap)) {
+                if(detail._isUndefined(dfaStateTransitionMap)) {
                     //TODO : eClosureOfStartState를 재활용 하도록 수정
                     var eClosureOfCompoundNfaStates = this.findEpsilonClosureOfStateSet(dfaStateKey);
                     dfaStateTransitionMap = eClosureOfCompoundNfaStates.transitionMap;
@@ -1234,6 +1118,8 @@
     }());
     
     var RegexParser = (function () {
+        var _edgeComparator = detail._intervalComparator;
+        
         var PrimitiveScanner = (function () {
             /**
              * @constructor
@@ -1249,7 +1135,7 @@
              * @param {ScannerResult}
              */
             PrimitiveScanner.prototype.scanDecimalInteger = function (str) {
-                var startPos = _selectNonUndefined(arguments[1], 0);
+                var startPos = detail._selectNonUndefined(arguments[1], 0);
                 var pos = startPos;
                 var errorCode = 0;
                 var errorMessage = "";
@@ -1295,7 +1181,7 @@
              * @param {ScannerResult}
              */
             PrimitiveScanner.prototype.scanHexadecimalInteger = function (str) {
-                var startPos = _selectNonUndefined(arguments[1], 0);
+                var startPos = detail._selectNonUndefined(arguments[1], 0);
                 var pos = startPos;
                 var errorCode = 0;
                 var errorMessage = "";
@@ -1335,7 +1221,7 @@
              * @return {ScannerResult}
              */
             PrimitiveScanner.prototype.scanEscapedCharacter = function (str) {
-                var pos = _selectNonUndefined(arguments[1], 0);
+                var pos = detail._selectNonUndefined(arguments[1], 0);
                 var errorCode = 0;
                 var errorMessage = "";
                 var intervals = [];
@@ -1462,11 +1348,11 @@
              * @return {ScannerResult}
              */
             PrimitiveScanner.prototype.scanRepetitionOperator = function (str) {
-                var pos = _selectNonUndefined(arguments[1], 0);
+                var pos = detail._selectNonUndefined(arguments[1], 0);
                 var errorCode = 0;
                 var errorMessage = "";
-                var min = _minInt;
-                var max = _selectNonUndefined(arguments[2], _maxInt);
+                var min = detail._minInt;
+                var max = detail._selectNonUndefined(arguments[2], detail._maxInt);
                 
                 var len = str.length;
                 var state = 0;
@@ -1757,7 +1643,7 @@
                                             repeatedNfa.concatenate(lastToken.value.clone());
                                         }
                                         
-                                        if(repRange.getMaximum() >= _maxInt) {
+                                        if(repRange.getMaximum() >= detail._maxInt) {
                                             repeatedNfa.concatenate(lastToken.value.clone().wrapWithZeroOrMore());
                                         }
                                         else {
@@ -1889,8 +1775,10 @@
             _assertIsInterval(edge);
             
             var nfa = new Nfa(
-                oThis._stateKeyGenerator, _numberComparator,
-                _constInterval.epsilon, _edgeComparator
+                oThis._stateKeyGenerator,
+                detail._numberComparator,
+                _edgeComparator,
+                _constInterval.epsilon
             );
             var startKey = nfa.addState();
             var endKey = nfa.addState();
@@ -1911,8 +1799,10 @@
             _assertIsArrayOfIntervals(edges);
             
             var nfa = new Nfa(
-                oThis._stateKeyGenerator, _numberComparator,
-                _constInterval.epsilon, _edgeComparator
+                oThis._stateKeyGenerator,
+                detail._numberComparator,
+                _edgeComparator,
+                _constInterval.epsilon
             );
             var startKey = nfa.addState();
             var endKey = nfa.addState();
@@ -2061,8 +1951,8 @@
         RegexParser.prototype._updateErrorAndStopParsing = function () {
             this._error = {
                 occured : true,
-                message : _selectNonUndefined(arguments[1], "An error occured."),
-                position : _selectNonUndefined(arguments[2], this._pos)
+                message : detail._selectNonUndefined(arguments[1], "An error occured."),
+                position : detail._selectNonUndefined(arguments[2], this._pos)
             };
             
             this._parsing = false;
@@ -2130,7 +2020,7 @@
          * @constructor
          */
         var Lexer = function () {
-            this._tokenMap = new Map(_stringComparator);
+            this._tokenMap = new Map(detail._stringComparator);
             this._inStr = "";
             this._pos = 0;
         };
@@ -2204,7 +2094,7 @@
          * @constructor
          */
         var LexerGenerator = function () {
-            this._tokenMap = new Map(_stringComparator);
+            this._tokenMap = new Map(detail._stringComparator);
             this._nfaStateKeyGenerator = {
                 generateKey : function () {
                     var currentKey = this._count;

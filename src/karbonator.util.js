@@ -2,14 +2,14 @@
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
- * last-modified : 2017-06-07
+ * last-modified : 2017-06-21
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
 (function (g, factory) {
     if(typeof(define) === "function" && define.amd) {
-        define(["./karbonator.core"], function (dom) {
-            return factory(g, dom);
+        define(["./karbonator.core"], function (karbonator) {
+            return factory(g, karbonator);
         });
     }
     else if(typeof(module) !== "undefined" && module.exports) {
@@ -18,6 +18,10 @@
 }(
 (typeof(global) !== "undefined" ? global : (typeof(window) !== "undefined" ? window : this)),
 (function (global, karbonator) {
+    "use strict";
+    
+    var detail = karbonator.detail;
+    
     /**
      * @memberof karbonator
      * @namespace
@@ -50,7 +54,7 @@
          */
         FpsController.prototype.start = function (parameters) {
             this._loop = FpsController.prototype._loop.bind(this);
-            this._handle = karbonator.environment.requestAnimationFrame(this._loop);
+            this._handle = detail._requestAnimationFrame(this._loop);
             this._parameters = karbonator.selectNonUndefined(parameters, null);
             this._startTick = Date.now();
         };
@@ -60,7 +64,7 @@
          */
         FpsController.prototype.stop = function () {
             this._parameters = null;
-            karbonator.environment.cancelAnimationFrame(this._handle);
+            detail._cancelAnimationFrame(this._handle);
         };
         
         /**
@@ -78,7 +82,7 @@
                 this._startTick = this._currentTick;
             }
             
-            this._handle = karbonator.environment.requestAnimationFrame(this._loop);
+            this._handle = detail._requestAnimationFrame(this._loop);
         };
         
         return FpsController;

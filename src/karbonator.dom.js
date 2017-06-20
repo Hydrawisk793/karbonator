@@ -2,14 +2,14 @@
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
- * last-modified : 2017-06-07
+ * last-modified : 2017-06-21
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
 (function (g, factory) {
     if(typeof(define) === "function" && define.amd) {
-        define(["./karbonator.collection"], function (collection) {
-            return factory(g, collection);
+        define(["./karbonator.collection"], function (karbonator) {
+            return factory(g, karbonator);
         });
     }
     else if(typeof(module) !== "undefined" && module.exports) {
@@ -19,6 +19,8 @@
 (typeof(global) !== "undefined" ? global : (typeof(window) !== "undefined" ? window : this)),
 (function (global, karbonator) {
     "use strict";
+    
+    var detail = karbonator.detail;
     
     /**
      * @memberof karbonator
@@ -35,8 +37,6 @@
     /*////////////////////////////////*/
     //Namespace private constants.
     
-    var hasOwnPropertyFunction = Object.prototype.hasOwnProperty;
-    
     var ElementExist = typeof(global.Element) !== "undefined";
     var WindowExist = typeof(global.Window) !== "undefined";
     var HTMLDocumentExist = typeof(global.HTMLDocument) !== "undefined";
@@ -44,9 +44,8 @@
     var TextContentPropertySupported = NodeExist || (ElementExist && global.Element.prototype.textContent);
     var EventExist = typeof(window.Event) !== "undefined";
     
-    var exclusivePropNamePrefix = "_krbntr";
-    var customEventPrefix = exclusivePropNamePrefix + "Evnt_";
-    var listenerSetPrefix = exclusivePropNamePrefix + "Lstnrs_";
+    var customEventPrefix = detail._polyfillPropNamePrefix + "Evnt_";
+    var listenerSetPrefix = detail._polyfillPropNamePrefix + "Lstnrs_";
     var defaultOnLoad = window.onload;
     
     var KeyboardEventExist = typeof(window.KeyboardEvent) !== "undefined";
@@ -64,7 +63,7 @@
         var polyfillTarget = (WindowExist ? Window.prototype : window);
         
         if(!polyfillTarget.hasOwnProperty) {
-            polyfillTarget.hasOwnProperty = hasOwnPropertyFunction;
+            polyfillTarget.hasOwnProperty = detail._hasOwnPropertyMethod;
         }
     })();
     
@@ -450,7 +449,7 @@
     
     if(ElementExist) {
         if(!Element.prototype.hasOwnProperty) {
-            Element.prototype.hasOwnProperty = hasOwnPropertyFunction;
+            Element.prototype.hasOwnProperty = detail._hasOwnPropertyMethod;
         }
     }
     
@@ -463,7 +462,7 @@
         var polyfillTarget = (HTMLDocumentExist ? HTMLDocument.prototype : document);
         
         if(!polyfillTarget.hasOwnProperty) {
-            polyfillTarget.hasOwnProperty = hasOwnPropertyFunction;
+            polyfillTarget.hasOwnProperty = detail._hasOwnPropertyMethod;
         }
         
         if(!ElementExist) {
@@ -856,7 +855,7 @@
     }
     
     if(!Event.prototype.hasOwnProperty) {
-        Event.prototype.hasOwnProperty = hasOwnPropertyFunction;
+        Event.prototype.hasOwnProperty = detail._hasOwnPropertyMethod;
     }
     
     var constructEvent = (function () {
@@ -1232,7 +1231,7 @@
      * @return {ElementClassList}
      */
     dom.getClassList = (function () {
-        if(ElementExist && hasOwnPropertyFunction.call(Element.prototype, "classList")) {
+        if(ElementExist && detail._hasOwnPropertyMethod.call(Element.prototype, "classList")) {
             return function (element) {
                 return element.classList;
             };

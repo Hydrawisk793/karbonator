@@ -2,14 +2,14 @@
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
- * last-modified : 2017-06-07
+ * last-modified : 2017-06-21
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
 (function (g, factory) {
     if(typeof(define) === "function" && define.amd) {
-        define(["./karbonator.core"], function (core) {
-            return factory(g, core);
+        define(["./karbonator.core"], function (karbonator) {
+            return factory(g, karbonator);
         });
     }
     else if(typeof(module) !== "undefined" && module.exports) {

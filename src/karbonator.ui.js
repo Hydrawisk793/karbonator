@@ -2,14 +2,14 @@
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
- * last-modified : 2017-06-07
+ * last-modified : 2017-06-21
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
 (function (g, factory) {
     if(typeof(define) === "function" && define.amd) {
-        define(["./karbonator.util", "./karbonator.dom"], function (util, dom) {
-            return factory(g, dom);
+        define(["./karbonator.util", "./karbonator.dom"], function (util, karbonator) {
+            return factory(g, karbonator);
         });
     }
     else if(typeof(module) !== "undefined" && module.exports) {
@@ -21,15 +21,16 @@
 (function (global, karbonator) {
     "use strict";
     
+    var detail = karbonator.detail;
+    
     /**
      * @memberof karbonator
      * @namespace
      */
     var ui = karbonator.ui || {};
-    
     karbonator.ui = ui;
     
-    var Symbol = global.Symbol;
+    var Symbol = detail._selectSymbol();
     var TouchEvent = global.TouchEvent;
     
     /*////////////////////////////////////////////////////////////////*/

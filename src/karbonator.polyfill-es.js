@@ -2,22 +2,43 @@
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
- * last-modified : 2017-06-17
+ * last-modified : 2017-06-21
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
 (function (g, factory) {
-    if(typeof(define) === "function" && define.amd) {
-        define(function () {
-            return factory(g);
-        });
-    }
-    else if(typeof(module) !== "undefined" && module.exports) {
-        module.exports = factory(g);
-    }
-    else {
-        factory(g);
-    }
+    //TODO : 개발용 코드 삭제 후 밑에 주석 처리된 코드로 교체.
+    (function (g, factory) {
+        var karbonator = factory(g);
+        
+        if(typeof(define) === "function" && define.amd) {
+            define(function () {
+                return karbonator;
+            });
+        }
+        else if(typeof(module) !== "undefined" && module.exports) {
+            module.exports = karbonator;
+        }
+        else {
+            g.karbonator = karbonator;
+        }
+        
+        karbonator.polyfillSymbol();
+    }(g, factory));
+    
+    /*////////////////////////////////*/
+    //For release version.
+//
+//    if(typeof(define) === "function" && define.amd) {
+//        define(function () {
+//            return factory(g);
+//        });
+//    }
+//    else if(typeof(module) !== "undefined" && module.exports) {
+//        module.exports = factory(g);
+//    }
+//
+    /*////////////////////////////////*/
 }(
 (typeof(global) !== "undefined" ? global : (typeof(window) !== "undefined" ? window : this)),
 (function (global) {
@@ -35,103 +56,134 @@
     var Error = global.Error;
     var TypeError = global.TypeError;
     
-    var _NaN = global.NaN;
-    
-    var _posInf = global.Infinity;
-    
-    var _negInf = -_posInf;
-    
-    var _polyfillPropNamePrefix = "_krbntr";
-    
-    var _hasOwnPropertyFunction = Object.prototype.hasOwnProperty;
+    /**
+     * @global
+     * @namespace
+     */
+    var karbonator = {};
     
     /**
-     * @constructor
+     * @memberof karbonator
+     * @namespace
      */
-    var _Array = (function () {
+    var detail = {};
+    karbonator.detail = detail;
+    
+    /**
+     * @memberof karbonator.detail
+     * @readonly
+     */
+    detail._hasOwnPropertyMethod = Object.prototype.hasOwnProperty;
+    
+    /**
+     * @memberof karbonator.detail
+     * @readonly
+     */
+    detail._minInt = -9007199254740991;
+    
+    /**
+     * @memberof karbonator.detail
+     * @readonly
+     */
+    detail._maxInt = 9007199254740991;
+    
+    /**
+     * @memberof karbonator.detail
+     * @readonly
+     */
+    detail._NaN = global.NaN;
+    
+    /**
+     * @memberof karbonator.detail
+     * @readonly
+     */
+    detail._posInf = global.Infinity;
+    
+    /**
+     * @memberof karbonator.detail
+     * @readonly
+     */
+    detail._negInf = -detail._posInf;
+    
+    detail._Array = (function (Array) {
+        /**
+         * @memberof karbonator.detail
+         * @constructor
+         */
         var _Array = function () {
             Array.apply(this, arguments);
         };
-        
         _Array.prototype = Array.prototype;
         
         return _Array;
-    }());
+    }(Array));
     
     /**
-     * @function
-     * @param {*} v
-     * @return {Number}
+     * @memberof karbonator.detail
+     * @readonly
      */
-    var _toInteger = function (v) {
-        var n = Number(v);
-        if(global.isNaN(n)) {
-            return +0;
-        }
-        
-        if(n === 0 || n === _posInf || n === _negInf) {
-            return n;
-        }
-        
-        return Math.sign(n) * Math.floor(Math.abs(n));
-    };
+    detail._polyfillPropNamePrefix = "_krbntr";
     
     /**
-     * @function
-     * @param {Number} n
-     * @return {Boolean}
+     * @memberof karbonator.detail
+     * @readonly
      */
-    var _isPositiveZero = function (n) {
-        return 1 / n === _posInf;
-    };
+    detail._protoPropertyExist = detail._hasOwnPropertyMethod.call(Object.prototype, "__proto__");
     
     /**
-     * @function
-     * @param {Number} n
-     * @return {Boolean}
-     */
-    var _isNegativeZero = function (n) {
-        return 1 / n === _negInf;
-    };
-    
-    /**
-     * @function
-     * @param {Object} value
-     * @param {Object} defaultValue
-     */
-    var _selectNonUndefined = function (value, defaultValue) {
-        return (typeof(value) !== "undefined" ? value : defaultValue);
-    };
-    
-    /**
+     * @memberof karbonator.detail
      * @function
      * @param {*} o
      * @return {Boolean}
      */
-    var _isNonNullObject = function (o) {
-        return typeof(o) === "object"
-            && o !== null
+    detail._isUndefined = function (o) {
+        return "undefined" === typeof o;
+    };
+    
+    /**
+     * @memberof karbonator.detail
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    detail._isUndefinedOrNull = function (o) {
+        return "undefined" === typeof o
+            || null === o
         ;
     };
     
     /**
-     * TODO : test this code.
+     * @memberof karbonator.detail
      * @function
      * @param {*} o
      * @return {Boolean}
      */
-    var _isArray = function (o) {
-        return _isNonNullObject(o)
-            && o instanceof _Array //uses the 'snapshot' constructor function that has original 'Array.prototype'.
+    detail._isObject = function (o) {
+        return "object" === typeof o
+            && null !== o
         ;
     };
     
     /**
+     * @memberof karbonator.detail
      * @function
      * @param {*} o
      * @return {Boolean}
      */
-    var _isString = function (o) {
+    detail._isArray = function (o) {
+        //uses the 'snapshot' constructor function that has original 'Array.prototype'.
+        return detail._isObject(o)
+            && o instanceof detail._Array
+        ;
+    };
+    
+    /**
+     * @memberof karbonator.detail
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    detail._isString = function (o) {
         var result = false;
         
         switch(typeof(o)) {
@@ -147,17 +199,19 @@
     };
     
     /**
+     * @memberof karbonator.detail
      * @function
      * @param {*} o
      * @return {Boolean}
      */
-    var _isObjectOrFunction = function (o) {
+    detail._isObjectOrFunction = function (o) {
         var result = false;
         
         switch(typeof(o)) {
         case "function":
+        break;
         case "object":
-            result = true;
+            result = o instanceof Function || null !== o;
         //break;
         }
         
@@ -165,14 +219,138 @@
     };
     
     /**
+     * @memberof karbonator.detail
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    detail._isCallable = function (o) {
+        return "function" === typeof o;
+    };
+    
+    /**
+     * @memberof karbonator.detail
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    detail._isNonNegativeInteger = function (o) {
+        return Number.isSafeInteger(o)
+            && o >= 0
+        ;
+    };
+    
+    /**
+     * @memberof karbonator.detail
+     * @function
+     * @param {Number} n
+     * @return {Boolean}
+     */
+    detail._isPositiveZero = function (n) {
+        return 1 / n === detail._posInf;
+    };
+    
+    /**
+     * @memberof karbonator.detail
+     * @function
+     * @param {Number} n
+     * @return {Boolean}
+     */
+    detail._isNegativeZero = function (n) {
+        return 1 / n === detail._negInf;
+    };
+    
+    /**
+     * @memberof karbonator.detail
+     * @function
+     * @param {*} o
+     */
+    detail._assertIsFunction = function (o) {
+        if(
+            "function" !== typeof o
+            && !(o instanceof Function)
+        ) {
+            throw new Error("The parameter must be a function.");
+        }
+    };
+    
+    /**
+     * @memberof karbonator.detail
+     * @function
+     * @param {*} o
+     */
+    detail._assertIsObjectOrFunction = function (o) {
+        if(!detail._isObjectOrFunction(o)) {
+            throw new Error("The parameter must be an object.");
+        }
+    };
+    
+    /**
+     * @function
+     * @param {*} o
+     */
+    detail._assertIsNotUndefinedAndNull = function (o) {
+        if(detail._isUndefinedOrNull(o)) {
+            throw new Error("A non-null object must be passed.");
+        }
+    };
+    
+    /**
+     * @memberof karbonator.detail
+     * @function
+     * @param {*} o
+     */
+    detail._assertIsNotRegExp = function (o) {
+        if(o instanceof RegExp) {
+            throw new TypeError("The parameter must not be a regular expression");
+        }
+    };
+    
+    /**
+     * @memberof karbonator.detail
+     * @function
+     * @param {*} o
+     */
+    detail._assertIsEsIterable = function (o) {
+        if(!detail._isEsIterable(o)) {
+            throw new TypeError("The parameter must be an object that has the property 'Symbol.iterator'.");
+        }
+    };
+    
+    /**
+     * @function
+     * @param {karbonator.comparator} o
+     */
+    detail._assertIsComparator = function (o) {
+        if(typeof(o) !== "function" || o.length < 2) {
+            throw new TypeError(detail._selectNonUndefined(
+                arguments[1],
+                "A valid comparator function for key comparision must be specified."
+            ));
+        }
+    };
+    
+    /**
+     * @memberof karbonator.detail
+     * @function
+     * @param {*} l
+     * @param {*} r
+     * @return {*}
+     */
+    detail._selectNonUndefined = function (l, r) {
+        return (!detail._isUndefined(l) ? l : r);
+    };
+    
+    /**
+     * @memberof karbonator.detail
      * @function
      * @param {Array} arr
      * @param {*} initialValue
      * @return {*}
      */
-    var _selectInitialValueForReduce = function (arr, initialValue) {
-        var selectedValue = _selectNonUndefined(initialValue, (arr.length > 0 ? _arrayLikeGetAt(arr, 0) : undefined));
-        if(typeof(selectedValue) === "undefined") {
+    detail._selectInitialValueForReduce = function (arr, initialValue) {
+        var selectedValue = detail._selectNonUndefined(initialValue, (arr.length > 0 ? _arrayLikeGetAt(arr, 0) : undefined));
+        if(detail._isUndefined(selectedValue)) {
             throw new Error("On an empty array, the 'initialValue' argument must be passed.");
         }
         
@@ -180,14 +358,81 @@
     };
     
     /**
+     * @memberof karbonator.detail
+     * @function
+     * @param {*} v
+     * @return {Number}
+     */
+    detail._toInteger = function (v) {
+        var n = Number(v);
+        if(global.isNaN(n)) {
+            return +0;
+        }
+        
+        if(
+            n === 0
+            || n === detail._posInf
+            || n === detail._negInf
+        ) {
+            return n;
+        }
+        
+        return Math.sign(n) * Math.floor(Math.abs(n));
+    };
+    
+    /**
+     * @memberof karbonator.detail
      * @function
      * @param {Number} i
      * @param {Number} n
      * @return {Number}
      */
-    var _adjustNegativeIndex = function (i, n) {
+    detail._adjustNegativeIndex = function (i, n) {
         return (i < 0 ? i + n : i);
     };
+    
+    /**
+     * @memberof karbonator.detail
+     * @function
+     * @param {Function} callback
+     * @return {Number}
+     */
+    detail._requestAnimationFrame = (function () {
+        if(window) {
+            return window.requestAnimationFrame
+                || window.webkitRequestAnimationFrame
+                || window.mozRequestAnimationFrame
+                || window.oRequestAnimationFrame
+                || window.msRequestAnimationFrame
+            ;
+        }
+        else {
+            return function (callback) {
+                return global.setTimeout(callback, 1000 / 60);
+            };
+        }
+    }());
+    
+    /**
+     * @memberof karbonator.detail
+     * @function
+     * @param {Number} id
+     */
+    detail._cancelAnimationFrame = (function () {
+        if(window) {
+            return window.cancelAnimationFrame
+                || window.webkitCancelAnimationFrame
+                || window.mozCancelAnimationFrame
+                || window.oCancelAnimationFrame
+                || window.msCancelAnimationFrame
+            ;
+        }
+        else {
+            return function (id) {
+                global.clearTimeout(id);
+            };
+        }
+    }());
     
     /**
      * @function
@@ -196,55 +441,7 @@
      * @return {*}
      */
     var _arrayLikeGetAt = function (arrayLike, index) {
-        return (_isString(arrayLike) ? arrayLike.charAt(index) : arrayLike[index]);
-    };
-    
-    /**
-     * @function
-     * @param {String} l
-     * @param {String} r
-     */
-    var _stringComparator = function (l, r) {
-        var diff = 0;
-        var minLen = (l.length < r.length ? l.length : r.length);
-        for(var i = 0; i < minLen; ++i) {
-            diff = l.charCodeAt(i) - r.charCodeAt(i);
-            if(diff !== 0) {
-                break;
-            }
-        }
-        
-        return diff;
-    };
-    
-    /**
-     * @function
-     * @param {Object} o
-     */
-    var _assertIsNonNullObjectOrFunction = function (o) {
-        if(o === null || !_isObjectOrFunction(o)) {
-            throw new Error("The parameter must be an object.");
-        }
-    };
-    
-    /**
-     * @function
-     * @param {Object} o
-     */
-    var _assertIsNotNullAndUndefined = function (o) {
-        if(typeof(o) === "undefined" || o === null) {
-            throw new Error("A non-null object must be passed.");
-        }
-    };
-    
-    /**
-     * @function
-     * @param {*} o
-     */
-    var _assertIsNotRegExp = function (o) {
-        if(o instanceof RegExp) {
-            throw new TypeError("The parameter must not be a regular expression");
-        }
+        return (detail._isString(arrayLike) ? arrayLike.charAt(index) : arrayLike[index]);
     };
     
     var ArrayKeyIterator = (function () {
@@ -308,7 +505,6 @@
         
         return ArrayValueIterator;
     }());
-    
     
     var ArrayEntryIterator = (function () {
         /**
@@ -405,20 +601,20 @@
         };
         
         var _getKeysFromObject = function (o) {
-            if(typeof(o) === "undefined" || o === null) {
+            if(detail._isUndefinedOrNull(o)) {
                 _throwError();
             }
             
             var keys = [];
             for(var key in o) {
-                if(_hasOwnPropertyFunction.call(o, key)) {
+                if(detail._hasOwnPropertyMethod.call(o, key)) {
                     keys.push(key);
                 }
             }
             
             if(_canNotEnumerateToString) {
                 for(var key in _missingKeys) {
-                    if(!_hasOwnPropertyFunction.call(o, key)) {
+                    if(!detail._hasOwnPropertyMethod.call(o, key)) {
                         keys.push(key);
                     }
                 }
@@ -472,12 +668,12 @@
     
     if(!Object.create) {
         Object.create = (function (proto) {
-            if(!_isObjectOrFunction(proto)) {
-                throw new TypeError("The parameter 'proto' must be an object.");
+            if(null === proto) {
+                throw new Error("This polyfill doesn't support null argument for the 'proto' parameter.");
             }
             
-            if(proto === null) {
-                throw new Error("This polyfill doesn't support null argument for the 'proto' parameter.");
+            if(!detail._isObjectOrFunction(proto)) {
+                throw new TypeError("The parameter 'proto' must be an object.");
             }
             
             var Derived = function () {};
@@ -495,7 +691,7 @@
     
     if(!Object.getPrototypeOf) {
         Object.getPrototypeOf = (function (o) {
-            _assertIsNotNullAndUndefined(o);
+            detail._assertIsNotUndefinedAndNull(o);
             
             if(!(o.__proto__)) {
                 throw new Error("This environment doesn't support retrieving prototype of an object and the passed object also does't have '__proto__' property.");
@@ -507,14 +703,16 @@
     
     if(!Object.setPrototypeOf) {
         Object.setPrototypeOf = (function (o, proto) {
-            if(proto !== null && _isObjectOrFunction(proto)) {
-                _assertIsNotNullAndUndefined(o);
-                
-                if(!Object.prototype.hasOwnProperty("__proto__")) {
-                    throw new Error("This environment doesn't support replacing prototype.");
+            if(null !== proto) {
+                if(detail._isObjectOrFunction(proto)) {
+                    detail._assertIsNotUndefinedAndNull(o);
+                    
+                    if(!detail._protoPropertyExist) {
+                        throw new Error("This environment doesn't support replacing prototype.");
+                    }
+                    
+                    o.__proto__ = proto;
                 }
-                
-                o.__proto__ = proto;
             }
         });
     }
@@ -522,19 +720,19 @@
     Object.defineProperty = (function (global) {
         var originalDefineProperty = Object.defineProperty;
         var pseudoDefineProperty = function (o, propName, descriptor) {
-            descriptor.configurable = _selectNonUndefined(descriptor.configurable, false);
-            descriptor.enumerable = _selectNonUndefined(descriptor.enumerable, false);
+            descriptor.configurable = detail._selectNonUndefined(descriptor.configurable, false);
+            descriptor.enumerable = detail._selectNonUndefined(descriptor.enumerable, false);
             if(!descriptor.configurable && !descriptor.enumerable) {
                 throw new Error("This environment doesn't allow programmers to define non-configurable and non-enumerable properties.");
             }
             if("value" in descriptor) {
-                descriptor.writable = _selectNonUndefined(descriptor.writable, false);
+                descriptor.writable = detail._selectNonUndefined(descriptor.writable, false);
             }
             else if(("get" in descriptor) || ("set" in descriptor)) {
                 throw new Error("This environment doesn't allow programmers to define accessor properties.");
                 
-                //descriptor.get = _selectNonUndefined(descriptor.get, undefined);
-                //descriptor.set = _selectNonUndefined(descriptor.set, undefined);
+                //descriptor.get = detail._selectNonUndefined(descriptor.get, undefined);
+                //descriptor.set = detail._selectNonUndefined(descriptor.set, undefined);
             }
             else if(!("writable" in descriptor)) {
                 descriptor.value = undefined;
@@ -640,7 +838,7 @@
     }
     
     if(!Array.isArray) {
-        Array.isArray = _isArray;
+        Array.isArray = detail._isArray;
     }
     
     Array.prototype.sort = (function () {
@@ -687,9 +885,9 @@
     if(!Array.prototype.copyWithin) {
         Array.prototype.copyWithin = function (target) {
             var len = this.length;
-            target = _adjustNegativeIndex(target, len);
-            var start = _adjustNegativeIndex(_selectNonUndefined(arguments[1], 0), len);
-            var end = _adjustNegativeIndex(_selectNonUndefined(arguments[2], len), len);
+            target = detail._adjustNegativeIndex(target, len);
+            var start = detail._adjustNegativeIndex(detail._selectNonUndefined(arguments[1], 0), len);
+            var end = detail._adjustNegativeIndex(detail._selectNonUndefined(arguments[2], len), len);
             
             for(var i = target + (end - start), j = end; i > target && j > start; ) {
                 --i, --j;
@@ -705,10 +903,10 @@
     if(!Array.prototype.fill) {
         Array.prototype.fill = function (value) {
             var len = this.length;
-            var start = _adjustNegativeIndex(_selectNonUndefined(arguments[1], 0), len);
-            var end = _adjustNegativeIndex(_selectNonUndefined(arguments[2], len), len);
+            var start = detail._adjustNegativeIndex(detail._selectNonUndefined(arguments[1], 0), len);
+            var end = detail._adjustNegativeIndex(detail._selectNonUndefined(arguments[2], len), len);
             
-            if(_isString(this)) {
+            if(detail._isString(this)) {
                 if(len < 1) {
                     return this;
                 }
@@ -741,7 +939,7 @@
     
     if(!Array.prototype.reduce) {
         Array.prototype.reduce = function (callback) {
-            var acc = _selectInitialValueForReduce(this, arguments[1]);
+            var acc = detail._selectInitialValueForReduce(this, arguments[1]);
             for(var i = 0, len = this.length; i < len ; ++i) {
                 acc = callback(acc, _arrayLikeGetAt(this, i), i, this);
             }
@@ -752,7 +950,7 @@
     
     if(!Array.prototype.reduceRight) {
         Array.prototype.reduceRight = function (callback) {
-            var acc = _selectInitialValueForReduce(this, arguments[1]);
+            var acc = detail._selectInitialValueForReduce(this, arguments[1]);
             for(var i = this.length; i > 0; ) {
                 --i;
                 acc = callback(acc, _arrayLikeGetAt(this, i), i, this);
@@ -798,7 +996,7 @@
     
     if(!Array.prototype.indexOf) {
         Array.prototype.indexOf = function (elem) {
-            var index = _selectNonUndefined(arguments[1], 0);
+            var index = detail._selectNonUndefined(arguments[1], 0);
             for(; index < this.length; ++index) {
                 if(this[index] === elem) {
                     break;
@@ -811,7 +1009,7 @@
     
     if(!Array.prototype.lastIndexOf) {
         Array.prototype.lastIndexOf = function (elem) {
-            var index = _selectNonUndefined(arguments[1], this.length - 1);
+            var index = detail._selectNonUndefined(arguments[1], this.length - 1);
             for(; index >= 0; --index) {
                 if(this[index] === elem) {
                     break;
@@ -857,7 +1055,7 @@
     if(!String.prototype.repeat) {
         String.prototype.repeat = function (count) {
             count = Math.trunc(count);
-            if(count < 0 || count === _posInf) {
+            if(count < 0 || count === detail._posInf) {
                 throw new RangeError("The parameter 'count' must be greater than or equal to zero and less than positive infinity.");
             }
             
@@ -885,7 +1083,7 @@
     
     if(!String.prototype.startsWith) {
         String.prototype.startsWith = function (other) {
-            _assertIsNotRegExp(other);
+            detail._assertIsNotRegExp(other);
             
             return this.substr(
                 (arguments.length > 1 ? arguments[1] : 0),
@@ -896,7 +1094,7 @@
     
     if(!String.prototype.endsWith) {
         String.prototype.endsWith = function (other) {
-            _assertIsNotRegExp(other);
+            detail._assertIsNotRegExp(other);
             
             var s = this.substr(0, (arguments.length > 1 ? arguments[1] : this.length));
             
@@ -936,11 +1134,11 @@
     }
     
     if(!Number.MIN_SAFE_INTEGER) {
-        Number.MIN_SAFE_INTEGER = -9007199254740991;
+        Number.MIN_SAFE_INTEGER = detail._minInt;
     }
     
     if(!Number.MAX_SAFE_INTEGER) {
-        Number.MAX_SAFE_INTEGER = 9007199254740991;
+        Number.MAX_SAFE_INTEGER = detail._maxInt;
     }
     
     if(!Number.isNaN) {
@@ -961,7 +1159,7 @@
     
     if(!Number.isInteger) {
         Number.isInteger = function (v) {
-            return Number.isFinite(v) && v === _toInteger(v);
+            return Number.isFinite(v) && v === detail._toInteger(v);
         };
     }
     
@@ -991,7 +1189,7 @@
         Math.trunc = function (x) {
             return (
                 Number.isNaN(x)
-                ? _NaN
+                ? detail._NaN
                 : (
                     x < 0
                     ? Math.ceil(x)
@@ -1004,15 +1202,15 @@
     if(!Math.sign) {
         Math.sign = function (n) {
             if(Number.isNaN(n)) {
-                return _NaN;
+                return detail._NaN;
             }
             
-            var isNegZero = _isNegativeZero(n);
+            var isNegZero = detail._isNegativeZero(n);
             if(isNegZero) {
                 return -0;
             }
             
-            var isPosZero = _isPositiveZero(n);
+            var isPosZero = detail._isPositiveZero(n);
             if(isPosZero) {
                 return +0;
             }
@@ -1069,7 +1267,7 @@
             for(var i = 0, len = arguments.length; i < len; ++i) {
                 var n = Number(arguments[i]);
                 if(Number.isNaN(n)) {
-                    return _NaN;
+                    return detail._NaN;
                 }
                 
                 sum += n * n;
@@ -1086,7 +1284,7 @@
     }
     
     if(!global.Reflect) {
-        global.Reflect = {
+        detail._Reflect = {
             apply : function (target, thisArg, args) {
                 return Function.prototype.apply.call(target, thisArg, args);
             },
@@ -1107,7 +1305,7 @@
             },
             
             ownKeys : function (target) {
-                _assertIsNonNullObjectOrFunction(target);
+                detail._assertIsObjectOrFunction(target);
                 
                 return Object.getOwnPropertyNames(target).concat(Object.getOwnPropertySymbols(target));
             },
@@ -1148,7 +1346,7 @@
             },
             
             isExtensible : function (target) {
-                _assertIsNonNullObjectOrFunction(target);
+                detail._assertIsObjectOrFunction(target);
                 
                 return Object.isExtensible(target);
             },
@@ -1160,8 +1358,13 @@
     }
     
     if(!global.Symbol) {
-        global.Symbol = (function () {
-            var _symbolKeyPrefix = _polyfillPropNamePrefix + "Symbol";
+        detail._Symbol = (function (global, karbonator) {
+            var detail = karbonator.detail;
+            
+            var Array = global.Array;
+            var String = global.String;
+            
+            var _symbolKeyPrefix = detail._polyfillPropNamePrefix + "Symbol";
             
             /**
              * @function
@@ -1330,7 +1533,7 @@
              */
             Symbol["for"] = function (key) {
                 return _globalRegistry.getOrCreateSymbolByKey(
-                    _createKey(_selectNonUndefined(key, "undefined"))
+                    _createKey(detail._selectNonUndefined(key, "undefined"))
                 );
             };
             
@@ -1382,20 +1585,300 @@
     //            return this.valueOf();
     //        };
             
-            var _symbolKeyPattern = new RegExp("^" + _symbolKeyPrefix + "[0-9]+_");
+            /**
+             * @memberof Symbol
+             * @readonly
+             */
+            Symbol._symbolKeyPattern = new RegExp("^" + _symbolKeyPrefix + "[0-9]+_");
             
-            if(!Array.prototype[Symbol.iterator]) {
-                Array.prototype[Symbol.iterator] = Array.prototype.values;
+            return Symbol;
+        }(global, karbonator));
+    }
+    
+    /**
+     * @memberof karbonator.detail
+     * @function
+     * @return {Function}
+     */
+    detail._selectReflect = function () {
+        return detail._selectNonUndefined(global.Reflect, detail._Reflect);
+    };
+    
+    /**
+     * @memberof karbonator.detail
+     * @function
+     * @return {Function}
+     */
+    detail._selectSymbol = function () {
+        return detail._selectNonUndefined(global.Symbol, detail._Symbol);
+    };
+    
+    /**
+     * @function
+     * @param {Function} symbolClass class.
+     * @return {Number}
+     */
+    detail._testEs6Symbol = function (symbolClass) {
+        detail._assertIsFunction(symbolClass);
+        
+        var Object = global.Object;
+        var score = 17;
+        var symbolKey = "karbonator";
+        
+        /*////////////////////////////////*/
+        //Construction test.
+        
+        var localSymbol1 = Symbol(symbolKey);
+        if(typeof(localSymbol1) !== "undefined") {
+            --score;
+        }
+        
+        if(typeof(Symbol.iterator) !== "undefined") {
+            --score;
+            
+            try {
+                Symbol(Symbol.iterator);
+            }
+            catch(e) {
+                --score;
+            }
+        }
+        
+        /*////////////////////////////////*/
+        
+        /*////////////////////////////////*/
+        //Test if the polyfiiled Symbol prevents programmers instantiating symbol by using new operator.
+        //This feature requires 'new.target' virtual property proposed in Es6.
+        //I don't think that this can be implemented in Es3 environment...
+        
+        try {
+            new Symbol();
+        }
+        catch(e) {
+            --score;
+        }
+        
+        /*////////////////////////////////*/
+        
+        /*////////////////////////////////*/
+        //Comparison test.
+        
+        var localSymbol2 = Symbol(symbolKey);
+        if(
+            localSymbol1 !== localSymbol2
+            && localSymbol1.valueOf() !== localSymbol2.valueOf()
+        ) {
+            --score;
+        }
+        
+        /*////////////////////////////////*/
+        
+        /*////////////////////////////////*/
+        //Symbol.prototype.valueOf 테스트
+        
+        if(localSymbol1.valueOf() === localSymbol1) {
+            --score;
+        }
+        
+        /*////////////////////////////////*/
+        
+        var SymbolForFunc = Symbol["for"];
+        if(typeof(SymbolForFunc) !== "undefined") {
+            /*////////////////////////////////*/
+            //global 심볼과 local 심볼 비교 테스트 1.
+            
+            var registeredFoo = SymbolForFunc(symbolKey);
+            if(
+                (registeredFoo !== localSymbol1 && registeredFoo !== localSymbol2)
+                && (SymbolForFunc(symbolKey) === SymbolForFunc(symbolKey))
+            ) {
+                --score;
             }
             
-            if(!String.prototype[Symbol.iterator]) {
-                String.prototype[Symbol.iterator] = function () {
+            /*////////////////////////////////*/
+            
+            /*////////////////////////////////*/
+            //global 심볼과 local 심볼을 오브젝트 프로퍼티로 활용하는 테스트.
+            //if the polyfill uses Symbol.prototype.toString,
+            //the return value must be different to standard's one(e.g. Symbol(foo))
+            //and it must be some kind of unique string.
+            
+            var propTestObj = {};
+            propTestObj[localSymbol1] = symbolKey;
+            if(
+                propTestObj[localSymbol1] !== propTestObj[SymbolForFunc(symbolKey)]
+                && propTestObj[localSymbol1] !== propTestObj[localSymbol2]
+            ) {
+                --score;
+            }
+            
+            /*////////////////////////////////*/
+            
+            /*////////////////////////////////*/
+            //'undefined' symbol comparison test.
+            
+            if(
+                SymbolForFunc() === SymbolForFunc("undefined")
+                && SymbolForFunc() === SymbolForFunc(undefined)
+                && SymbolForFunc() !== Symbol()
+                && SymbolForFunc().toString().endsWith("Symbol(undefined)")
+                && SymbolForFunc(undefined).toString().endsWith("Symbol(undefined)")
+                && SymbolForFunc("").toString().endsWith("Symbol()")
+                && SymbolForFunc("undefined").toString().endsWith("Symbol(undefined)")
+                && Symbol().toString().endsWith("Symbol()")
+                && Symbol(undefined).toString().endsWith("Symbol()")
+                && Symbol("").toString().endsWith("Symbol()")
+                && Symbol("undefined").toString().endsWith("Symbol(undefined)")
+            ) {
+                --score;
+            }
+            
+            /*////////////////////////////////*/
+            
+            //'toString' should be used to create description.
+            if(
+                Symbol["for"]("true") === Symbol["for"](true)
+                && Symbol["for"]("false") === Symbol["for"](false)
+                && Symbol["for"]("0") === Symbol["for"](0)
+                && Symbol["for"]({}) === Symbol["for"](({}).toString())
+                && Symbol["for"](function () {}) === Symbol["for"]("function () {}")
+            ) {
+                --score;
+            }
+            
+            if(typeof(Symbol.keyFor) !== "undefined") {
+                /*////////////////////////////////*/
+                //Symbol.keyFor 지원여부 테스트
+                
+                if(
+                    Symbol.keyFor(SymbolForFunc(symbolKey)) === symbolKey
+                    && typeof(Symbol.keyFor(Symbol())) === "undefined"
+                ) {
+                    --score;
+                }
+                
+                /*////////////////////////////////*/
+                
+                /*////////////////////////////////*/
+                //well-known 심볼, local 심볼, global 심볼 비교 테스트
+                
+                //Symbol.iterator만 확인...
+                //나머지도 잘 되길 바라야지...
+                if(
+                    typeof(Symbol.iterator) !== "undefined"
+                    && Symbol.keyFor(Symbol.iterator) !== Symbol("iterator")
+                    && Symbol.keyFor(Symbol.iterator) !== SymbolForFunc("iterator") //레지스트리에 심볼 최초 생성
+                    && Symbol.keyFor(Symbol.iterator) !== SymbolForFunc("iterator") //생성된 심볼과 비교
+                ) {
+                    --score;
+                }
+                
+                /*////////////////////////////////*/
+            }
+        }
+        
+        /*////////////////////////////////*/
+        //Prototype chain test.
+        
+        (function () {
+            if(localSymbol1.constructor !== Symbol) {
+                return;
+            }
+            
+            //브라우저에 따라 테스트가 안 되는 경우(주로 IE < 9)는 다음 테스트를 패스.
+            try {
+                if(
+                    (!detail._isUndefined(Object.getPrototypeOf) && Object.getPrototypeOf(localSymbol1) !== Symbol.prototype)
+                    || (detail._protoPropertyExist && localSymbol1.__proto__ !== Symbol.prototype)
+                ) {
+                    return;
+                }
+            }
+            catch(e) {}
+            
+            --score;
+        })();
+        
+        //Should allow objects to inherit Symbol.prototype using Object.create function.
+        try {
+            var Inherited = function () {
+                Symbol.apply(this, arguments);
+            };
+            Inherited.prototype = Object.create(Symbol.prototype);
+            
+            var inheritedInstance = new Inherited();
+            if(inheritedInstance.constructor === Symbol) {
+                --score;
+                
+                try {
+                    Symbol(new Inherited());
+                }
+                catch(ei) {
+                    --score;
+                }
+            }
+        }
+        catch(eo) {}
+        
+        /*////////////////////////////////*/
+        
+        /*////////////////////////////////*/
+        //instanceof 연산자 테스트 및
+        //primitive type symbol 지원 여부 테스트.
+        //polyfill인 경우 점수를 못 받을 수 있음.
+        
+        if(
+            !(localSymbol1 instanceof Symbol)
+            && !(localSymbol1 instanceof Object)
+            && typeof(localSymbol1) === "symbol"
+        ) {
+            --score;
+        }
+        
+        /*////////////////////////////////*/
+        
+        //1점이면 완벽 지원, 2점 이상이면 부분지원
+        return score;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @return {Boolean}
+     */
+    karbonator.polyfillReflect = function () {
+        var result = !global.Reflect;
+        if(result) {
+            global.Reflect = detail._Reflect;
+        }
+        
+        return result;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @return {Boolean}
+     */
+    karbonator.polyfillSymbol = function () {
+        var result = !global.Symbol;
+        if(result) {
+            global.Symbol = detail._Symbol;
+            
+            if(!Array.prototype[global.Symbol.iterator]) {
+                Array.prototype[global.Symbol.iterator] = Array.prototype.values;
+            }
+            
+            if(!String.prototype[global.Symbol.iterator]) {
+                String.prototype[global.Symbol.iterator] = function () {
                     return new StringValueIterator(this);
                 };
             }
-            
-            return Symbol;
-        }());
-    }
+        }
+        
+        return result;
+    };
+    
+    return karbonator;
 })
 ));
