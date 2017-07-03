@@ -2,7 +2,8 @@
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
- * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
+ * disclaimer : The author is not responsible for any problems 
+ * that that may arise by using this source code.
  */
 
 /**
@@ -18,10 +19,17 @@
         });
     }
     else if(typeof(g.module) !== "undefined" && g.module.exports) {
-        g.exports = g.module.exports = factory(g, require("./karbonator.collection"));
+        g.exports = g.module.exports = factory(
+            g,
+            require("./karbonator.collection")
+        );
     }
 }(
-(typeof(global) !== "undefined" ? global : (typeof(window) !== "undefined" ? window : this)),
+(
+    typeof(global) !== "undefined"
+    ? global
+    : (typeof(window) !== "undefined" ? window : this)
+),
 (function (global, karbonator) {
     "use strict";
     
@@ -49,9 +57,9 @@
     var string = karbonator.string || {};
     karbonator.string = string;
     
-    var _minInt = Number.MAX_SAFE_INTEGER;
+    var _minInt = Number.MIN_SAFE_INTEGER;
     
-    var _maxInt = Number.MIN_SAFE_INTEGER;
+    var _maxInt = Number.MAX_SAFE_INTEGER;
     
     var _charCodeMin = 0x000000;
     
@@ -170,33 +178,6 @@
         }
     };
     
-    /**
-     * @function
-     * @param {Interval} o
-     */
-    var _assertIsInterval = function (o) {
-        if(!(o instanceof Interval)) {
-            throw new TypeError("A instance of 'Interval' must be passed.");
-        }
-    };
-    
-    /**
-     * @function
-     * @param {Array.<Interval>} o
-     */
-    var _assertIsArrayOfIntervals = function (o) {
-        if(!karbonator.isArray(o)) {
-            throw new TypeError("An array of 'Interval's must be passed.");
-        }
-        
-        for(var i = 0; i < o.length; ++i) {
-            var elem = o[i];
-            if(!(elem instanceof Interval)) {
-                throw new TypeError("An array of 'Interval's must be passed.");
-            }
-        }
-    };
-    
     /*////////////////////////////////*/
     //ScannerResult
     
@@ -219,7 +200,10 @@
      * @param {Number} position
      * @param {Object} value
      */
-    ScannerResult.prototype.set = function (errorCode, errorMessage, position, value) {
+    ScannerResult.prototype.set = function (
+        errorCode, errorMessage,
+        position, value
+    ) {
         this.error.code = errorCode;
         this.error.message = errorMessage;
         this.position = position;
@@ -1059,7 +1043,7 @@
              * @function
              * @return {Boolean}
              */
-            CppPrefixIterator.prototype.tryMoveToNext = function () {
+            CppPrefixIterator.prototype.moveToNext = function () {
                 if(null !== this._currentNode) {
                     if(this._currentNode.isLeaf()) {
                         while(null !== this._currentNode) {
@@ -1096,7 +1080,7 @@
             
             /**
              * @function
-             * @param {CppPrefixIterator} rhs
+             * @param {AstNode.CppPrefixIterator} rhs
              * @return {Boolean}
              */
             CppPrefixIterator.prototype[karbonator.equals] = function (rhs) {
@@ -1114,6 +1098,70 @@
             };
             
             return CppPrefixIterator;
+        }());
+        
+        AstNode.CppPostfixIterator = (function () {
+            /**
+             * @memberof AstNode
+             * @constructor
+             * @param {AstNode} rootNode
+             * @param {AstNode} currentNode
+             */
+            var CppPostfixIterator = function (rootNode, currentNode) {
+                this._rootNode = rootNode;
+                this._currentNode = currentNode;
+            };
+            
+            /**
+             * @function
+             * @return {Boolean}
+             */
+            CppPostfixIterator.prototype.moveToNext = function () {
+                do {
+                    var nextSibling = this._currentNode.getNextSibling();
+                    if(null === nextSibling) {
+                        this._currentNode = this._currentNode.getParent();
+                        if(null === this._currentNode) {
+                            break;
+                        }
+                    }
+                    else {
+                        this._currentNode = nextSibling.getLeftmostLeaf();
+                    }
+                }
+                while(null === this._currentNode);
+            };
+            
+            /**
+             * @function
+             * @return {AstNode}
+             */
+            CppPostfixIterator.prototype.dereference = function () {
+                assertion.isTrue(null !== this._currentNode);
+                
+                return this._currentNode;
+            };
+            
+            /**
+             * @function
+             * @param {AstNode.CppPostfixIterator} rhs
+             * @return {Boolean}
+             */
+            CppPostfixIterator.prototype[karbonator.equals] = function (rhs) {
+                if(this === rhs) {
+                    return true;
+                }
+                
+                if(karbonator.isUndefinedOrNull(rhs)) {
+                    return false;
+                }
+                
+                return this._rootNode === rhs._rootNode
+                    && this._currentNode === rhs._currentNode
+                ;
+            };
+            
+            return CppPostfixIterator;
         }());
         
         /**
@@ -1257,6 +1305,19 @@
             }
             
             return this._children[this._children.length - 1];
+        };
+        
+        /**
+         * @function
+         * @return {AstNode}
+         */
+        AstNode.prototype.getLeftmostLeaf = function () {
+            var current = this;
+            while(!current.isLeaf()) {
+                current = current._children[0];
+            }
+            
+            return current;
         };
         
         /**
@@ -1410,6 +1471,22 @@
         
         /**
          * @function
+         * @return {AstNode.CppPostfixIterator}
+         */
+        AstNode.prototype.beginPostfix = function () {
+            return new AstNode.CppPostfixIterator(this.getRoot(), this.getLeftmostLeaf());
+        };
+        
+        /**
+         * @function
+         * @return {AstNode.CppPostfixIterator}
+         */
+        AstNode.prototype.endPostfix = function () {
+            return new AstNode.CppPostfixIterator(this.getRoot(), null);
+        };
+        
+        /**
+         * @function
          * @param {Function} callback
          * @param {Object} [thisArg]
          * @param {Boolean}
@@ -1497,8 +1574,8 @@
                         loop = false;
                     }
                     else {
-                        lhsIter.tryMoveToNext();
-                        rhsIter.tryMoveToNext();
+                        lhsIter.moveToNext();
+                        rhsIter.moveToNext();
                     }
                 }
                 else {
@@ -1520,13 +1597,22 @@
                 toStringFunc : AstNode._astNodeToString
             };
             
-            this.traverseByPostfix(
-                function (node) {
-                    this.str += this.toStringFunc(node);
-                    this.str += "\r\n";
-                },
-                context
-            );
+            for(
+                var iter = this.beginPostfix(), endIter = this.endPostfix();
+                !iter[karbonator.equals](endIter);
+                iter.moveToNext()
+            ) {
+                context.str += context.toStringFunc(iter.dereference());
+                context.str += "\r\n";
+            }
+            
+//            this.traverseByPostfix(
+//                function (node) {
+//                    this.str += this.toStringFunc(node);
+//                    this.str += "\r\n";
+//                },
+//                context
+//            );
             
             return context.str;
         };
@@ -2712,15 +2798,15 @@
 //            this._bitCvrt = new BitConverter();
 //            this._bitCvrt.setByteOrderReversed(this._byteOrderReversed);
             
-            this._insts = [];
+            this._lines = [];
         };
         
         /**
          * @function
          * @return {Number}
          */
-        InstructionBuffer.getCount = function () {
-            return this._insts.length;
+        InstructionBuffer.prototype.getCount = function () {
+            return this._lines.length;
         };
         
         /**
@@ -2729,8 +2815,8 @@
          * @return {InstructionBuffer}
          */
         InstructionBuffer.prototype.consume = function (rhs) {
-            for(var i = 0, len = rhs._insts.length; i < len; ++i) {
-                this._insts.push(rhs._insts[i]);
+            for(var i = 0, len = rhs._lines.length; i < len; ++i) {
+                this._lines.push(rhs._lines[i]);
             }
             
             rhs.clear();
@@ -2749,17 +2835,18 @@
                 throw new TypeError("The parameter 'inst' must be an instance of 'RegexVm.Instruction.'.");
             }
             
-            var args = Array.of(arguments);
+            var line = [inst.getOpCode()];
+            var args = Array.prototype.slice.call(arguments);
             for(var i = 1; i < args.length; ++i) {
-                if(!karbonator.isNumber(args[i])) {
+                var arg = args[i];
+                if(!karbonator.isNumber(arg)) {
                     throw new TypeError("Optional arguments must be numbers.");
                 }
+                
+                line.push(arg);
             }
-
-            this._insts.push(inst.getOpCode());
-            for(var i = 1; i < args.length; ++i) {
-                this._insts.push(args[i]);
-            }
+            
+            this._lines.push(line);
             
             return this;
         };
@@ -2769,7 +2856,7 @@
          * @return {InstructionBuffer}
          */
         InstructionBuffer.prototype.clear = function () {
-            this._insts.length = 0;
+            this._lines.length = 0;
             
             return this;
         };
@@ -2781,10 +2868,51 @@
         InstructionBuffer.prototype.printCodeBlock = function () {
             var codeBlock = new ByteArray();
             
+            var labels = new collection.ListMap(karbonator.numberComparator);
+            
+            for(var i = 0, len = this._lines.length; i < len; ++i) {
+                var inst = this._lines[i];
+                switch(inst[0]) {
+                case RegexVm.Instructions.beq.getOpCode():
+                case RegexVm.Instructions.bne.getOpCode():
+                case RegexVm.Instructions.bra.getOpCode():
+                    labels.set(i, i + inst[1] + 1);
+                break;
+                case RegexVm.Instructions.jmp.getOpCode():
+                    labels.set(i, inst[1]);
+                break;
+                }
+            }
+            
             debugger;
-            //TODO : 메소드 작성
+            console.log(this.toString());
             
             return codeBlock;
+        };
+        
+        /**
+         * @function
+         * @return {String}
+         */
+        InstructionBuffer.prototype.toString = function () {
+            var str = "";
+            
+            for(var i = 0, len = this._lines.length; i < len; ++i) {
+                var line = this._lines[i];
+                
+                str += i + '\t';
+                
+                str += RegexVm._opCodeInstMap.get(line[0]).getMnemonic();
+                
+                for(var j = 1; j < line.length; ++j) {
+                    str += ' ';
+                    str += line[j];
+                }
+                
+                str += "\r\n";
+            };
+            
+            return str;
         };
         
         /*////////////////////////////////*/
@@ -2812,7 +2940,7 @@
          * @param {AstNode} rootNode
          * @return {RegexVm.Bytecode} 
          */
-        CodeEmitter.prototype.emitBytecode = function (rootNode) {
+        CodeEmitter.prototype.emitCode = function (rootNode) {
             if(!(rootNode instanceof AstNode)) {
                 throw new TypeError("The parameter must be an instance of 'AstNode'.");
             }
@@ -2822,10 +2950,10 @@
             this._rootNode = rootNode;
             
             for(
-                var iter = this._rootNode.beginPrefix(),
-                endIter= this._rootNode.endPrefix();
+                var iter = this._rootNode.beginPostfix(),
+                endIter= this._rootNode.endPostfix();
                 !iter[karbonator.equals](endIter);
-                iter.tryMoveToNext()
+                iter.moveToNext()
             ) {
                 this._processNode(iter.dereference());
             }
@@ -2879,7 +3007,7 @@
                 }
             break;
             case AstNodeType.terminalRange:
-                buffer = this._visitRepetition(node);
+                buffer = this._visitTerminalRange(node);
             break;
             default:
                 throw new Error("Not implemented yet...");
@@ -3015,7 +3143,7 @@
             
             var paramNode = node.getChildAt(0);
             var paramCode = this._nodeCodeMap.get(paramNode);
-            var paramCodeLen = paramCode.getByteCount();
+            var paramCodeLen = paramCode.getCount();
             
             if(
                 repRange.getMinimum() === 0
@@ -3200,7 +3328,7 @@
                 rootNode = this._tokenMap.values().next().value._astRootNode;
             }
             
-            return this._bytecodeEmitter.emitBytecode(rootNode);
+            return this._bytecodeEmitter.emitCode(rootNode);
         };
         
         return LexerGenerator;
