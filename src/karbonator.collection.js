@@ -27,9 +27,9 @@
     
     var detail = karbonator.detail;
     
-    var Array = global.Array;
+    //var Array = global.Array;
     var Symbol = detail._selectSymbol();
-    var Reflect = detail._selectReflect();
+    //var Reflect = detail._selectReflect();
     
     /**
      * @memberof karbonator.detail
@@ -68,17 +68,6 @@
             throw new TypeError("The parameter must be an object that has the property 'Symbol.iterator'.");
         }
     };
-    
-    /**
-     * @function
-     * @param {*} arg
-     * @return {Boolean}
-     */
-    var _isDefaultValueOfArgumentTrue = function (arg) {
-        return (karbonator.isUndefined(arguments[2]) || !!arguments[2]);
-    };
-    
-    var _selectNonUndefined = detail._selectNonUndefined;
     
     /**
      * @memberof karbonator
@@ -398,11 +387,11 @@
              * @param {Boolean} [red=false]
              */
             var _Node = function () {
-                this._parent = _selectNonUndefined(arguments[0], null);
-                this._leftChild = _selectNonUndefined(arguments[1], null);
-                this._rightChild = _selectNonUndefined(arguments[2], null);
-                this._element = _selectNonUndefined(arguments[3], null);
-                this._red = _selectNonUndefined(arguments[4], false);
+                this._parent = detail._selectNonUndefined(arguments[0], null);
+                this._leftChild = detail._selectNonUndefined(arguments[1], null);
+                this._rightChild = detail._selectNonUndefined(arguments[2], null);
+                this._element = detail._selectNonUndefined(arguments[3], null);
+                this._red = detail._selectNonUndefined(arguments[4], false);
             };
             
             /**

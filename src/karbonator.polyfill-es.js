@@ -69,15 +69,30 @@
     
     /**
      * @memberof karbonator
-     * @readonly
+     * @namespace
      */
-    karbonator.minimumSafeInteger = -9007199254740991;
+    var detail = {};
+    karbonator.detail = detail;
     
     /**
      * @memberof karbonator
      * @readonly
      */
-    karbonator.maximumSafeInteger = 9007199254740991;
+    karbonator.minimumSafeInteger = (
+        Number.MIN_SAFE_INTEGER
+        ? Number.MIN_SAFE_INTEGER
+        : -9007199254740991
+    );
+    
+    /**
+     * @memberof karbonator
+     * @readonly
+     */
+    karbonator.maximumSafeInteger = (
+        Number.MAX_SAFE_INTEGER
+        ? Number.MAX_SAFE_INTEGER
+        : 9007199254740991
+    );
     
     /**
      * @memberof karbonator
@@ -219,15 +234,9 @@
         return result;
     };
     
-    /**
-     * @memberof karbonator
-     * @namespace
-     */
-    var detail = {};
-    karbonator.detail = detail;
-    
-    detail._Array = (function (Array) {
+    detail._Array = (function () {
         /**
+         * @memberof karbonator.detail
          * @constructor
          */
         var _Array = function () {
@@ -236,7 +245,7 @@
         _Array.prototype = Array.prototype;
         
         return _Array;
-    }(Array));
+    }());
     
     /**
      * @memberof karbonator
@@ -292,7 +301,11 @@
      * @return {*}
      */
     detail._selectNonUndefined = function (preferred, alternative) {
-        return (!karbonator.isUndefined(preferred) ? preferred : alternative);
+        return (
+            !karbonator.isUndefined(preferred)
+            ? preferred
+            : alternative
+        );
     };
     
     /**
@@ -491,85 +504,6 @@
         };
     }
     
-    Object.defineProperty = (function (global) {
-        var originalDefineProperty = global.Object.defineProperty;
-        var pseudoDefineProperty = function (o, propName, descriptor) {
-            descriptor.configurable = detail._selectNonUndefined(descriptor.configurable, false);
-            descriptor.enumerable = detail._selectNonUndefined(descriptor.enumerable, false);
-            if(!descriptor.configurable && !descriptor.enumerable) {
-                throw new Error("This environment doesn't allow programmers to define non-configurable and non-enumerable properties.");
-            }
-            if("value" in descriptor) {
-                descriptor.writable = detail._selectNonUndefined(descriptor.writable, false);
-            }
-            else if(("get" in descriptor) || ("set" in descriptor)) {
-                throw new Error("This environment doesn't allow programmers to define accessor properties.");
-                
-                //descriptor.get = detail._selectNonUndefined(descriptor.get, undefined);
-                //descriptor.set = detail._selectNonUndefined(descriptor.set, undefined);
-            }
-            else if(!("writable" in descriptor)) {
-                descriptor.value = undefined;
-                descriptor.writable = false;
-            }
-            else {
-                descriptor.value = undefined;
-            }
-            if(!descriptor.writable) {
-                throw new Error("This environment doesn't allow programmers to define readonly data properties.");
-            }
-            
-            o[propName] = descriptor.value;
-            
-            return o;
-        };
-        
-        if(originalDefineProperty) {
-            try {
-                global.Object.defineProperty({}, "_", {});
-                
-                return originalDefineProperty;
-            }
-            catch(e) {
-                var ie8DefineProperty = global.Object.defineProperty;
-                var isDomObject = (function (global) {
-                    if(global.HTMLElement) {
-                        return function (o) {
-                            return o instanceof global.HTMLElement;
-                        };
-                    }
-                    else if(global.HTMLDocument && global.Element) {
-                        return function (o) {
-                            return o instanceof global.Element
-                                && karbonator.isObject(o.ownerDocument)
-                            ;
-                        };
-                    }
-                    else {
-                        return function (o) {
-                            return karbonator.isObject(o)
-                                && (o.nodeType === 1)
-                                && karbonator.isObject(o.style)
-                            ;
-                        };
-                    }
-                }(global));
-                
-                return function (o, propName, descriptor) {
-                    if(isDomObject(o)) {
-                        return originalDefineProperty(o, propName, descriptor);
-                    }
-                    else {
-                        return pseudoDefineProperty(o, propName, descriptor);
-                    }
-                };
-            }
-        }
-        else {
-            return pseudoDefineProperty;
-        }
-    }(global));
-    
     /**
      * @function
      * @param {*} arrayLike
@@ -599,8 +533,9 @@
         return selectedValue;
     };
     
-    var ArrayKeyIterator = (function () {
+    detail._ArrayKeyIterator = (function () {
         /**
+         * @memberof karbonator.detial
          * @constructor
          * @param {Array} arr
          */
@@ -630,8 +565,9 @@
         return ArrayKeyIterator;
     }());
     
-    var ArrayValueIterator = (function () {
+    detail._ArrayValueIterator = (function () {
         /**
+         * @memberof karbonator.detail
          * @constructor
          * @param {Array} arr
          */
@@ -661,8 +597,9 @@
         return ArrayValueIterator;
     }());
     
-    var ArrayEntryIterator = (function () {
+    detail._ArrayEntryIterator = (function () {
         /**
+         * @memberof karbonator.detail
          * @constructor
          * @param {Array} arr
          */
@@ -907,19 +844,19 @@
     
     if(!Array.prototype.entries) {
         Array.prototype.entries = function () {
-            return new ArrayEntryIterator(this);
+            return new detail._ArrayEntryIterator(this);
         };
     }
     
     if(!Array.prototype.keys) {
         Array.prototype.keys = function () {
-            return new ArrayKeyIterator(this);
+            return new detail._ArrayKeyIterator(this);
         };
     }
     
     if(!Array.prototype.values) {
         Array.prototype.values = function () {
-            return new ArrayValueIterator(this);
+            return new detail._ArrayValueIterator(this);
         };
     }
     

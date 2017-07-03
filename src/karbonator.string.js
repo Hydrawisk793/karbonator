@@ -49,9 +49,9 @@
     var string = karbonator.string || {};
     karbonator.string = string;
     
-    var _minInt = karbonator.minimumSafeInteger;
+    var _minInt = Number.MAX_SAFE_INTEGER;
     
-    var _maxInt = karbonator.maximumSafeInteger;
+    var _maxInt = Number.MIN_SAFE_INTEGER;
     
     var _charCodeMin = 0x000000;
     
