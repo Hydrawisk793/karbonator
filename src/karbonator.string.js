@@ -5,16 +5,20 @@
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
+/**
+ * @param {global|window} g
+ * @param {Function} factory
+ */
 (function (g, factory) {
     "use strict";
     
-    if(typeof(define) === "function" && define.amd) {
-        define(["./karbonator.collection"], function (karbonator) {
+    if(typeof(g.define) === "function" && g.define.amd) {
+        g.define(["./karbonator.collection"], function (karbonator) {
             return factory(g, karbonator);
         });
     }
-    else if(typeof(module) !== "undefined" && module.exports) {
-        exports = module.exports = factory(g, require("./karbonator.collection"));
+    else if(typeof(g.module) !== "undefined" && g.module.exports) {
+        g.exports = g.module.exports = factory(g, require("./karbonator.collection"));
     }
 }(
 (typeof(global) !== "undefined" ? global : (typeof(window) !== "undefined" ? window : this)),
@@ -750,7 +754,7 @@
         };
         
         //TODO : Instruction enum 정리
-        RegexVm.prototype.executeNext = function () {x
+        RegexVm.prototype.executeNext = function () {
             var operand = 0;
             
             var opCode = this._bytecode._codeBlock.get(this._pc);
@@ -1107,7 +1111,7 @@
                 return this._rootNode === rhs._rootNode
                     && this._currentNode === rhs._currentNode
                 ;
-            }
+            };
             
             return CppPrefixIterator;
         }());
@@ -1257,7 +1261,7 @@
         
         /**
          * @function
-         * @param {AstNode} node
+         * @param {AstNode} child
          */
         AstNode.prototype.addChild = function (child) {
             AstNode._assertIsAstNode(child);
@@ -1349,7 +1353,7 @@
         AstNode.prototype.removeAllChildren = function () {
             var removedChildren = this._children.slice();
             for(var i = 0, count = removedChildren.lenght; i < count; ++i) {
-                assertion.isTrue(this === removedChild._parent);
+                assertion.isTrue(this === removedChildren._parent);
                 removedChildren[i]._parent = null;
             }
             this._children.length = 0;
@@ -1854,6 +1858,11 @@
                         Associativity.leftToRight
                     )
                 ],
+                /**
+                 * @function
+                 * @param {OperatorType} current
+                 * @return {Array}
+                 */
                 function (current) {
                     return [current.getKey(), current];
                 }
@@ -2403,7 +2412,7 @@
                 var opType = op.getType();
                 
                 var termNodeCount = this._termNodeStack.length;
-                var paramCount = opType.getParameterCount()
+                var paramCount = opType.getParameterCount();
                 if(termNodeCount < paramCount) {
                     //Error
                     throw new Error("Not enough parameters.");

@@ -5,6 +5,10 @@
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
+/**
+ * @param {global|window} g
+ * @param {Function} factory
+ */
 (function (g, factory) {
     "use strict";
     
@@ -12,13 +16,13 @@
     (function (g, factory) {
         var karbonator = factory(g);
         
-        if(typeof(define) === "function" && define.amd) {
-            define(function () {
+        if(typeof(g.define) === "function" && g.define.amd) {
+            g.define(function () {
                 return karbonator;
             });
         }
-        else if(typeof(module) !== "undefined" && module.exports) {
-            module.exports = karbonator;
+        else if(typeof(g.module) !== "undefined" && g.module.exports) {
+            g.module.exports = karbonator;
         }
         else {
             g.karbonator = karbonator;
@@ -30,13 +34,13 @@
     /*////////////////////////////////*/
     //For release version.
 //
-//    if(typeof(define) === "function" && define.amd) {
-//        define(function () {
+//    if(typeof(g.define) === "function" && g.define.amd) {
+//        g.define(function () {
 //            return factory(g);
 //        });
 //    }
-//    else if(typeof(module) !== "undefined" && module.exports) {
-//        module.exports = factory(g);
+//    else if(typeof(g.module) !== "undefined" && g.module.exports) {
+//        g.exports = g.module.exports = factory(g);
 //    }
 //
     /*////////////////////////////////*/
@@ -217,34 +221,39 @@
     
     /**
      * @memberof karbonator
+     * @namespace
+     */
+    var detail = {};
+    karbonator.detail = detail;
+    
+    detail._Array = (function (Array) {
+        /**
+         * @constructor
+         */
+        var _Array = function () {
+            Array.apply(this, arguments);
+        };
+        _Array.prototype = Array.prototype;
+        
+        return _Array;
+    }(Array));
+    
+    /**
+     * @memberof karbonator
      * @function
      * @param {*} o
      * @return {Boolean}
      */
-    karbonator.isArray = (function (karbonator, arrayKlass) {
-        var _Array = (function (Array) {
-            /**
-             * @constructor
-             */
-            var _Array = function () {
-                Array.apply(this, arguments);
-            };
-            _Array.prototype = Array.prototype;
-            
-            return _Array;
-        }(arrayKlass));
-        
-        return (
-            arrayKlass.isArray
-            ? arrayKlass.isArray
-            : (function (o) {
-                //uses the 'snapshot' constructor function that has original 'Array.prototype'.
-                return karbonator.isObject(o)
-                    && o instanceof _Array
-                ;
-            })
-        );
-    })(karbonator, Array);
+    karbonator.isArray = (
+        Array.isArray
+        ? Array.isArray
+        : (function (o) {
+            //uses the 'snapshot' constructor function that has original 'Array.prototype'.
+            return karbonator.isObject(o)
+                && o instanceof detail._Array
+            ;
+        })
+    );
     
     /**
      * @memberof karbonator
@@ -268,13 +277,6 @@
         
         return Math.sign(n) * Math.floor(Math.abs(n));
     };
-    
-    /**
-     * @memberof karbonator
-     * @namespace
-     */
-    var detail = {};
-    karbonator.detail = detail;
     
     /**
      * @memberof karbonator.detail
@@ -1139,7 +1141,7 @@
     
     if(!Math.expm1) {
         Math.expm1 = function (x) {
-            return Math.exp(x) - 1
+            return Math.exp(x) - 1;
         };
     }
     
@@ -1549,16 +1551,16 @@
         /*////////////////////////////////*/
         //Construction test.
         
-        var localSymbol1 = Symbol(symbolKey);
+        var localSymbol1 = symbolKlass(symbolKey);
         if(!karbonator.isUndefined(localSymbol1)) {
             --score;
         }
         
-        if(!karbonator.isUndefined(Symbol.iterator)) {
+        if(!karbonator.isUndefined(symbolKlass.iterator)) {
             --score;
             
             try {
-                Symbol(Symbol.iterator);
+                symbolKlass(symbolKlass.iterator);
             }
             catch(e) {
                 --score;
@@ -1573,7 +1575,7 @@
         //I don't think that this can be implemented in Es3 environment...
         
         try {
-            new Symbol();
+            new symbolKlass();
         }
         catch(e) {
             --score;
@@ -1584,7 +1586,7 @@
         /*////////////////////////////////*/
         //Comparison test.
         
-        var localSymbol2 = Symbol(symbolKey);
+        var localSymbol2 = symbolKlass(symbolKey);
         if(
             localSymbol1 !== localSymbol2
             && localSymbol1.valueOf() !== localSymbol2.valueOf()
@@ -1603,7 +1605,7 @@
         
         /*////////////////////////////////*/
         
-        var SymbolForFunc = Symbol["for"];
+        var SymbolForFunc = symbolKlass["for"];
         if(!karbonator.isUndefined(SymbolForFunc)) {
             /*////////////////////////////////*/
             //global 심볼과 local 심볼 비교 테스트 1.
@@ -1641,15 +1643,15 @@
             if(
                 SymbolForFunc() === SymbolForFunc("undefined")
                 && SymbolForFunc() === SymbolForFunc(undefined)
-                && SymbolForFunc() !== Symbol()
+                && SymbolForFunc() !== symbolKlass()
                 && SymbolForFunc().toString().endsWith("Symbol(undefined)")
                 && SymbolForFunc(undefined).toString().endsWith("Symbol(undefined)")
                 && SymbolForFunc("").toString().endsWith("Symbol()")
                 && SymbolForFunc("undefined").toString().endsWith("Symbol(undefined)")
-                && Symbol().toString().endsWith("Symbol()")
-                && Symbol(undefined).toString().endsWith("Symbol()")
-                && Symbol("").toString().endsWith("Symbol()")
-                && Symbol("undefined").toString().endsWith("Symbol(undefined)")
+                && symbolKlass().toString().endsWith("Symbol()")
+                && symbolKlass(undefined).toString().endsWith("Symbol()")
+                && symbolKlass("").toString().endsWith("Symbol()")
+                && symbolKlass("undefined").toString().endsWith("Symbol(undefined)")
             ) {
                 --score;
             }
@@ -1667,13 +1669,13 @@
                 --score;
             }
             
-            if(typeof(Symbol.keyFor) !== "undefined") {
+            if(typeof(symbolKlass.keyFor) !== "undefined") {
                 /*////////////////////////////////*/
                 //Symbol.keyFor 지원여부 테스트
                 
                 if(
-                    Symbol.keyFor(SymbolForFunc(symbolKey)) === symbolKey
-                    && typeof(Symbol.keyFor(Symbol())) === "undefined"
+                    symbolKlass.keyFor(SymbolForFunc(symbolKey)) === symbolKey
+                    && typeof(symbolKlass.keyFor(symbolKlass())) === "undefined"
                 ) {
                     --score;
                 }
@@ -1686,10 +1688,10 @@
                 //Symbol.iterator만 확인...
                 //나머지도 잘 되길 바라야지...
                 if(
-                    typeof(Symbol.iterator) !== "undefined"
-                    && Symbol.keyFor(Symbol.iterator) !== Symbol("iterator")
-                    && Symbol.keyFor(Symbol.iterator) !== SymbolForFunc("iterator") //레지스트리에 심볼 최초 생성
-                    && Symbol.keyFor(Symbol.iterator) !== SymbolForFunc("iterator") //생성된 심볼과 비교
+                    typeof(symbolKlass.iterator) !== "undefined"
+                    && symbolKlass.keyFor(symbolKlass.iterator) !== symbolKlass("iterator")
+                    && symbolKlass.keyFor(symbolKlass.iterator) !== SymbolForFunc("iterator") //레지스트리에 심볼 최초 생성
+                    && symbolKlass.keyFor(symbolKlass.iterator) !== SymbolForFunc("iterator") //생성된 심볼과 비교
                 ) {
                     --score;
                 }
@@ -1702,7 +1704,7 @@
         //Prototype chain test.
         
         (function () {
-            if(localSymbol1.constructor !== Symbol) {
+            if(localSymbol1.constructor !== symbolKlass) {
                 return;
             }
             
@@ -1711,11 +1713,11 @@
                 if(
                     (
                         !karbonator.isUndefined(Object.getPrototypeOf)
-                        && Object.getPrototypeOf(localSymbol1) !== Symbol.prototype
+                        && Object.getPrototypeOf(localSymbol1) !== symbolKlass.prototype
                     )
                     || (
                         Object.prototype.hasOwnProperty("__proto__")
-                        && localSymbol1.__proto__ !== Symbol.prototype
+                        && localSymbol1.__proto__ !== symbolKlass.prototype
                     )
                 ) {
                     return;
@@ -1729,16 +1731,16 @@
         //Should allow objects to inherit Symbol.prototype using Object.create function.
         try {
             var Inherited = function () {
-                Symbol.apply(this, arguments);
+                symbolKlass.apply(this, arguments);
             };
-            Inherited.prototype = Object.create(Symbol.prototype);
+            Inherited.prototype = Object.create(symbolKlass.prototype);
             
             var inheritedInstance = new Inherited();
-            if(inheritedInstance.constructor === Symbol) {
+            if(inheritedInstance.constructor === symbolKlass) {
                 --score;
                 
                 try {
-                    Symbol(new Inherited());
+                    symbolKlass(new Inherited());
                 }
                 catch(ei) {
                     --score;
@@ -1755,7 +1757,7 @@
         //polyfill인 경우 점수를 못 받을 수 있음.
         
         if(
-            !(localSymbol1 instanceof Symbol)
+            !(localSymbol1 instanceof symbolKlass)
             && !(localSymbol1 instanceof Object)
             && typeof(localSymbol1) === "symbol"
         ) {

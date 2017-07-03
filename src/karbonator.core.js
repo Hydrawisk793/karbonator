@@ -5,16 +5,20 @@
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
+/**
+ * @param {global|window} g
+ * @param {Function} factory
+ */
 (function (g, factory) {
     "use strict";
     
-    if(typeof(define) === "function" && define.amd) {
-        define(["./karbonator.polyfill-es"], function (karbonator) {
+    if(typeof(g.define) === "function" && g.define.amd) {
+        g.define(["./karbonator.polyfill-es"], function (karbonator) {
             return factory(g, karbonator);
         });
     }
-    else if(typeof(module) !== "undefined" && module.exports) {
-        exports = module.exports = factory(g, require("./karbonator.polyfill-es"));
+    else if(typeof(g.module) !== "undefined" && g.module.exports) {
+        g.exports = g.module.exports = factory(g, require("./karbonator.polyfill-es"));
     }
 }(
 (typeof(global) !== "undefined" ? global : (typeof(window) !== "undefined" ? window : this)),
@@ -26,6 +30,7 @@
     
     var Number = global.Number;
     var Symbol = detail._selectSymbol();
+    var Reflect = detail._selectReflect();
     
     /**
      * @memberof karbonator.detail
@@ -90,42 +95,38 @@
      * @param {Function} callback
      * @return {Number}
      */
-    detail._requestAnimationFrame = (function () {
-        if(window) {
-            return window.requestAnimationFrame
-                || window.webkitRequestAnimationFrame
-                || window.mozRequestAnimationFrame
-                || window.oRequestAnimationFrame
-                || window.msRequestAnimationFrame
-            ;
-        }
-        else {
-            return function (callback) {
-                return global.setTimeout(callback, 1000 / 60);
-            };
-        }
-    }());
+    detail._requestAnimationFrame = (
+        window
+        ? (
+            window.requestAnimationFrame
+            || window.webkitRequestAnimationFrame
+            || window.mozRequestAnimationFrame
+            || window.oRequestAnimationFrame
+            || window.msRequestAnimationFrame
+        )
+        : (function (callback) {
+            return global.setTimeout(callback, 1000 / 60);
+        })
+    );
     
     /**
      * @memberof karbonator.detail
      * @function
      * @param {Number} id
      */
-    detail._cancelAnimationFrame = (function () {
-        if(window) {
-            return window.cancelAnimationFrame
-                || window.webkitCancelAnimationFrame
-                || window.mozCancelAnimationFrame
-                || window.oCancelAnimationFrame
-                || window.msCancelAnimationFrame
-            ;
-        }
-        else {
-            return function (id) {
-                global.clearTimeout(id);
-            };
-        }
-    }());
+    detail._cancelAnimationFrame = (
+        window
+        ? (
+            window.cancelAnimationFrame
+            || window.webkitCancelAnimationFrame
+            || window.mozCancelAnimationFrame
+            || window.oCancelAnimationFrame
+            || window.msCancelAnimationFrame
+        )
+        : (function (id) {
+            global.clearTimeout(id);
+        })
+    );
     
     /*////////////////////////////////*/
     //global.Console polyfill.(usually for node.js)
@@ -216,7 +217,7 @@
         return ("number" === typeof o || o instanceof Number)
             && !global.isNaN(o)
         ;
-    }
+    };
     
     /**
      * @memberof karbonator
@@ -879,7 +880,7 @@
             }
             
             return v;
-        }
+        };
         
         /**
          * @function
@@ -1321,7 +1322,7 @@
             }
             
             var elemCount = this.getElementCount();
-            if(elemCount != rhs.getElementCount()) {
+            if(elemCount !== rhs.getElementCount()) {
                 return false;
             }
             
@@ -1470,7 +1471,7 @@
         
         /**
          * @function
-         * @param {Boolean}
+         * @param {Boolean} reversed
          */
         BitConverter.prototype.setByteOrderReversed = function (reversed) {
             this._littleEndian = !!reversed;
@@ -1594,7 +1595,7 @@
          * @param {Number} [startIndex=0]
          * @return {Number}
          */
-        BitConverter.prototype.getInt32FromBytes = function (iterable) {
+        BitConverter.prototype.getInt32FromBytes = function (byteArray) {
             return _createIntegerFromBytes(this, byteArray, arguments[1], 4);
         };
         
@@ -2220,7 +2221,7 @@
             var target = _coerceArgumentToInterval(rhs);
             var diff = this._min - target._min;
             return (
-                math.numberEquals(diff, 0, epsilon)
+                math.numberEquals(diff, 0, karbonator.math.epsilon)
                 ? 0
                 : diff
             );
