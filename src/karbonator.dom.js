@@ -2,11 +2,12 @@
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
- * last-modified : 2017-06-21
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
 (function (g, factory) {
+    "use strict";
+    
     if(typeof(define) === "function" && define.amd) {
         define(["./karbonator.collection"], function (karbonator) {
             return factory(g, karbonator);
@@ -35,7 +36,7 @@
     }
     
     /*////////////////////////////////*/
-    //Namespace private constants.
+    //Namespace private constants and functions.
     
     var ElementExist = typeof(global.Element) !== "undefined";
     var WindowExist = typeof(global.Window) !== "undefined";
@@ -53,6 +54,16 @@
     var shiftedNumberKeys = [
         ")", "!", "@", "#", "$", "%", "^", "&", "*", "("
     ];
+    
+    /**
+     * @function
+     * @param {Object} lhs
+     * @param {Object} rhs
+     * @return {Boolean}
+     */
+    var _areBothNull = function (lhs, rhs) {
+        return null === lhs && null === rhs;
+    };
     
     /*////////////////////////////////*/
     
@@ -1083,14 +1094,14 @@
                 }
                 
                 if(
-                    (!karbonator.areBothNull(node.nodeName, otherNode.nodeName) || node.nodeName !== otherNode.nodeName)
-                    || (!karbonator.areBothNull(node.nodeName, otherNode.nodeName) || node.nodeValue !== otherNode.nodeValue)
+                    (!_areBothNull(node.nodeName, otherNode.nodeName) || node.nodeName !== otherNode.nodeName)
+                    || (!_areBothNull(node.nodeName, otherNode.nodeName) || node.nodeValue !== otherNode.nodeValue)
                 ) {
                     return false;
                 }
                 
                 if(
-                    !karbonator.areBothNull(node.childNodes, otherNode.childNodes)
+                    !_areBothNull(node.childNodes, otherNode.childNodes)
                     || (node.childNodes.length != otherNode.childNodes.length)
                 ) {
                     return false;

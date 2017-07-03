@@ -1,12 +1,13 @@
-﻿/**
+/**
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
- * last-modified : 2017-06-21
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
 (function (g, factory) {
+    "use strict";
+    
     if(typeof(define) === "function" && define.amd) {
         define(["./karbonator.collection"], function (karbonator) {
             return factory(g, karbonator);
@@ -21,26 +22,21 @@
     "use strict";
     
     var detail = karbonator.detail;
+    var collection = karbonator.collection;
+    var assertion = karbonator.assertion;
     
+    var Array = global.Array;
     var Symbol = detail._selectSymbol();
     
-    var _charCodeMin = 0x000000;
+    var TreeMap = collection.TreeMap;
+    var ListMap = collection.ListMap;
+    var ListSet = collection.ListSet;
     
-    var _charCodeMax = 0x10FFFF;
-    
-    /**
-     * @function
-     * @param {*} o
-     * @param {String} [message]
-     */
-    var _assertIsKeyGenerator = function (o) {
-        if(!detail._isObject(o) || !detail._isCallable(o.generateKey)) {
-            throw new TypeError(detail._selectNonUndefined(
-                arguments[1],
-                "The argument must be a key generator."
-            ));
-        }
-    };
+    var ByteArray = karbonator.ByteArray;
+    var BitConverter = karbonator.BitConverter;
+    var Interval = karbonator.math.Interval;
+    var Set = collection.ListSet;
+    var Map = collection.ListMap;
     
     /**
      * @memberof karbonator
@@ -49,9 +45,22 @@
     var string = karbonator.string || {};
     karbonator.string = string;
     
-    var Interval = karbonator.math.Interval;
-    var Set = karbonator.collection.ListSet;
-    var Map = karbonator.collection.ListMap;
+    var _minInt = karbonator.minimumSafeInteger;
+    
+    var _maxInt = karbonator.maximumSafeInteger;
+    
+    var _charCodeMin = 0x000000;
+    
+    var _charCodeMax = 0x10FFFF;
+    
+    /**
+     * @readonly
+     * @param {karbonator.math.Interval} l
+     * @param {karbonator.math.Interval} r
+     */
+    var _edgeComparator = function (l, r) {
+        return l[karbonator.compareTo](r);
+    };
     
     /**
      * @function
@@ -67,7 +76,10 @@
      * @enum {Interval}
      */
     var _constInterval = {
-        epsilon : new Interval(detail._minInt, detail._maxInt),
+        epsilon : new Interval(
+            karbonator.minimumSafeInteger,
+            karbonator.maximumSafeInteger
+        ),
         anyCharacters : new Interval(_charCodeMin, _charCodeMax),
         whiteSpaces : new Interval(0x09, 0x0D),
         posixLower : new Interval(0x61, 0x7A),
@@ -131,6 +143,31 @@
     
     /**
      * @function
+     * @param {Number} v
+     */
+    var _assertIsNonNegativeSafeInteger = function (v) {
+        if(!karbonator.isNonNegativeSafeInteger(v)) {
+            throw new Error("The parameter must not be less than zero.");
+        }
+    };
+    
+    /**
+     * @function
+     * @param {*} o
+     * @param {String} [argName]
+     */
+    var _assertIsString = function (o) {
+        if(!karbonator.isString(o)) {
+            throw new TypeError(
+                "The parameter "
+                + (detail._selectNonUndefined(arguments[1], ""))
+                + " must be a string."
+            );
+        }
+    };
+    
+    /**
+     * @function
      * @param {Interval} o
      */
     var _assertIsInterval = function (o) {
@@ -144,984 +181,1720 @@
      * @param {Array.<Interval>} o
      */
     var _assertIsArrayOfIntervals = function (o) {
-        if(!Array.isArray(o)) {
+        if(!karbonator.isArray(o)) {
             throw new TypeError("An array of 'Interval's must be passed.");
         }
         
         for(var i = 0; i < o.length; ++i) {
             var elem = o[i];
-            if(typeof(elem) !== "object" || !(elem instanceof Interval)) {
+            if(!(elem instanceof Interval)) {
                 throw new TypeError("An array of 'Interval's must be passed.");
             }
         }
     };
     
+    /*////////////////////////////////*/
+    //ScannerResult
+    
     /**
-     * @function
-     * @param {Object} o
-     * @return {Object}
+     * @constructor
      */
-    var _defaultCloner = function (o) {
-        return o;
-    };
-      
-    /**
-     * @function
-     * @param {Array} lhs
-     * @param {Array} rhs
-     */
-    var _arrayConcatenateAssign = function (lhs, rhs) {
-        for(var i = 0; i < rhs.length; ++i) {
-            lhs.push(rhs[i]);
-        }
-        
-        return lhs;
+    var ScannerResult = function () {
+        this.error = {
+            code : 0,
+            message : ""
+        };
+        this.position = 0;
+        this.value = "";
     };
     
     /**
      * @function
-     * @param {Map} lhs
-     * @param {Map} rhs
-     * @param {Boolean} [overwrite=true]
-     * @return {Number}
+     * @param {Number} errorCode
+     * @param {String} errorMessage
+     * @param {Number} position
+     * @param {Object} value
      */
-    var _mapUnionAssign = function (lhs, rhs) {
-        if(detail._isUndefined(arguments[2]) || !!arguments[2]) {
-            rhs.forEach(
-                function (value, key) {
-                    this.set(key, value);
-                },
-                lhs
-            );
-        }
-        else {
-            rhs.forEach(
-                function (value, key) {
-                    if(!this.has(key)) {
-                        this.set(key, value);
-                    }
-                },
-                lhs
-            );
-        }
-        
-        return lhs;
+    ScannerResult.prototype.set = function (errorCode, errorMessage, position, value) {
+        this.error.code = errorCode;
+        this.error.message = errorMessage;
+        this.position = position;
+        this.value = value;
     };
     
-    var NfaAndDfa = (function () {
-        var DfaState = null;
-        
-        var Dfa = (function () {
-            var State = (function () {
-                var State = function () {
-                    this._finalState = false;
-                    this._transitionMap = null;
-                };
-                
-                State.prototype.toString = function () {
-                    var str = '{';
-                    
-                    str += "isFinal";
-                    str += " : ";
-                    str += this._finalState;
-                    
-                    str += ", ";
-                    str += "transitionMap";
-                    str += " : ";
-                    str += this._transitionMap;
-                    
-                    str += '}';
-                    
-                    return str;
-                };
-                
-                return State;
-            }());
-            DfaState = State;
-            
-            var Dfa = function () {
-                this._states = null;
-            };
-            
-            Dfa.prototype.toString = function () {
-                var str = '[';
-                
-                var count = this._states.length;
-                if(count > 0) {
-                    str += "0";
-                    str += " => ";
-                    str += this._states[0];
-                }
-                
-                for(var i = 1; i < count; ++i) {
-                    str += ", ";
-                    str += i;
-                    str += " => ";
-                    str += this._states[i];
-                }
-                
-                str += ']';
-                
-                return str;
-            };
-            
-            return Dfa;
-        }());
-        
-        var State = (function () {
-            /**
-             * @constructor
-             * @param {karbonator.comparator} edgeComparator
-             * @param {karbonator.comparator} transitionComparator
-             * @param {Boolean} [isFinal]
-             */
-            var State = function (edgeComparator, transitionComparator) {
-                detail._assertIsComparator(
-                    edgeComparator,
-                    "The parameter 'edgeComparator' must be a comparator function."
-                );
-                detail._assertIsComparator(
-                    transitionComparator,
-                    "The parameter 'transitionComparator' must be a comparator function."
-                );
-                
-                this._edgeComparator = edgeComparator;
-                this._transitionComparator = transitionComparator;
-                
-                this._transitionMap = new Map(edgeComparator);
-                this._finalState = ("undefined" !== typeof(arguments[2]) ? !!arguments[2] : false);
-            };
-            
-            /**
-             * @function
-             * @return {karbonator.comparator}
-             */
-            State.prototype.getEdgeComparator = function () {
-                return this._edgeComparator;
-            };
-            
-            /**
-             * @function
-             * @return {karbonator.comparator}
-             */
-            State.prototype.getTransitionComparator = function () {
-                return this._transitionComparator;
-            };
-            
-            /**
-             * @function
-             * @return {Boolean}
-             */
-            State.prototype.isFinal = function () {
-                return this._finalState;
-            };
-            
-            /**
-             * @function
-             * @param {Boolean} isFinal
-             */
-            State.prototype.setFinal = function (isFinal) {
-                this._finalState = !!isFinal;
-            };
-            
-            /**
-             * @function
-             * @param {Object} edge
-             */
-            State.prototype.getTransitionSet = function (edge) {
-                var transitionSet = this._transitionMap.get(edge);
-                if(detail._isUndefined(transitionSet)) {
-                    transitionSet = new Set(this._transitionComparator);
-                    this._transitionMap.set(edge, transitionSet);
-                }
-                
-                return transitionSet;
-            };
-            
-            return State;
-        }());
+    /*////////////////////////////////*/
+    
+    var RegexVm = (function () {
+        /**
+         * @constructor
+         * @param {Number} returnAddress
+         */
+        var StackFrame = function (returnAddress) {
+            this._returnAddress = returnAddress;
+            this._repStack = [];
+        };
         
         /**
          * @constructor
-         * @param {Object} stateKeyGenerator
-         * @param {karbonator.comparator} stateKeyComparator
-         * @param {karbonator.comparator} edgeComparator
-         * @param {Object} epsilonEdge
          */
-        var Nfa = function (stateKeyGenerator, stateKeyComparator, edgeComparator, epsilonEdge) {
-            _assertIsKeyGenerator(
-                stateKeyGenerator,
-                "The parameter 'stateKeyGenerator' must be a key generator object."
-            );
-            detail._assertIsComparator(
-                stateKeyComparator,
-                "The parameter 'stateKeyComparator' must be a comparator function."
-            );
-            detail._assertIsComparator(
-                edgeComparator,
-                "The parameter 'edgeComparator' must be a comparator function."
-            );
-            detail._assertIsNotUndefinedAndNull(
-                epsilonEdge,
-                "The parameter 'epsilonEdge' must not be undefined and null."
-            );
+        var RegexVm = function () {
+            this._inStr = "";
             
-            this._stateKeyGenerator = stateKeyGenerator;
-            this._stateKeyComparator = stateKeyComparator;
-            this._epsilonEdge = epsilonEdge;
-            this._edgeComparator = edgeComparator;
+            this._bytecode = null;
+            this._bitCvrt = null;
             
-            this._stateMap = new Map(stateKeyComparator);
-            this._startStateKey = null;
+            this._pc = 0;
+            this._consumePtr = 0;
+            this._zFlag = false;
+            this._acceptedTokenKey = -1;
+            this._cursorStack = [];
+            this._stackFrameStack = [];
         };
         
-        /**
-         * @function
-         * @return {karbonator.comparator}
-         */
-        Nfa.prototype.getStateKeyComparator = function () {
-            return this._stateKeyComparator;
-        };
+        /*////////////////////////////////*/
+        //RegexVm.OperandType
         
         /**
-         * @function
-         * @return {karbonator.comparator}
+         * @memberof RegexVm
+         * @constructor
+         * @param {Number} key
+         * @param {String} name
+         * @param {Number} byteCount
          */
-        Nfa.prototype.getEdgeComparator = function () {
-            return this._edgeComparator;
-        };
-        
-        /**
-         * @function
-         * @return {Object}
-         */
-        Nfa.prototype.getEpsilonEdge = function () {
-            return this._epsilonEdge;
+        var OperandType = function (key, name, byteCount) {
+            if(!karbonator.isNonNegativeSafeInteger(key)) {
+                throw new TypeError("The parameter 'key' must be a non-negative safe integer.");
+            }
+            if(!karbonator.isString(name)) {
+                throw new TypeError("The parameter 'name' must be a string.");
+            }
+            if(!karbonator.isNonNegativeSafeInteger(byteCount)) {
+                throw new TypeError("The parameter 'byteCount' must be a non-negative integer.");
+            }
+//            if(!karbonator.isFunction(byteReader)) {
+//                throw new TypeError("The parameter 'byteReader' must be a function.");
+//            }
+            
+            this._key = key;
+            this._name = name;
+            this._byteCount = byteCount;
+            //this._byteReader = byteReader;
         };
         
         /**
          * @function
          * @return {Number}
          */
-        Nfa.prototype.getStateCount = function () {
-            return this._stateMap.getElementCount();
-        };
-        
-        /**
-         * @function
-         * @param {Object} stateKey
-         * @return {Boolean}
-         */
-        Nfa.prototype.hasState = function (stateKey) {
-            detail._assertIsNotUndefinedAndNull(stateKey);
-            
-            return this._stateMap.has(stateKey);
-        };
-        
-        /**
-         * @function
-         * @param {Object} [stateKey]
-         * @param {Boolean} [finalState=false]
-         * @return {Object|null}
-         */
-        Nfa.prototype.addState = function (stateKey) {
-            stateKey = (
-                (!detail._isUndefinedOrNull(stateKey))
-                ? stateKey
-                : (
-                    this._stateKeyGenerator !== null
-                    ? this._stateKeyGenerator.generateKey()
-                    : null
-                )
-            );
-            
-            if(stateKey !== null) {
-                var state = this._stateMap.get(stateKey);
-                if(detail._isUndefined(state)) {
-                    state = new State(
-                        this._edgeComparator,
-                        this._stateKeyComparator,
-                        arguments[1]
-                    );
-                    this._stateMap.set(stateKey, state);
-                }
-            }
-            
-            return stateKey;
-        };
-        
-        /**
-         * @function
-         * @return {Object}
-         */
-        Nfa.prototype.getStartStateKey = function () {
-            return this._startStateKey;
-        };
-        
-        /**
-         * @function
-         * @param {Object} stateKey
-         * @return {Boolean}
-         */
-        Nfa.prototype.setStartState = function (stateKey) {
-            detail._assertIsNotUndefinedAndNull(stateKey);
-            
-            var result = this.hasState(stateKey);
-            if(result) {
-                this._startStateKey = stateKey;
-            }
-            
-            return result;
-        };
-        
-        /**
-         * @function
-         * @param {Object} stateKey
-         * @return {Boolean}
-         */
-        Nfa.prototype.isStateFinal = function (stateKey) {
-            detail._assertIsNotUndefinedAndNull(stateKey);
-            
-            var state = this._stateMap.get(stateKey);
-            
-            return !detail._isUndefined(state) && state.isFinal();
-        };
-        
-        /**
-         * @function
-         * @return {Number}
-         */
-        Nfa.prototype.getFinalStateCount = function () {
-            var count = 0;
-            for(
-                var i = this._stateMap.values(), iP = i.next();
-                !iP.done;
-                iP = i.next()
-            ) {
-                if(iP.value.isFinal()) {
-                    ++count;
-                }
-            }
-            
-            return count;
-        };
-        
-        /**
-         * @function
-         * @return {Array.<Object>}
-         */
-        Nfa.prototype.getFinalStateKeys = function () {
-            var finalStateKeys = [];
-            for(
-                var i = this._stateMap.entries(), iP = i.next();
-                !iP.done;
-                iP = i.next()
-            ) {
-                if(iP.value[1].isFinal()) {
-                    finalStateKeys.push(iP.value[0]);
-                }
-            }
-            
-            return finalStateKeys;
-        };
-        
-        /**
-         * @function
-         * @param {Object} stateKey
-         * @param {Boolean} isFinal
-         * @return {Boolean}
-         */
-        Nfa.prototype.setStateAsFinal = function (stateKey, isFinal) {
-            detail._assertIsNotUndefinedAndNull(stateKey);
-            
-            var state = this._stateMap.get(stateKey);
-            var result = !detail._isUndefined(state);
-            if(result) {
-                state.setFinal(isFinal);
-            }
-            
-            return result;
-        };
-        
-        /**
-         * @function
-         * @param {Object} stateKey
-         * @param {Object} edge
-         * @param {Object} nextStateKey
-         * @return {Boolean}
-         */
-        Nfa.prototype.addTransition = function (stateKey, edge, nextStateKey) {
-            detail._assertIsNotUndefinedAndNull(stateKey);
-            detail._assertIsNotUndefinedAndNull(edge);
-            detail._assertIsNotUndefinedAndNull(nextStateKey);
-            
-            var result = false;
-            if(this.hasState(nextStateKey)) {
-                var state = this._stateMap.get(stateKey);
-                if(!detail._isUndefined(state)) {
-                    state.getTransitionSet(edge).add(nextStateKey);
-                }
-            }
-            
-            return result;
-        };
-        
-        /**
-         * @function
-         * @param {Nfa} nfa
-         * @return {Object}
-         */
-        var _wrapWithNewStartAndEnd = function (nfa) {
-            var result = {
-                prevStartStateKey : nfa._startStateKey,
-                prevFinalStateKeys : nfa.getFinalStateKeys(),
-                newFinalStateKey : -1
-            };
-            
-            var newStartStateKey = nfa.addState();
-            result.newFinalStateKey = nfa.addState();
-            
-            nfa.addTransition(newStartStateKey, nfa._epsilonEdge, result.prevStartStateKey);
-            nfa.setStartState(newStartStateKey);
-            
-            for(var i = 0; i < result.prevFinalStateKeys.length; ++i) {
-                var prevFinalStateKey = result.prevFinalStateKeys[i];
-                nfa._stateMap.get(prevFinalStateKey).setFinal(false);
-                nfa.addTransition(prevFinalStateKey, nfa._epsilonEdge, result.newFinalStateKey);
-            }
-            nfa.setStateAsFinal(result.newFinalStateKey, true);
-            
-            return result;
-        };
-        
-        /**
-         * @function
-         * @return {Nfa}
-         */
-        Nfa.prototype.wrapWithZeroOrMore = function () {
-            var result = _wrapWithNewStartAndEnd(this);
-            for(var i = 0; i < result.prevFinalStateKeys.length; ++i) {
-                var prevFinalStateKey = result.prevFinalStateKeys[i];
-                this.addTransition(prevFinalStateKey, this._epsilonEdge, result.prevStartStateKey);
-            }
-            this.addTransition(this._startStateKey, this._epsilonEdge, result.newFinalStateKey);
-            
-            return this;
-        };
-        
-        /**
-         * @function
-         * @return {Nfa}
-         */
-        Nfa.prototype.wrapWithOneOrMore = function () {
-            var result = _wrapWithNewStartAndEnd(this);
-            for(var i = 0; i < result.prevFinalStateKeys.length; ++i) {
-                var prevFinalStateKey = result.prevFinalStateKeys[i];
-                this.addTransition(prevFinalStateKey, this._epsilonEdge, result.prevStartStateKey);
-            }
-            
-            return this;
-        };
-        
-        /**
-         * @function
-         * @return {Nfa}
-         */
-        Nfa.prototype.wrapWithZeroOrOne = function () {
-            var result = _wrapWithNewStartAndEnd(this);
-            this.addTransition(this._startStateKey, this._epsilonEdge, result.newFinalStateKey);
-            
-            return this;
-        };
-        
-        /**
-         * @function
-         * @param {Nfa} rhs
-         * @return {Nfa}
-         */
-        Nfa.prototype.concatenate = function (rhs) {
-            detail._assertIsNotUndefinedAndNull(rhs);
-            
-            var lhsEndStateKeys = this.getFinalStateKeys();
-            var rhsStartStateKey = rhs._startStateKey;
-            
-            _mapUnionAssign(this._stateMap, rhs._stateMap);
-            
-            for(var i = 0; i < lhsEndStateKeys.length; ++i) {
-                var lhsEndStateKey = lhsEndStateKeys[i];
-                this.setStateAsFinal(lhsEndStateKey, false);
-                this.addTransition(lhsEndStateKey, this._epsilonEdge, rhsStartStateKey);
-            }
-            
-            return this;
-        };
-        
-        /**
-         * @function
-         * @param {Nfa} rhs
-         * @return {Nfa}
-         */
-        Nfa.prototype.alternate = function (rhs) {
-            detail._assertIsNotUndefinedAndNull(rhs);
-            
-            var rhsFinalStateKeys = rhs.getFinalStateKeys();
-            var info = _wrapWithNewStartAndEnd(this);
-            
-            _mapUnionAssign(this._stateMap, rhs._stateMap);
-            
-            this.addTransition(this._startStateKey, this._epsilonEdge, rhs._startStateKey);
-            for(var r = 0; r < rhsFinalStateKeys.length; ++r) {
-                var rhsFinalStateKey = rhsFinalStateKeys[r];
-                this.setStateAsFinal(rhsFinalStateKey, false);
-                this.addTransition(rhsFinalStateKey, this._epsilonEdge, info.newFinalStateKey);
-            }
-            
-            return this;
-        };
-        
-        /**
-         * 같은 상태 수와 같은 전이를 가지는 새로운 nfa 객체를 생성.<br/>
-         * 상태 키는 키 제네레이터로부터 새로 발급 받으며, 상태 전이에 사용되는 edge는 제공되는 edgeCloner 콜백에 의해 결정.
-         * 만약, edgeCloner가 제공되지 않으면 edge의 레퍼런스를 대입하는 얕은 복사를 수행.
-         * @function
-         * @param {karbonator.cloner} [edgeCloner]
-         * @param {Object} [stateKeyGenerator]
-         * @return {Nfa}
-         */
-        Nfa.prototype.clone = function () {
-            var edgeCloner = (typeof(arguments[0]) === "function" ? arguments[0] : _defaultCloner);
-            var stateKeyGenerator = (typeof(arguments[1]) === "function" ? arguments[1] : this._stateKeyGenerator);
-            
-            var stateKeyMap = new Map(this._stateKeyComparator);
-            var cloneOfThis = new Nfa(
-                stateKeyGenerator,
-                this._stateKeyComparator,
-                this._edgeComparator,
-                edgeCloner(this._epsilonEdge)
-            );
-            
-            for(
-                var i = this._stateMap.entries(), iP = i.next();
-                !iP.done;
-                iP = i.next()
-            ) {
-                stateKeyMap.set(iP.value[0], cloneOfThis.addState(null, iP.value[1].isFinal()));
-            }
-            
-            cloneOfThis.setStartState(stateKeyMap.get(this._startStateKey));
-            
-            for(
-                var i = this._stateMap.entries(), iP = i.next(),
-                srcState = null, srcStateKey = null,
-                clonedEdge = null, srcTransitionSet = null,
-                srcTransitionDestStateKey = null;
-                !iP.done;
-                iP = i.next()
-            ) {
-                srcStateKey = iP.value[0];
-                
-                for(
-                    var j = iP.value[1]._transitionMap.entries(), jP = j.next();
-                    !jP.done;
-                    jP = j.next()
-                ) {
-                    clonedEdge = edgeCloner(jP.value[0]);
-                    srcTransitionSet = jP.value[1];
-                    
-                    for(
-                        var k = srcTransitionSet.keys(), kP = k.next();
-                        !kP.done;
-                        kP = k.next()
-                    ) {
-                        srcTransitionDestStateKey = kP.value;
-                        
-                        cloneOfThis.addTransition(
-                            stateKeyMap.get(srcStateKey),
-                            clonedEdge,
-                            stateKeyMap.get(srcTransitionDestStateKey)
-                        );
-                    }
-                }
-            }
-            
-            return cloneOfThis;
-        };
-        
-        var _createContext = function (stateKey) {
-            var context = {
-                stateKey : stateKey,
-                transitionMapIter : null,
-                transitionSetIter : null
-            };
-            
-            return context;
-        };
-        
-        var _createEpsilonClosure = function (stateKey) {
-            var obj = {
-                complete : false,
-                stateSet : new Set(this._stateKeyComparator),
-                transitionMap : new Map(this._edgeComparator)
-            }
-            
-            obj.stateSet.add(stateKey);
-            
-            return obj;
-        };
-        
-        /**
-         * @function
-         * @param {Nfa} nfa
-         * @param {Array.<StateKey>} stateKeyStack
-         * @return {Object}
-         */
-        var _findEpsilonClosure = function (nfa, stateKeyStack) {
-            var stateSet = new Set(nfa._stateKeyComparator);
-            var hasFinalState = false;
-            var transitionMap = new Map(nfa._edgeComparator);
-            
-            for(; stateKeyStack.length > 0; ) {
-                var stateKey = stateKeyStack.pop();
-                if(stateSet.tryAdd(stateKey)) {
-                    var state = nfa._stateMap.get(stateKey);
-                    hasFinalState = (hasFinalState || state.isFinal());
-                    
-                    for(
-                        var i = state._transitionMap.entries(), iP = i.next();
-                        !iP.done;
-                        iP = i.next()
-                    ) {
-                        var edge = iP.value[0];
-                        var nextStateSet = iP.value[1];
-                        if(nfa._edgeComparator(edge, nfa._epsilonEdge) === 0) {
-                            _arrayConcatenateAssign(stateKeyStack, Array.from(nextStateSet));
-                        }
-                        else {
-                            var transitionSet = transitionMap.get(edge);
-                            if(detail._isUndefined(transitionSet)) {
-                                transitionSet = new Set(nfa._stateKeyComparator);
-                                transitionMap.set(edge, transitionSet);
-                            }
-                            
-                            transitionSet.uniteAssign(nextStateSet);
-                        }
-                    }
-                }
-            }
-            
-            return ({
-                stateSet : stateSet,
-                hasFinalState : hasFinalState,
-                transitionMap : transitionMap,
-                toString : function () {
-                    var str = '{';
-                    
-                    str += "stateSet";
-                    str += " : ";
-                    str += this.stateSet;
-                    
-                    str += ", ";
-                    str += "hasFinalState";
-                    str += " : ";
-                    str += this.hasFinalState;
-                    
-                    str += ", ";
-                    str += "transitionMap";
-                    str += " : ";
-                    str += this.transitionMap;
-                    
-                    str += '}';
-                    
-                    return str;
-                }
-            });
-        };
-        
-        /**
-         * @function
-         * @param {Object} stateKey
-         * @return {Object}
-         */
-        Nfa.prototype.findEpsilonClosureOfState = function (stateKey) {
-            detail._assertIsNotUndefinedAndNull(stateKey);
-            
-            var stateKeyStack = [stateKey];
-            
-            return _findEpsilonClosure(this, stateKeyStack);
-        };
-        
-        /**
-         * @function
-         * @param {iterable} iterable
-         * @return {Object}
-         */
-        Nfa.prototype.findEpsilonClosureOfStateSet = function (iterable) {
-            detail._assertIsEsIterable(iterable);
-            
-            var stateKeyStack = [];
-            _arrayConcatenateAssign(stateKeyStack, Array.from(iterable));
-            
-            return _findEpsilonClosure(this, stateKeyStack);
-        };
-        
-        /**
-         * Set l and Set r must have exactly same comparator.<br>
-         * @function
-         * @param {Set.<Object>} l
-         * @param {Set.<Object>} r
-         * @return {Number}
-         */
-        var _stateKeySetComparator = function (l, r) {
-            var lCount = l.getElementCount();
-            var countDiff = lCount - r.getElementCount();
-            if(countDiff === 0) {
-                var intersectionCount = 0;
-                for(
-                    var rIter = r.keys(), rIterPair = rIter.next();
-                    !rIterPair.done;
-                    rIterPair = rIter.next()
-                ) {
-                    if(l.has(rIterPair.value)) {
-                        ++intersectionCount;
-                    }
-                }
-                
-                return lCount - intersectionCount;
-            }
-            
-            return countDiff;
-        };
-        
-        /**
-         * @function
-         * @param {Nfa} nfa
-         * @param {Set}
-         * @return {Boolean}
-         */
-        var _stateSetContainsFinalState = function (nfa, s) {
-            var result = false;
-            
-            for(
-                var i = s.keys(), iP = i.next();
-                !iP.done;
-                iP = i.next()
-            ) {
-                if(nfa.isStateFinal(iP.value)) {
-                    result = true;
-                    break;
-                }
-            }
-            
-            return result;
-        };
-        
-        /**
-         * @function
-         * @param {Nfa} nfa
-         * @param {Map} map
-         * @param {Set} dfaStateKey
-         * @param {Boolean} isFinal
-         * @param {Number} counter
-         * @return {Number}
-         */
-        var _labelDfaState = function (nfa, map, dfaStateKey, isFinal, counter) {
-            map.set(
-                dfaStateKey,
-                {
-                    stateNumber : counter,
-                    isFinal : isFinal,
-                    toString : function () {
-                        var str = '{';
-                        
-                        str += "stateNumber";
-                        str += " : ";
-                        str += this.stateNumber;
-                        
-                        str += ", ";
-                        str += "isFinal";
-                        str += " : ";
-                        str += this.isFinal;
-                        
-                        str += '}';
-                        
-                        return str;
-                    }
-                }
-            );
-            
-            return ++counter;
-        };
-        
-        /**
-         * @function
-         * @return {Dfa}
-         */
-        Nfa.prototype.toDfa = function () {
-            var tempDfa = new Map(_stateKeySetComparator);
-            
-            var eClosureOfStartState = this.findEpsilonClosureOfState(this._startStateKey);
-            var dfaStartStateKey = new Set(this._stateKeyComparator);
-            dfaStartStateKey.add(this._startStateKey);
-            tempDfa.set(dfaStartStateKey, eClosureOfStartState.transitionMap);
-            
-            var dfaStateKeyStack = [];
-            for(
-                var i = eClosureOfStartState.transitionMap.values(), iP = i.next();
-                !iP.done;
-                iP = i.next()
-            ) {
-                dfaStateKeyStack.push(iP.value);
-            }
-            
-            var dfaStateNumber = 0;
-            var labeledDfaStateMap = new Map(_stateKeySetComparator);
-            dfaStateNumber = _labelDfaState(
-                this,
-                labeledDfaStateMap, dfaStartStateKey,
-                this.isStateFinal(this._startStateKey), dfaStateNumber
-            );
-            
-            for(; dfaStateKeyStack.length > 0; ) {
-                var dfaStateKey = dfaStateKeyStack.pop();
-                
-                var dfaStateTransitionMap = tempDfa.get(dfaStateKey);
-                if(detail._isUndefined(dfaStateTransitionMap)) {
-                    //TODO : eClosureOfStartState를 재활용 하도록 수정
-                    var eClosureOfCompoundNfaStates = this.findEpsilonClosureOfStateSet(dfaStateKey);
-                    dfaStateTransitionMap = eClosureOfCompoundNfaStates.transitionMap;
-                    tempDfa.set(dfaStateKey, eClosureOfCompoundNfaStates.transitionMap);
-                    
-                    dfaStateNumber = _labelDfaState(
-                        this,
-                        labeledDfaStateMap, dfaStateKey,
-                        eClosureOfCompoundNfaStates.hasFinalState, dfaStateNumber
-                    );
-                    
-                    for(
-                        var i = dfaStateTransitionMap.values(), iP = i.next();
-                        !iP.done;
-                        iP = i.next()
-                    ) {
-                        dfaStateKeyStack.push(iP.value);
-                    }
-                }
-            }
-            
-            var dfa = new Dfa();
-            dfa._states = new Array(tempDfa.getElementCount());
-            for(
-                var i = tempDfa.entries(), iP = i.next();
-                !iP.done;
-                iP = i.next()
-            ) {
-                var compoundStateKey = iP.value[0];
-                var label = labeledDfaStateMap.get(compoundStateKey);
-                var dfaState = new DfaState();
-                dfaState._finalState = label.isFinal;
-                dfaState._transitionMap = new Map(this._edgeComparator);
-                
-                var transitionMap = iP.value[1];
-                for(
-                    var j = transitionMap.entries(), jP = j.next();
-                    !jP.done;
-                    jP = j.next()
-                ) {
-                    dfaState._transitionMap.set(
-                        jP.value[0],
-                        labeledDfaStateMap.get(jP.value[1]).stateNumber
-                    );
-                }
-                
-                dfa._states[label.stateNumber] = dfaState;
-            }
-            
-            //TODO : Do i really need these lines...?
-            tempDfa.clear();
-            labeledDfaStateMap.clear();
-            
-            return dfa;
+        OperandType.prototype.getKey = function () {
+            return this._key;
         };
         
         /**
          * @function
          * @return {String}
          */
-        Nfa.prototype.toString = function () {
+        OperandType.prototype.getName = function () {
+            return this._name;
+        };
+        
+        /**
+         * @function
+         * @return {Number}
+         */
+        OperandType.prototype.getByteCount = function () {
+            return this._byteCount;
+        };
+        
+//        /**
+//         * @function
+//         * @param {karbonator.ByteArray} byteArray
+//         * @param {Number} [startIndex=0]
+//         * @return {*}
+//         */
+//        OperandType.prototype.readBytes = function (byteArray) {
+//            return this._byteReader.call(this, byteArray, arguments[1]);
+//        };
+        
+        /**
+         * @memberof
+         * @readonly
+         * @enum {Number}
+         */
+        OperandType.keys = {
+            uint16 : 0,
+            int32 : 1,
+            uint32 : 2
+        };
+        
+        /**
+         * @memberof RegexVm.OperandType
+         */
+        OperandType.int16 = new OperandType(
+            OperandType.keys.uint16, "int16", 2
+        );
+        
+        /**
+         * @memberof RegexVm.OperandType
+         */
+        OperandType.int32 = new OperandType(
+            OperandType.keys.int32, "int32", 4
+        );
+        
+        /**
+         * @memberof RegexVm.OperandType
+         */
+        OperandType.uint32 = new OperandType(
+            OperandType.keys.uint32, "uint32", 4
+        );
+        
+        RegexVm.OperandType = OperandType;
+        
+        /*////////////////////////////////*/
+        
+        /*////////////////////////////////*/
+        //RegexVm.Instruction
+        
+        /**
+         * @memberof RegexVm
+         * @constructor
+         * @param {Number} opCode
+         * @param {Array.<Number>} operandSizes
+         * @param {String} mnemonic
+         * @param {Function} action
+         */
+        var Instruction = function (opCode, operandSizes, mnemonic, action) {
+            if(!karbonator.isNonNegativeSafeInteger(opCode)) {
+                throw new TypeError("The parameter 'opCode' must be a non-negative integer.");
+            }
+            if(null !== operandSizes && !karbonator.isArray(operandSizes)) {
+                throw new TypeError("The parameter 'operandSizes' must be an array of 'Number'.");
+            }
+            if(!karbonator.isString(mnemonic)) {
+                throw new TypeError("The parameter 'mnemonic' must be a string.");
+            }
+            if(!karbonator.isFunction(action)) {
+                throw new TypeError("The parameter 'action' must be a function.");
+            }
+            
+            this._opCode = opCode;
+            this._operandSizes = (null === operandSizes ? [] : Array.from(operandSizes));
+            this._mnemonic = mnemonic;
+            this._action = action;
+        };
+        
+        /**
+         * @function
+         * @return {Number}
+         */
+        Instruction.prototype.getOpCode = function () {
+            return this._opCode;
+        };
+        
+        /**
+         * @function
+         * @return {Number}
+         */
+        Instruction.prototype.getOperandCount = function () {
+            return this._operandSizes.length;
+        };
+        
+        /**
+         * @function
+         * @param {Number} index
+         * @return {Number}
+         */
+        Instruction.prototype.getOperandSizeAt = function (index) {
+            if(
+                !karbonator.isNonNegativeSafeInteger(index)
+                || index >= this._operandTypes.length
+            ) {
+                throw new RangeError("Index out of range.");
+            }
+            
+            return this._operandSizes[index];
+        };
+        
+        /**
+         * @function
+         * @return {String}
+         */
+        Instruction.prototype.getMnemonic = function () {
+            return this._mnemonic;
+        };
+        
+        /**
+         * @function
+         * @param {RegexVm} vm
+         */
+        Instruction.prototype.doAction = function (vm) {
+            this._action(vm);
+        };
+        
+        /**
+         * @function
+         * @return {String}
+         */
+        Instruction.prototype.toString = function () {
             var str = '{';
             
-            str += "start : ";
-            str += this._startStateKey;
-            str += ", ";
+            str += "opCode";
+            str += " : ";
+            str += this._opCode.toString(16);
             
-            this._stateMap.forEach(
-                function (state, stateKey) {
-                    str += '{';
-                    str += stateKey;
-                    str += ", ";
-                    
-                    if(state.isFinal()) {
-                        str += "final";
-                        str += ", ";
-                    }
-                    
-                    str += state._transitionMap;
-                    
-                    str += '}';
-                    str += ' ';
-                },
-                this
-            );
+            str += ", ";
+            str += "operandSizes";
+            str += " : ";
+            str += '[' + this._operandSizes + ']';
+            
+            str += ", ";
+            str += "mnemonic";
+            str += " : ";
+            str += '\"' + this._mnemonic + '\"';
             
             str += '}';
             
             return str;
         };
         
-        return ({
-            Nfa : Nfa,
-            Dfa : Dfa
-        });
+        RegexVm.Instruction = Instruction;
+        
+        /*////////////////////////////////*/
+        
+        /*////////////////////////////////*/
+        //RegexVm.Bytecode
+        
+        /**
+         * @memberof RegexVm
+         * @constructor
+         * @param {iterable} intervals
+         * @param {Boolean} littleEndian
+         * @param {karbonator.ByteArray} codeBlock
+         */
+        var Bytecode = function (intervals, littleEndian, codeBlock) {
+            if(!karbonator.isEsIterable(intervals)) {
+                throw new TypeError("The parameter 'intervals' must have the property 'Symbol.iterator'.");
+            }
+            if(!(codeBlock instanceof ByteArray)) {
+                throw new TypeError("The parameter 'codeBlock' must be an instance of 'karbonator.ByteArray'.");
+            }
+            
+            this._intervals = Array.from(intervals);
+            this._littleEndian = !!littleEndian;
+            this._codeBlock = ByteArray.from(codeBlock);
+        };
+        
+        RegexVm.Bytecode = Bytecode;
+        
+        /*////////////////////////////////*/
+        
+        /**
+         * @memberof RegexVm
+         * @private
+         * @readonly
+         */
+        RegexVm._opCodeInstMap = new collection.TreeMap(
+            karbonator.numberComparator,
+            Array.from(
+                [
+                    new Instruction(
+                        0x00,
+                        null,
+                        "nop",
+                        function () {}
+                    ),
+                    new Instruction(
+                        0x01,
+                        [2],
+                        "bra",
+                        function (vm) {
+                            vm._pc += vm._readInt32();
+                        }
+                    ),
+                    new Instruction(
+                        0x02,
+                        [2],
+                        "bne",
+                        function (vm) {
+                            if(!vm._zFlag) {
+                                vm._pc += vm._readInt32();
+                            }
+                        }
+                    ),
+                    new Instruction(
+                        0x03,
+                        [2],
+                        "beq",
+                        function (vm) {
+                            if(vm._zFlag) {
+                                vm._pc += vm._readInt32();
+                            }
+                        }
+                    ),
+                    new Instruction(
+                        0x04,
+                        [4],
+                        "jsr",
+                        function (vm) {
+                            vm._stackFrameStack.push(
+                                new StackFrame(vm._pc)
+                            );
+                            
+                            vm._pc = vm._readUint32();
+                        }
+                    ),
+                    new Instruction(
+                        0x05,
+                        [4],
+                        "jmp",
+                        function (vm) {
+                            vm._pc = vm._readInt32();
+                        }
+                    ),
+                    new Instruction(
+                        0x06,
+                        [4],
+                        "accept",
+                        function (vm) {
+                            vm._acceptedTokenKey = vm._readUint32();
+                            
+                            vm._stackFrameStack.length = 0;
+                        }
+                    ),
+                    new Instruction(
+                        0x07,
+                        null,
+                        "rts",
+                        function (vm) {
+                            vm._pc = vm._getStackFrame()._returnAddress;
+                            vm._stackFrameStack.pop();
+                        }
+                    ),
+                    new Instruction(
+                        0x08,
+                        null,
+                        "skip",
+                        function (vm) {
+                            vm._consumePtr = vm._getCursor();
+                        }
+                    ),
+                    new Instruction(
+                        0x09,
+                        null,
+                        "consume",
+                        function (vm) {
+                            for(var i = vm._consumePtr; i < vm._getCursor(); ++i) {
+                                vm._consumedValues.push(vm._inStr.charCodeAt(i));
+                            }
+                        }
+                    ),
+                    new Instruction(
+                        0x0A,
+                        null,
+                        "clear.z",
+                        function (vm) {
+                            vm._zFlag = false;
+                        }
+                    ),
+                    new Instruction(
+                        0x0B,
+                        null,
+                        "set.z",
+                        function (vm) {
+                            vm._zFlag = true;
+                        }
+                    ),
+                    new Instruction(
+                        0xC,
+                        [4],
+                        "test.input.code",
+                        function (vm) {
+                            vm._zFlag = (vm._readUint32() === vm._inStr.charCodeAt(vm.getCursor()));
+                        }
+                    ),
+                    new Instruction(
+                        0x0D,
+                        [4],
+                        "test.input.range",
+                        function (vm) {
+                            vm._zFlag = vm._getIntervalAt(vm._readUint32()).contains(vm._inStr.charCodeAt(vm._getCursor()));
+                        }
+                    ),
+                    new Instruction(
+                        0x0E,
+                        [4],
+                        "test.rep",
+                        function (vm) {
+                            vm._zFlag = (vm._readUint32() === vm._getRepetition());
+                        }
+                    ),
+                    new Instruction(
+                        0x0F,
+                        [4],
+                        "reserved01",
+                        function () {}
+                    ),
+                    new Instruction(
+                        0x10,
+                        null,
+                        "inc.rep",
+                        function (vm) {
+                            vm._increaseRepetition();
+                        }
+                    ),
+                    new Instruction(
+                        0x11,
+                        null,
+                        "inc.cur",
+                        function (vm) {
+                            vm._increaseCursor();
+                        }
+                    ),
+                    new Instruction(
+                        0x12,
+                        null,
+                        "begin.rep",
+                        function (vm) {
+                            vm._pushRepetition();
+                        }
+                    ),
+                    new Instruction(
+                        0x13,
+                        null,
+                        "push.cur",
+                        function (vm) {
+                            vm._pushCursor();
+                        }
+                    ),
+                    new Instruction(
+                        0x14,
+                        null,
+                        "end.rep",
+                        function (vm) {
+                            vm._popReptition();
+                        }
+                    ),
+                    new Instruction(
+                        0x15,
+                        null,
+                        "pop.cur",
+                        function (vm) {
+                            vm._popCursor();
+                        }
+                    ),
+                    new Instruction(
+                        0x16,
+                        null,
+                        "reserved02",
+                        function () {}
+                    ),
+                    new Instruction(
+                        0x17,
+                        null,
+                        "collapse.cur",
+                        function (vm) {
+                            vm._collapseCursor();
+                        }
+                    )
+                ],
+                function (current) {
+                    return [current.getOpCode(), current];
+                }
+            )
+        );
+        
+        /**
+         * @memberof RegexVm
+         * @readonly
+         * @enum {RegexVm.Instruction}
+         */
+        RegexVm.Instructions = karbonator.appendAsMember(
+            {},
+            Array.from(
+                RegexVm._opCodeInstMap,
+                function (current) {
+                    var instObj = current[1];
+                    var propKey = instObj.getMnemonic().replace(
+                        /(\.[a-z0-9][a-z0-9]*)/g,
+                        function (str) {
+                            var rest = (str.length >= 3 ? str.substring(2) : "");
+                            var first = str.charAt(1).toUpperCase();
+                            return first + rest;
+                        }
+                    );
+                    
+                    return [propKey, instObj];
+                }
+            )
+        );
+        
+        RegexVm.prototype.initialize = function (str) {
+            this._inStr = str;
+            
+            this._bytecode = arguments[1];
+            this._bitCvrt = new BitConverter();
+            this._bitCvrt.setByteOrderReversed(this._bytecode._littleEndian);
+            
+            this._pc = 0;
+            this._consumePtr = 0;
+            this._zFlag = false;
+            this._acceptedTokenKey = -1;
+            this._cursorStack.length = 0;
+            this._cursorStack.push(0);
+            this._stackFrameStack.length = 0;
+            this._stackFrameStack.push(new StackFrame(0));
+            this._consumedValues = [];
+        };
+        
+        RegexVm.prototype.executeAll = function () {
+            
+        };
+        
+        //TODO : Instruction enum 정리
+        RegexVm.prototype.executeNext = function () {x
+            var operand = 0;
+            
+            var opCode = this._bytecode._codeBlock.get(this._pc);
+            ++this._pc;
+            
+            var inst = RegexVm._opCodeInstMap.get(opCode);
+            if(karbonator.isUndefined(inst)) {
+                throw new Error("An invalid opcode has been found.");
+            }
+            
+            inst.doAction(this);
+        };
+        
+        /**
+         * @private
+         * @function
+         * @return {Number}
+         */
+        RegexVm.prototype._readInt16 = function () {
+            var value = this._bitCvrt.getInt16FromBytes(
+                this._bytecode._codeBlock,
+                this._pc
+            );
+            this._pc += 2;
+            
+            return value;
+        };
+        
+        /**
+         * @private
+         * @function
+         * @return {Number}
+         */
+        RegexVm.prototype._readInt32 = function () {
+            var value = this._bitCvrt.getInt32FromBytes(
+                this._bytecode._codeBlock,
+                this._pc
+            );
+            this._pc += 4;
+            
+            return value;
+        };
+        
+        /**
+         * @private
+         * @function
+         * @return {Number}
+         */
+        RegexVm.prototype._readUint32 = function () {
+            var value = this._bitCvrt.getUint32FromBytes(
+                this._bytecode._codeBlock,
+                this._pc
+            );
+            this._pc += 4;
+            
+            return value;
+        };
+        
+        /**
+         * @private
+         * @function
+         * @param {Number} index
+         * @return {karbonator.math.Interval}
+         */
+        RegexVm.prototype._getIntervalAt = function (index) {
+            return this._bytecode._intervals[index];
+        };
+        
+        /**
+         * @private
+         * @function
+         * @return {StackFrame}
+         */
+        RegexVm.prototype._getStackFrame = function () {
+            return this._stackFrameStack[this._stackFrameStack.length - 1];
+        };
+        
+        /**
+         * @private
+         * @function
+         * @return {Array.<Number>}
+         */
+        RegexVm.prototype._getRepetitionStack = function () {
+            return this._getStackFrame()._repStack;
+        };
+        
+        /**
+         * @private
+         * @function
+         * @return {Number}
+         */
+        RegexVm.prototype._getRepetition = function () {
+            var repStack = this._getRepetitionStack();
+            
+            return repStack[repStack.length - 1];
+        };
+        
+        /**
+         * @private
+         * @function
+         */
+        RegexVm.prototype._increaseRepetition = function () {
+            var repStack = this._getRepetitionStack();
+            
+            ++repStack[repStack.length - 1];
+        };
+        
+        /**
+         * @private
+         * @function
+         */
+        RegexVm.prototype._pushRepetition = function () {
+            this._getRepetitionStack().push(this._getRepetition());
+        };
+        
+        /**
+         * @private
+         * @function
+         */
+        RegexVm.prototype._popReptition = function () {
+            this._getRepetitionStack().pop();
+        };
+        
+        /**
+         * @private
+         * @function
+         * @return {Number}
+         */
+        RegexVm.prototype._getCursor = function () {
+            return this._cursorStack[this._cursorStack.length - 1];
+        };
+        
+        /**
+         * @private
+         * @function
+         */
+        RegexVm.prototype._increaseCursor = function () {
+            ++this._cursorStack[this._cursorStack.length - 1];
+        };
+        
+        /**
+         * @private
+         * @function
+         */
+        RegexVm.prototype._pushCursor = function () {
+            this._cursorStack.push(this._getCursor());
+        };
+        
+        /**
+         * @private
+         * @function
+         */
+        RegexVm.prototype._popCursor = function () {
+            this._cursorStack.pop();
+        };
+        
+        /**
+         * @private
+         * @function
+         */
+        RegexVm.prototype._collapseCursor = function () {
+            var current = this._cursorStack.pop();
+            this._cursorStack[this._cursorStack.length - 1] = current;
+        };
+        
+        return RegexVm;
     }());
     
-    var Nfa = NfaAndDfa.Nfa;
-    
-    var Dfa = NfaAndDfa.Dfa;
-    
-    var ScannerResult = (function () {
+    string.Lexer = (function () {
+        var Token = (function () {
+            /**
+             * @constructor
+             * @param {String} name
+             * @param {Nfa} fa
+             * @param {String} regexStr
+             */
+            var Token = function (name, fa, regexStr) {
+                this._name = name;
+                this._fa = fa;
+                this._regexStr = regexStr;
+            };
+            
+            /**
+             * @function
+             * @return {String}
+             */
+            Token.prototype.toString = function () {
+                var str = '{';
+                
+                str += '"';
+                str += this._name;
+                str += '"';
+                
+                str += ", ";
+                str += this._fa.toString();
+                
+                str += ", ";
+                str += '/';
+                str += this._regexStr;
+                str += '/';
+                
+                str += '}';
+                
+                return str;
+            };
+            
+            return Token;
+        }());
+        
         /**
+         * @memberof karbonator.string
          * @constructor
          */
-        var ScannerResult = function () {
-            this.error = {
-                code : 0,
-                message : ""
-            };
-            this.position = 0;
-            this.value = "";
+        var Lexer = function () {
+            this._tokenMap = new Map(karbonator.stringComparator);
+            this._regexVm = new RegexVm();
         };
         
         /**
          * @function
-         * @param {Number} errorCode
-         * @param {String} errorMessage
-         * @param {Number} position
-         * @param {Object} value
+         * @param {String} str
          */
-        ScannerResult.prototype.set = function (errorCode, errorMessage, position, value) {
-            this.error.code = errorCode;
-            this.error.message = errorMessage;
-            this.position = position;
-            this.value = value;
+        Lexer.prototype.inputString = function (str) {
+            this._input = str;
         };
         
-        return ScannerResult;
+        /**
+         * @function
+         * @return {Object}
+         */
+        Lexer.prototype.scanNextToken = function () {
+            
+        };
+        
+        /**
+         * @function
+         */
+        Lexer.prototype.rewind = function () {
+            
+        };
+        
+        /**
+         * @private
+         * @function
+         * @param {String} name
+         * @param {Nfa} fa
+         * @param {String} regexStr
+         */
+        Lexer.prototype._addToken = function (name, fa, regexStr) {
+            this._tokenMap.set(name, new Token(name, fa, regexStr));
+        };
+        
+        return Lexer;
     }());
     
-    var RegexParser = (function () {
-        var _edgeComparator = detail._intervalComparator;
+    string.LexerGenerator = (function () {
+        /*////////////////////////////////*/
+        //AstNode
         
-        var PrimitiveScanner = (function () {
+        /**
+         * @constructor
+         * @param {Number} type
+         * @param {Object} value
+         * @param {Boolean} [rootOfGroup]
+         */
+        var AstNode = function (type, value) {
+            assertion.isTrue(karbonator.isNonNegativeSafeInteger(type));
+            assertion.isTrue(!karbonator.isUndefined(value));
+            
+            this._type = type;
+            this._value = value;
+            this._rootOfGroup = (karbonator.isUndefined(arguments[2]) ? false : !!arguments[2]);
+            this._parent = null;
+            this._children = [];
+        };
+        
+        /**
+         * @memberof AstNode
+         * @private
+         * @function
+         * @param {*} o
+         */
+        AstNode._assertIsAstNode = function (o) {
+            if(!(o instanceof AstNode)) {
+                throw new TypeError("The parameter must be an instance of AstNode.");
+            }
+        };
+        
+        AstNode.CppPrefixIterator = (function () {
             /**
+             * @memberof AstNode
+             * @constructor
+             * @param {AstNode} rootNode
+             * @param {AstNode} currentNode
+             */
+            var CppPrefixIterator = function (rootNode, currentNode) {
+                this._rootNode = rootNode;
+                this._currentNode = currentNode;
+            };
+            
+            /**
+             * @function
+             * @return {Boolean}
+             */
+            CppPrefixIterator.prototype.tryMoveToNext = function () {
+                if(null !== this._currentNode) {
+                    if(this._currentNode.isLeaf()) {
+                        while(null !== this._currentNode) {
+                            var nextSibling = this._currentNode.getNextSibling();
+                            if(null !== nextSibling) {
+                                this._currentNode = nextSibling;
+                                break;
+                            }
+                            
+                            this._currentNode = this._currentNode.getParent();
+                        }
+                    }
+                    else {
+                        this._currentNode = (
+                            this._currentNode.getChildCount() > 0
+                            ? this._currentNode.getChildAt(0)
+                            : null
+                        );
+                    }
+                }
+                
+                return null !== this._currentNode;
+            };
+            
+            /**
+             * @function
+             * @return {AstNode}
+             */
+            CppPrefixIterator.prototype.dereference = function () {
+                assertion.isTrue(null !== this._currentNode);
+                
+                return this._currentNode;
+            };
+            
+            /**
+             * @function
+             * @param {CppPrefixIterator} rhs
+             * @return {Boolean}
+             */
+            CppPrefixIterator.prototype[karbonator.equals] = function (rhs) {
+                if(this === rhs) {
+                    return true;
+                }
+                
+                if(karbonator.isUndefinedOrNull(rhs)) {
+                    return false;
+                }
+                
+                return this._rootNode === rhs._rootNode
+                    && this._currentNode === rhs._currentNode
+                ;
+            }
+            
+            return CppPrefixIterator;
+        }());
+        
+        /**
+         * @function
+         * @return {AstNode}
+         */
+        AstNode.prototype[karbonator.shallowClone] = function () {
+            return new AstNode(
+                this._type,
+                karbonator.shallowCloneObject(this._value),
+                this._rootOfGroup
+            );
+        };
+        
+        /**
+         * @function
+         * @return {Boolean}
+         */
+        AstNode.prototype.isRootOfGroup = function () {
+            return this._rootOfGroup;
+        };
+        
+        /**
+         * @function
+         * @param {Boolean} flag
+         */
+        AstNode.prototype.setRootOfGroup = function (flag) {
+            this._rootOfGroup = !!flag;
+        };
+        
+        /**
+         * @function
+         * @return {Number}
+         */
+        AstNode.prototype.getType = function () {
+            return this._type;
+        };
+        
+        /**
+         * @function
+         * @return {Object}
+         */
+        AstNode.prototype.getValue = function () {
+            return this._value;
+        };
+        
+        /**
+         * @function
+         * @return {Boolean}
+         */
+        AstNode.prototype.isLeaf = function () {
+            return this._children.length < 1;
+        };
+        
+        /**
+         * @function
+         * @return {AstNode|null}
+         */
+        AstNode.prototype.getRoot = function () {
+            var current = this._parent;
+            if(null === current) {
+                return this;
+            }
+            
+            var previous = null;
+            while(null !== current) {
+                previous = current;
+                current = current._parent;
+            }
+            
+            return previous;
+        };
+        
+        /**
+         * @function
+         * @return {AstNode|null}
+         */
+        AstNode.prototype.getParent = function () {
+            return this._parent;
+        };
+        
+        /**
+         * @function
+         * @return {Number}
+         */
+        AstNode.prototype.getChildIndex = function () {
+            var index = -1;
+            if(null !== this._parent) {
+                index = this._parent._children.indexOf(this);
+            }
+            
+            return index;
+        };
+        
+        /**
+         * @function
+         * @return {AstNode|null}
+         */
+        AstNode.prototype.getNextSibling = function () {
+            var nextSibling = null;
+            if(null !== this._parent) {
+                var childIndex = this.getChildIndex() + 1;
+                if(childIndex < this._parent.getChildCount()) {
+                    nextSibling = this._parent.getChildAt(childIndex);
+                }
+            }
+            
+            return nextSibling;
+        };
+        
+        /**
+         * @function
+         * @return {Number}
+         */
+        AstNode.prototype.getChildCount = function () {
+            return this._children.length;
+        };
+        
+        /**
+         * @function
+         * @param {Number} index
+         * @return {AstNode}
+         */
+        AstNode.prototype.getChildAt = function (index) {
+            assertion.isTrue(karbonator.isNonNegativeSafeInteger(index));
+            
+            if(index >= this._children.length) {
+                throw new Error("Index out of range.");
+            }
+            
+            return this._children[index];
+        };
+        
+        /**
+         * @function
+         * @return {AstNode}
+         */
+        AstNode.prototype.getLastChild = function () {
+            if(this.isLeaf()) {
+                throw new Error("The node has no children.");
+            }
+            
+            return this._children[this._children.length - 1];
+        };
+        
+        /**
+         * @function
+         * @param {AstNode} node
+         */
+        AstNode.prototype.addChild = function (child) {
+            AstNode._assertIsAstNode(child);
+            
+            if(this === child) {
+                throw new Error("'this' node cannot be of a child of 'this'.");
+            }
+            
+            if(this._children.includes(child)) {
+                throw new Error("The node already has the 'child' node.");
+            }
+            
+            if(null !== child.getParent()) {
+                child.getParent().removeChild(child);
+            }
+            this._children.push(child);
+            child._parent = this;
+        };
+        
+        /**
+         * @function
+         * @param {iterable} nodes
+         * @param {Number} index
+         */
+        AstNode.prototype.insertChildren = function (nodes, index) {
+            assertion.isTrue(karbonator.isEsIterable(nodes));
+            assertion.isTrue(karbonator.isNonNegativeSafeInteger(index));
+            
+            if(index > this._children.length) {
+                throw new Error("Index out of range.");
+            }
+            
+            for(
+                var iter = nodes[Symbol.iterator](), iterPair = iter.next();
+                !iterPair.done;
+                iterPair = iter.next(), ++index
+            ) {
+                var child = iterPair.value;
+                AstNode._assertIsAstNode(child);
+                
+                if(null !== child.getParent()) {
+                    child.getParent().removeChild(child);
+                }
+                
+                this._children.splice(index, 0, child);
+                child._parent = this;
+            }
+        };
+        
+        /**
+         * @function
+         * @param {AstNode} child
+         * @return {Number}
+         */
+        AstNode.prototype.removeChild = function (child) {
+            assertion.isInstanceOf(child, AstNode);
+            
+            var index = this._children.indexOf(child);
+            if(index >= 0) {
+                this.removeChildAt(index);
+            }
+            
+            return index;
+        };
+        
+        /**
+         * @function
+         * @param {Number} index
+         * @return {AstNode}
+         */
+        AstNode.prototype.removeChildAt = function (index) {
+            assertion.isTrue(karbonator.isNonNegativeSafeInteger(index));
+            
+            if(index > this._children.length) {
+                throw new Error("Index out of range.");
+            }
+            
+            var removedChild = this._children.splice(index, 1)[0];
+            assertion.isTrue(this === removedChild._parent);
+            removedChild._parent = null;
+            
+            return removedChild;
+        };
+        
+        /**
+         * @function
+         * @return {Array.<AstNode>}
+         */
+        AstNode.prototype.removeAllChildren = function () {
+            var removedChildren = this._children.slice();
+            for(var i = 0, count = removedChildren.lenght; i < count; ++i) {
+                assertion.isTrue(this === removedChild._parent);
+                removedChildren[i]._parent = null;
+            }
+            this._children.length = 0;
+            
+            return removedChildren;
+        };
+        
+        /**
+         * @function
+         * @return {AstNode.CppPrefixIterator}
+         */
+        AstNode.prototype.beginPrefix = function () {
+            return new AstNode.CppPrefixIterator(this.getRoot(), this);
+        };
+        
+        /**
+         * @function
+         * @return {AstNode.CppPrefixIterator}
+         */
+        AstNode.prototype.endPrefix = function () {
+            return new AstNode.CppPrefixIterator(this.getRoot(), null);
+        };
+        
+        /**
+         * @function
+         * @param {Function} callback
+         * @param {Object} [thisArg]
+         * @param {Boolean}
+         */
+        AstNode.prototype.traverseByPrefix = function (callback) {
+            if(!karbonator.isCallable(callback)) {
+                throw new TypeError("The callback must be a callable object.");
+            }
+            
+            var thisArg = arguments[1];
+            
+            var nodeStack = [this];
+            
+            var continueTraversal = true;
+            while(continueTraversal && nodeStack.length > 0) {
+                var currentNode = nodeStack.pop();
+                continueTraversal = !callback.call(thisArg, currentNode);
+                
+                if(continueTraversal) {
+                    for(var i = currentNode._children.length; i > 0; ) {
+                        --i;
+                        nodeStack.push(currentNode._children[i]);
+                    }
+                }
+            }
+            
+            return continueTraversal;
+        };
+        
+        /**
+         * @function
+         * @param {Function} callback
+         * @param {Object} [thisArg]
+         * @param {Boolean}
+         */
+        AstNode.prototype.traverseByPostfix = function (callback) {
+            if(!karbonator.isCallable(callback)) {
+                throw new TypeError("The callback must be a callable object.");
+            }
+            
+            var thisArg = arguments[1];
+            
+            var nodeStack = [this];
+            
+            var continueTraversal = true;
+            for(
+                var lastTraversedNode = null;
+                continueTraversal && nodeStack.length > 0;
+            ) {
+                var currentNode = nodeStack[nodeStack.length - 1];
+                if(
+                    !currentNode.isLeaf()                                           
+                    && currentNode.getLastChild() !== lastTraversedNode
+                ) {
+                    for(var i = currentNode._children.length; i > 0; ) {
+                        --i;
+                        nodeStack.push(currentNode._children[i]);
+                    }
+                }
+                else {
+                    continueTraversal = !callback.call(thisArg, currentNode);
+                    lastTraversedNode = currentNode;
+                    nodeStack.pop();
+                }
+            }
+            
+            return continueTraversal;
+        };
+        
+        /**
+         * @function
+         * @param {AstNode} rhs
+         * @return {Boolean}
+         */
+        AstNode.prototype[karbonator.equals] = function (rhs) {
+            if(this === rhs) {
+                return true;
+            }
+            
+            if(karbonator.isUndefinedOrNull(rhs)) {
+                return false;
+            }
+            
+            if(
+                this._type !== rhs._type
+                || this._rootOfGroup !== rhs._rootOfGroup
+            ) {
+                return false;
+            }
+            
+            return karbonator.areEqual(this._value, rhs._value);
+        };
+        
+        /**
+         * @function
+         * @param {AstNode} otherRoot
+         * @return {Boolean}
+         */
+        AstNode.prototype.subtreeEquals = function (otherRoot) {
+            AstNode._assertIsAstNode(otherRoot);
+            
+            var lhsIter = this.beginPrefix();
+            var lhsEndIter = this.endPrefix();
+            var rhsIter = otherRoot.beginPrefix();
+            var rhsEndIter = otherRoot.endPrefix();
+            var result = false;
+            
+            for(var loop = true; loop; ) {
+                var lhsHasNext = !lhsIter[karbonator.equals](lhsEndIter);
+                var rhsHasNext = !rhsIter[karbonator.equals](rhsEndIter);
+                if(lhsHasNext !== rhsHasNext) {
+                    loop = false;
+                }
+                else if(lhsHasNext) {
+                    if(!lhsIter.dereference()[karbonator.equals](rhsIter.dereference())) {
+                        loop = false;
+                    }
+                    else {
+                        lhsIter.tryMoveToNext();
+                        rhsIter.tryMoveToNext();
+                    }
+                }
+                else {
+                    result = true;
+                    loop = false;
+                }
+            }
+            
+            return result;
+        };
+        
+        /**
+         * @function
+         * @return {String}
+         */
+        AstNode.prototype.toString = function () {
+            var context = {
+                str : "",
+                toStringFunc : AstNode._astNodeToString
+            };
+            
+            this.traverseByPostfix(
+                function (node) {
+                    this.str += this.toStringFunc(node);
+                    this.str += "\r\n";
+                },
+                context
+            );
+            
+            return context.str;
+        };
+        
+        /**
+         * @memberof AstNode
+         * @private
+         * @function
+         * @param {AstNode} oThis
+         * @return {String}
+         */
+        AstNode._astNodeToString = function (oThis) {
+            var str = detail._colStrBegin;
+            
+            str += "rootOfGroup";
+            str += " : ";
+            str += oThis._rootOfGroup;
+            
+            str += ", ";
+            str += "type";
+            str += " : ";
+            str += oThis._type;
+            
+            str += ", ";
+            str += "value";
+            str += " : ";
+            str += oThis._value;
+            
+            str += ", ";
+            str += "childCount";
+            str += " : ";
+            str += oThis._children.length;
+            
+            str += detail._colStrEnd;
+            
+            return str;
+        };
+        
+        /*////////////////////////////////*/
+        
+        /*////////////////////////////////*/
+        //OperatorType
+        
+        /**
+         * @constructor
+         * @param {Number} key
+         * @param {String} name
+         * @param {Number} parameterCount
+         * @param {Number} priority
+         * @param {Number} associativity
+         */
+        var OperatorType = function (key, name, parameterCount, priority, associativity) {
+            _assertIsNonNegativeSafeInteger(key);
+            _assertIsString(name);
+            _assertIsNonNegativeSafeInteger(parameterCount);
+            _assertIsNonNegativeSafeInteger(priority);
+            _assertIsNonNegativeSafeInteger(associativity);
+            
+            this._key = key;
+            this._name = name;
+            this._parameterCount = parameterCount;
+            this._priority = priority;
+            this._associativity = associativity;
+        };
+        
+        /**
+         * @function
+         * @return {Number}
+         */
+        OperatorType.prototype.getKey = function () {
+            return this._key;
+        };
+        
+        /**
+         * @function
+         * @return {String}
+         */
+        OperatorType.prototype.getName = function () {
+            return this._name;
+        };
+        
+        /**
+         * @function
+         * @return {Number}
+         */
+        OperatorType.prototype.getParameterCount = function () {
+            return this._parameterCount;
+        };
+        
+        /**
+         * @function
+         * @param {OperatorType} rhs
+         * @return {Boolean}
+         */
+        OperatorType.prototype.precedes = function (rhs) {
+            return rhs._priority < this._priority;
+        };
+        
+        /**
+         * @function
+         * @return {Number}
+         */
+        OperatorType.prototype.getAssociativity = function () {
+            return this._associativity;
+        };
+        
+        /**
+         * @function
+         * @param {OperatorType} rhs
+         * @return {Boolean}
+         */
+        OperatorType.prototype[karbonator.equals] = function (rhs) {
+            if(this === rhs) {
+                return true;
+            }
+            
+            if(karbonator.isUndefinedOrNull(rhs)) {
+                return false;
+            }
+            
+            var result = this._key === rhs._key;
+            if(result) {
+                if(
+                    this._name !== rhs._name
+                    || this._parameterCount !== rhs._parameterCount
+                    || this._priority !== rhs._priority
+                    || this._associativity !== rhs._associativity
+                    || this._action !== rhs._action
+                ) {
+                    throw new Error("Operators that have the same key must have same properties and values.");
+                }
+            }
+            
+            return result;
+        };
+        
+        /**
+         * @function
+         * @return {String}
+         */
+        OperatorType.prototype.toString = function () {
+            var str = '{';
+            
+            str += "name";
+            str += " : ";
+            str += this._name;
+            
+            str += ", ";
+            str += "parameterCount";
+            str += " : ";
+            str += this._parameterCount;
+            
+            str += ", ";
+            str += "priority";
+            str += " : ";
+            str += this._priority;
+            
+            str += '}';
+            
+            return str;
+        };
+        
+        /*////////////////////////////////*/
+        
+        /*////////////////////////////////*/
+        //Operator
+        
+        /**
+         * @constructor
+         * @param {OperatorType} type
+         * @param {Array.<Object>} [staticArgs]
+         */
+        var Operator = function (type) {
+            assertion.isTrue(!karbonator.isNonNegativeSafeInteger(type));
+            
+            this._type = type;
+            this._staticArgs = (
+                karbonator.isUndefined(arguments[1])
+                ? []
+                : Array.from(arguments[1])
+            );
+        };
+        
+        /**
+         * @function
+         * @return {Operator}
+         */
+        Operator.prototype[karbonator.shallowClone] = function () {
+            return new Operator(
+                this._type,
+                karbonator.shallowCloneObject(this._staticArgs)
+            );
+        };
+        
+        /**
+         * @function
+         * @return {OperatorType}
+         */
+        Operator.prototype.getType = function () {
+            return this._type;
+        };
+        
+        /**
+         * @function
+         * @return {Number}
+         */
+        Operator.prototype.getStaticArgumentCount = function () {
+            return this._staticArgs.length;
+        };
+        
+        /**
+         * @function
+         * @return {Array.<Object>}
+         */
+        Operator.prototype.getStaticArguments = function () {
+            return this._staticArgs;
+        };
+        
+        /**
+         * @function
+         * @param {Operator} rhs
+         * @return {Boolean}
+         */
+        Operator.prototype[karbonator.equals] = function (rhs) {
+            if(this === rhs) {
+                return true;
+            }
+            
+            if(karbonator.isUndefinedOrNull(rhs)) {
+                return false;
+            }
+            
+            return this._type === rhs._type
+                && karbonator.areEqual(this._staticArgs, rhs._staticArgs)
+            ;
+        };
+        
+        /**
+         * @function
+         * @return {String}
+         */
+        Operator.prototype.toString = function () {
+            var str = '{';
+            
+            str += "type";
+            str += " : ";
+            str += this._type;
+            
+            str += ", ";
+            str += "staticArgs";
+            str += " : ";
+            str += '[';
+            str += this._staticArgs;
+            str += ']';
+            
+            str += '}';
+            
+            return str;
+        };
+        
+        /*////////////////////////////////*/
+        
+        /**
+         * @readonly
+         * @enum {Number}
+         */
+        var OperatorTypeKeys = {
+            regexAlternation : 0,
+            accept : 1,
+            alternation : 2,
+            concatenation : 3,
+            repetition : 4,
+            nonGreedyRepetition : 5,
+            terminalRangeSetMatch : 6
+        };
+        
+        /**
+         * @readonly
+         * @enum {Number}
+         */
+        var Associativity = {
+            none : 0,
+            leftToRight : 1,
+            rightToLeft : 2
+        };
+        
+        /**
+         * @readonly
+         * @type {Map.<Number, Operator>}
+         */
+        var _opTypeMap = new TreeMap(
+            karbonator.numberComparator,
+            Array.from(
+                [
+                    new OperatorType(
+                        OperatorTypeKeys.regexAlternation,
+                        "regexAlternation",
+                        2, 0,
+                        Associativity.leftToRight
+                    ),
+                    new OperatorType(
+                        OperatorTypeKeys.accept,
+                        "accept",
+                        1, 1,
+                        Associativity.leftToRight
+                    ),
+                    new OperatorType(
+                        OperatorTypeKeys.alternation,
+                        "alternation",
+                        2, 10,
+                        Associativity.leftToRight
+                    ),
+                    new OperatorType(
+                        OperatorTypeKeys.concatenation,
+                        "concatenation",
+                        2, 11,
+                        Associativity.leftToRight
+                    ),
+                    new OperatorType(
+                        OperatorTypeKeys.repetition,
+                        "repetition",
+                        1, 12,
+                        Associativity.leftToRight
+                    ),
+                    new OperatorType(
+                        OperatorTypeKeys.nonGreedyRepetition,
+                        "nonGreedyRepetition",
+                        1, 12,
+                        Associativity.leftToRight
+                    )
+                ],
+                function (current) {
+                    return [current.getKey(), current];
+                }
+            )
+        );
+        
+        /**
+         * @readonly
+         * @enum {Number}
+         */
+        var AstNodeType = {
+            operator : 0,
+            terminalRange : 1
+        };
+        
+        /*////////////////////////////////*/
+        //RegexParser
+        
+        /**
+         * @constructor
+         */
+        var RegexParser = function () {
+            this._exprCtxStack = [];
+            this._pos = 0;
+            this._parsing = false;
+            this._error = {
+                occured : false,
+                message : "",
+                position : 0
+            };
+            
+            this._regexStr = "";
+            this._regexLen = 0;
+            
+            this._edgeSet = new Set(_edgeComparator);
+            this._primitiveScanner = null;
+        };
+        
+        RegexParser.PrimitiveScanner = (function () {
+            /**
+             * @memberof RegexParser
              * @constructor
              */
             var PrimitiveScanner = function () {
@@ -1308,10 +2081,12 @@
                         case '[': case ']': case '-':
                         case '(': case ')':
                         case '*': case '+': case '?':
-                        case '{': case '}': 
+                        case '{': case '}':
                         case '|':
                         case '.':
+                        case '/':
                         case '\\':
+                        case '#':
                         case '"': case '\'':
                         default:
                             intervals.push(
@@ -1351,8 +2126,10 @@
                 var pos = detail._selectNonUndefined(arguments[1], 0);
                 var errorCode = 0;
                 var errorMessage = "";
-                var min = detail._minInt;
-                var max = detail._selectNonUndefined(arguments[2], detail._maxInt);
+                var min = _minInt;
+                var max = detail._selectNonUndefined(arguments[2], _maxInt);
+                var nonGreedy = false;
+                var valid = false;
                 
                 var len = str.length;
                 var state = 0;
@@ -1361,13 +2138,38 @@
                 while(scanning && pos < len) {
                     switch(state) {
                     case 0:
-                        if(str.charAt(pos) === '{') {
+                        switch(str.charAt(pos)) {
+                        case '{':
                             ++pos;
                             ++state;
-                        }
-                        else {
+                        break;
+                        case '*':
+                            min = 0;
+                            max = _maxInt;
+                            
+                            ++pos;
+                            valid = true;
+                            state = 5;
+                        break;
+                        case '+':
+                            min = 1;
+                            max = _maxInt;
+                            
+                            ++pos;
+                            valid = true;
+                            state = 5;
+                        break;
+                        case '?':
+                            min = 0;
+                            max = 1;
+                            
+                            ++pos;
+                            valid = true;
+                            state = 5;
+                        break;
+                        default:
                             errorCode = 1;
-                            errorMessage = "A repetition operator must start with '{'.";
+                            errorMessage = "A repetition operator must start with '*', '+', '?' or '{'.";
                             scanning = false;
                         }
                     break;
@@ -1416,13 +2218,24 @@
                     case 4:
                         if(str.charAt(pos) === '}') {
                             ++pos;
-                            scanning = false;
+                            ++state;
+                            valid = true;
                         }
                         else {
                             errorCode = 5;
                             errorMessage = "A repetition operator must end with '}'.";
                             scanning = false;
                         }
+                    break;
+                    case 5:
+                        if(str.charAt(pos) === '?') {
+                            nonGreedy = true;
+                            
+                            ++pos;
+                        }
+                        
+                        valid = true;
+                        scanning = false;
                     break;
                     default:
                         errorCode = 7;
@@ -1431,7 +2244,7 @@
                     }
                 }
                 
-                if(scanning) {
+                if(scanning && !valid) {
                     errorCode = 6;
                     errorMessage = "Not enough characters for parsing a repetition operator.";
                 }
@@ -1442,7 +2255,10 @@
                     pos,
                     (
                         errorCode === 0
-                        ? new Interval(min, max)
+                        ? ({
+                            nonGreedy : nonGreedy,
+                            range : new Interval(min, max)
+                        })
                         : null
                     )
                 );
@@ -1453,117 +2269,249 @@
             return PrimitiveScanner;
         }());
         
-        var CharacterSetParser = (function () {
-            var ItemType = {
-                character : 0,
-                characterRange : 1,
-                characterSet : 2
-            };
-            
-            var Item = {
-                type : ItemType.character,
-                intervals : []
-            };
-            
+        RegexParser.ExpressionContext = (function () {
             /**
+             * @memberof RegexParser
              * @constructor
              */
-            var CharacterSetParser = function () {
+            var ExpressionContext = function () {
+                this._opStack = [];
+                this._termNodeStack = [];
+                this._lastNodeType = -1;
+            };
+            
+            /**
+             * @function
+             * @return {Number}
+             */
+            ExpressionContext.prototype.getTermNodeCount = function () {
+                return this._termNodeStack.length;
+            };
+            
+            /**
+             * @function
+             * @param {Number} opKey
+             * @param {Array.<Object>} [staticArgs]
+             */
+            ExpressionContext.prototype.pushOperator = function (opKey) {
+                if(!karbonator.isNonNegativeSafeInteger(opKey)) {
+                    throw new TypeError("The parameter 'opKey' must be a non-negative safe integer.");
+                }
                 
-            };
-            
-            /**
-             * @param {String} str
-             * @param {Number} [start=0]
-             * @return {ScannerResult}
-             */
-            CharacterSetParser.prototype.parse = function (str) {                
+                var opType = _opTypeMap.get(opKey);
+                if(karbonator.isUndefinedOrNull(opType)) {
+                    throw new Error("A fatal error has occured. Cannot find the operator type information.");
+                }
                 
+                var op = new Operator(opType, arguments[1]);
+                
+                if(opType.getParameterCount() === 1) {
+                    this._createAndPushOperatorNode(op);
+                }
+                else {
+                    while(
+                        //!this._error.occured
+                        //&&
+                        this._opStack.length > 0
+                    ) {
+                        var lastOp = this._opStack[this._opStack.length - 1];
+                        var lastOpType = lastOp.getType();
+                        if(
+                            lastOpType.precedes(opType)
+                            || (
+                                opType.getAssociativity() === Associativity.leftToRight
+                                && !opType.precedes(lastOpType)
+                            )
+                        ) {
+                            this._createAndPushOperatorNode(lastOp);
+                            this._opStack.pop();
+                        }
+                        else {
+                            break;
+                        }
+                    }
+                    
+                    //if(!this._error.occured) {
+                        this._opStack.push(op);
+                        this._lastNodeType = AstNodeType.operator;
+                    //}
+                }
             };
             
-            return CharacterSetParser;
-        }());
-        
-        var Token = (function () {
             /**
-             * @constructor
-             * @param {Number} type
-             * @param {Object} value
+             * @function
+             * @param {Object} o
              */
-            var Token = function (type, value) {
-                /**@type {Number}*/ this.type = type;
-                /**@type {Object}*/ this.value = value;
+            ExpressionContext.prototype.pushTerm = function (o) {
+                if(
+                    this._termNodeStack.length >= 1
+                    && this._lastNodeType === AstNodeType.terminalRange
+                ) {
+                    this.pushOperator(OperatorTypeKeys.concatenation);
+                }
+                
+                var termNode = null;
+                if(o instanceof AstNode) {
+                    termNode = o;
+                }
+                else if(o instanceof Interval) {
+                    termNode = new AstNode(
+                        AstNodeType.terminalRange,
+                        o
+                    );
+                }
+                else if(karbonator.isArray(o)) {
+                    //TODO : 코드 작성
+                    throw new Error("Write some proper codes!");
+                }
+                
+                if(null !== termNode) {
+                    this._termNodeStack.push(termNode);
+                    this._lastNodeType = AstNodeType.terminalRange;
+                }
             };
             
             /**
-             * @readonly
-             * @enum {Number}
+             * @function
+             * @return {AstNode|null}
              */
-            Token.Type = {
-                operator : 0,
-                character : 1
+            ExpressionContext.prototype.evaluateAll = function () {
+                while(this._opStack.length > 0) {
+                    var op = this._opStack.pop();
+                    this._createAndPushOperatorNode(op);
+                }
+                
+                if(this._termNodeStack.length !== 1) {
+                    //Error
+                    throw new Error("There are some not calculated term nodes.");
+                    
+                    //return null;
+                }
+                else {
+                    return this._termNodeStack.pop();
+                }
             };
             
-            return Token;
+            /**
+             * @private
+             * @function
+             * @param {Operator} op
+             */
+            ExpressionContext.prototype._createAndPushOperatorNode = function (op) {
+                assertion.isInstanceOf(op, Operator);
+                
+                var opType = op.getType();
+                
+                var termNodeCount = this._termNodeStack.length;
+                var paramCount = opType.getParameterCount()
+                if(termNodeCount < paramCount) {
+                    //Error
+                    throw new Error("Not enough parameters.");
+                }
+                
+                var opNode = new AstNode(AstNodeType.operator, op);
+                var startTermNodeIndex = termNodeCount - paramCount;
+                for(var i = startTermNodeIndex; i < termNodeCount; ++i) {
+                    opNode.addChild(this._termNodeStack[i]);
+                }
+                this._termNodeStack.splice(startTermNodeIndex, paramCount);
+                
+                this._termNodeStack.push(opNode);
+                
+                //TODO : 코드 최적화
+                if(paramCount === 2) {
+                    var childNode = null;
+                    
+                    switch(opType.getAssociativity()) {
+                    case Associativity.none:
+                    break;
+                    case Associativity.leftToRight:
+                        childNode = opNode.getChildAt(0);
+                        if(
+                            !childNode.isRootOfGroup()
+                            && childNode.getType() === AstNodeType.operator
+                            && childNode.getValue().getType()[karbonator.equals](op.getType())
+                            //A stub for static argument array comparison.
+                            && (
+                                op.getStaticArgumentCount() === 0
+                                && childNode.getValue().getStaticArgumentCount() === 0
+                            )
+                        ) {
+                            opNode.removeChildAt(0);
+                            opNode.insertChildren(
+                                childNode.removeAllChildren(),
+                                0
+                            );
+                        }
+                    break;
+                    //TODO : 코드 검증
+                    case Associativity.rightToLeft:
+                        childNode = opNode.getChildAt(1);
+                        if(
+                            !childNode.isRootOfGroup()
+                            && childNode.getType() === AstNodeType.operator
+                            && childNode.getValue().getType()[karbonator.equals](op.getType())
+                            //A stub for static argument array comparison.
+                            && (
+                                op.getStaticArgumentCount() === 0
+                                && childNode.getValue().getStaticArgumentCount() === 0
+                            )
+                        ) {
+                            opNode.removeChildAt(1);
+                            opNode.insertChildren(
+                                childNode.removeAllChildren(),
+                                opNode.getChildCount()
+                            );
+                        }
+                    break;
+                    default:
+                        throw new Error("An unknown associativity value of an operator has been found.");
+                    }
+                }
+                
+                this._lastNodeType = AstNodeType.terminalRange;
+            };
+            
+            return ExpressionContext;
         }());
-        
-        /**
-         * @constructor
-         * @param {Object} stateKeyGenerator
-         */
-        var RegexParser = function (stateKeyGenerator) {
-            this._stateKeyGenerator = stateKeyGenerator;
-            
-            /**@type {Array.<String>}*/ this._opStack = [];
-            /**@type {Array.<Token>}*/ this._tokenStack = [];
-            this._lastTokenType = -1;
-            this._primitiveScanner = new PrimitiveScanner();
-            
-            this._pos = 0;
-            this._parsing = true;
-            
-            this._error = {
-                occured : false,
-                message : "",
-                position : 0
-            };
-            
-            this._regexStr = "";
-            this._regexLen = 0;
-        };
         
         /**
          * @function
          * @param {String} regexStr
          */
         RegexParser.prototype.inputString = function (regexStr) {
-            this._regexStr += regexStr;
-            this._regexLen += regexStr.length;
+            this._regexStr = regexStr;
+            this._regexLen = regexStr.length;
             
-            this._opStack.length = 0;
-            this._tokenStack.length = 0;
-            this._lastTokenType = -1;
+            this._initializeContext();
             this._parsing = true;
+        };
+        
+        /**
+         * @private
+         * @function
+         */
+        RegexParser.prototype._initializeContext = function () {
+            if(null === this._primitiveScanner) {
+                this._primitiveScanner = new RegexParser.PrimitiveScanner();
+            }
+            
+            this._exprCtxStack.length = 0;
+            this._exprCtxStack.push(new RegexParser.ExpressionContext());
+            this._pos = 0;
             this._error.occured = false;
         };
         
         /**
          * @function
-         * @returns {Boolean}
+         * @param {String} name
+         * @return {AstNode}
          */
-        RegexParser.prototype.isParsingNotComplete = function () {
-            return this._parsing && this._pos < this._regexLen;
-        };
-        
-        var _zeroOrMoreInterval = new Interval(0, Number.MAX_SAFE_INTEGER);
-        var _oneOrMoreInterval = new Interval(1, Number.MAX_SAFE_INTEGER);
-        var _zeroOrOneInterval = new Interval(0, 1);
-        
-        /**
-         * @function
-         * @return {Nfa}
-         */
-        RegexParser.prototype.createNfa = function () {
+        RegexParser.prototype.createAst = function (name) {
+            if(!karbonator.isString(name)) {
+                throw new TypeError("The parameter must be a string representing the name of the regular expression.");
+            }
+            
             /*/////////////////////////////////////////////*/
             //1. infix to postfix 및 postfix 계산기 기법 활용
             //2. 반복 연산자는 연산자 스택에 넣지 말고
@@ -1575,13 +2523,15 @@
             //5. character-term이 입력되면 concat 연산자를 먼저 연산자 스택에 push하고
             //   입력된 character-term을 토큰 스택에 push.
             
-            /**@type {ScannerResult}*/var scannerResult = null;
-            /**@type {Interval}*/var repRange = null;
-            var intervals = [];
-            for(; this.isParsingNotComplete(); ) {
+            while(this._parsing && this._pos < this._regexLen) {
+                var groupRootNode = null;
+                var scannerResult = null;
+                var exprCtx = this._getLastExpressionContext();
                 var ch = this._regexStr.charAt(this._pos);
-                var chCode = this._regexStr.charCodeAt(this._pos);
                 switch(ch) {
+                case '\r': case '\n':
+                    //Skip those characters.
+                break;
                 case '^':
                     this._updateErrorAndStopParsing("Start of string meta character is not implemented yet...");
                 break;
@@ -1589,115 +2539,74 @@
                     this._updateErrorAndStopParsing("End of string meta character is not implemented yet...");
                 break;
                 case '(':
-                    if(this._isLastTokenTypeCharacter()) {
-                        this._pushOperator('.');
-                    }
-                    this._pushOperator('(');
-                    this._moveToNextCharacter();
+                    this._exprCtxStack.push(new RegexParser.ExpressionContext());
+                    
+                    this._moveToNextIfNoError();
                 break;
                 case ')':
-                    this._evaluateGroupedTokens();
-                    this._moveToNextCharacter();
-                break;
-                case '*':
-                case '+':
-                case '?':
-                case '{':
-                    if(this._isLastTokenTypeCharacter()) {
-                        var lastToken = this._getLastToken();
-                        switch(ch) {
-                        case '*':
-                            lastToken.value.wrapWithZeroOrMore();
-                            this._moveToNextCharacter();
-                        break;
-                        case '+':
-                            lastToken.value.wrapWithOneOrMore();
-                            this._moveToNextCharacter();
-                        break;
-                        case '?':
-                            lastToken.value.wrapWithZeroOrOne();
-                            this._moveToNextCharacter();
-                        break;
-                        case '{':
-                            scannerResult = this._primitiveScanner.scanRepetitionOperator(this._regexStr, this._pos);
-                            if(scannerResult.error.code === 0) {
-                                repRange = scannerResult.value;
-                                if(repRange.getMaximum() < 1) {
-                                    this._updateErrorAndStopParsing("The maximum value argument of a repetition operator must be greater than or equal to one.");
-                                }
-                                else {
-                                    //TODO : Refactor this ugly and sutpid code...
-                                    if(repRange.equals(_zeroOrMoreInterval)) {
-                                        lastToken.value.wrapWithZeroOrMore();
-                                    }
-                                    else if(repRange.equals(_oneOrMoreInterval)) {
-                                        lastToken.value.wrapWithOneOrMore();
-                                    }
-                                    else if(repRange.equals(_zeroOrOneInterval)) {
-                                        lastToken.value.wrapWithZeroOrOne();
-                                    }
-                                    else {
-                                        var repeatedNfa = lastToken.value.clone();
-                                        
-                                        for(var j = 2; j < repRange.getMinimum(); ++j) {
-                                            repeatedNfa.concatenate(lastToken.value.clone());
-                                        }
-                                        
-                                        if(repRange.getMaximum() >= detail._maxInt) {
-                                            repeatedNfa.concatenate(lastToken.value.clone().wrapWithZeroOrMore());
-                                        }
-                                        else {
-                                            for(
-                                                var j = 0, repCount = repRange.getMaximum() - repRange.getMinimum();
-                                                j < repCount;
-                                                ++j
-                                            ) {
-                                                repeatedNfa.concatenate(lastToken.value.clone().wrapWithZeroOrOne());
-                                            }
-                                        }
-                                        
-                                        lastToken.value.concatenate(repeatedNfa);
-                                    }
-                                    
-                                    this._pos = scannerResult.position;
-                                }
-                            }
-                            else {
-                                this._updateErrorAndStopParsing(scannerResult.error.message);
-                            }
-                        break;
-                        default:
-                            this._updateErrorAndStopParsing("An unknown repetition operator has been found.");
+                    if(this._exprCtxStack.length >= 1) {
+                        groupRootNode = exprCtx.evaluateAll();
+                        if(null !== groupRootNode) {
+                            groupRootNode.setRootOfGroup(true);
+                            this._exprCtxStack.pop();
+                            this._getLastExpressionContext().pushTerm(groupRootNode);
+                            
+                            this._moveToNextIfNoError();
+                        }
+                        else {
+                            //Error - 
+                            throw new Error("");
                         }
                     }
                     else {
-                        this._updateErrorAndStopParsing("The repetition opeartor requires a character-like argument.");
+                        //Error - 
+                        throw new Error("");
+                    }
+                break;
+                case '?': case '*':
+                case '+': case '{':
+                    scannerResult = this._primitiveScanner.scanRepetitionOperator(
+                        this._regexStr,
+                        this._pos
+                    );
+                    if(scannerResult.error.code === 0) {
+                        exprCtx.pushOperator(
+                            (
+                                scannerResult.value.nonGreedy
+                                ? OperatorTypeKeys.nonGreedyRepetition
+                                : OperatorTypeKeys.repetition
+                            ),
+                            [scannerResult.value.range]
+                        );
+                        
+                        this._pos = scannerResult.position;
+                    }
+                    else {
+                        this._updateErrorAndStopParsing(scannerResult.error.message);
                     }
                 break;
                 case '}':
                     this._updateErrorAndStopParsing("An invalid token that specifies end of constrained repetition has been found.");
                 break;
                 case '|':
-                    this._pushOperator('|');
-                    this._moveToNextCharacter();
+                    exprCtx.pushOperator(OperatorTypeKeys.alternation);
+                    
+                    this._moveToNextIfNoError();
                 break;
                 case '[':
                     this._updateErrorAndStopParsing("Character set is not implemented yet...");
-//                        intervals = this._parseCharacterSet();
-//                        if(!this._error.occured) {
-//                            this._pushCharacterRanges(intervals);
-//                            this._moveToNextCharacter();
-//                        }
                 break;
                 case ']':
                     this._updateErrorAndStopParsing("An invalid token that specifies end of a character set has been found.");
                 break;
                 case '\\':
                     scannerResult = this._primitiveScanner.scanEscapedCharacter(
-                        this._regexStr, this._pos
+                        this._regexStr,
+                        this._pos
                     );
                     if(scannerResult.error.code === 0) {
-                        this._pushCharacterRanges(scannerResult.value);
+                        exprCtx.pushTerm(scannerResult.value);
+                        
                         this._pos = scannerResult.position;
                     }
                     else {
@@ -1705,245 +2614,67 @@
                     }
                 break;
                 case '.':
-                    this._pushCharacterRange(_constInterval.anyCharacters);
-                    this._moveToNextCharacter();
+                    exprCtx.pushTerm(_constInterval.anyCharacters);
+                    
+                    this._moveToNextIfNoError();
                 break;
                 default:
-                    this._pushCharacterRange(_createIntervalFromCharCode(chCode));
-                    this._moveToNextCharacter();
+                    exprCtx.pushTerm(
+                        _createIntervalFromCharCode(
+                            this._regexStr.charCodeAt(this._pos)
+                        )
+                    );
+                    
+                    this._moveToNextIfNoError();
                 }
             }
             
-            var finalNfa = null;
+            var astRootNode = null;
+            var exprRootNode = null;
             if(this._parsing) {
                 this._parsing = false;
-                this._evaluateGroupedTokens();
-                
-                if(this._tokenStack.length === 1) {
-                    finalNfa = this._tokenStack[0].value;
-                }
-                else {
-                    this._updateErrorAndStopParsing("An unknown parsing token error has been occured.");
-                }
+                exprRootNode = this._getLastExpressionContext().evaluateAll();
             }
             
-            return finalNfa;
-        };
-        
-        /**
-         * @function
-         * @param {RegexParser} oThis
-         * @param {String} op
-         */
-        var _hasLowerPriorityThanLast = function (oThis, op) {
-            if(oThis._opStack.length < 1) {
-                return false;
+            if(null === exprRootNode) {
+                this._updateErrorAndStopParsing("An unknown parsing token error has been occured.");
+            }
+            else {
+                //TODO : 토큰 맵에서 토큰 인덱스 찾아내기
+                astRootNode = new AstNode(
+                    AstNodeType.operator,
+                    new Operator(
+                        _opTypeMap.get(OperatorTypeKeys.accept),
+                        [0]//name]
+                    )
+                );
+                astRootNode.addChild(exprRootNode);
             }
             
-            var lastOp = oThis._opStack[oThis._opStack.length - 1];
-            
-            return op === '|' && lastOp === '.';
+            return astRootNode;
         };
         
         /**
          * @private
          * @function
-         * @param {String} op
+         * @return {RegexParser.ExpressionContext}
          */
-        RegexParser.prototype._pushOperator = function (op) {
-            for(; !this._error.occured && this._opStack.length > 0 && _hasLowerPriorityThanLast(this, op); ) {
-                var lastOp = this._opStack[this._opStack.length - 1];
-                if(lastOp !== '(') {
-                    this._opStack.pop();
-                    this._evaluateOperator(lastOp);
-                }
-            }
-            
+        RegexParser.prototype._getLastExpressionContext = function () {
+            return this._exprCtxStack[this._exprCtxStack.length - 1];
+        };
+        
+        /**
+         * @private
+         * @function
+         */
+        RegexParser.prototype._moveToNextIfNoError = function () {
             if(!this._error.occured) {
-                this._opStack.push(op);
-                this._lastTokenType = Token.Type.operator;
-            }
-        };
-        
-        /**
-         * @function
-         * @param {RegexParser} oThis
-         * @param {Interval} edge
-         * @reutrn {Nfa}
-         */
-        var _createNfaFromInterval = function (oThis, edge) {
-            _assertIsInterval(edge);
-            
-            var nfa = new Nfa(
-                oThis._stateKeyGenerator,
-                detail._numberComparator,
-                _edgeComparator,
-                _constInterval.epsilon
-            );
-            var startKey = nfa.addState();
-            var endKey = nfa.addState();
-            nfa.addTransition(startKey, edge, endKey);
-            nfa.setStartState(startKey);
-            nfa.setStateAsFinal(endKey, true);
-            
-            return nfa;
-        };
-        
-        /**
-         * @function
-         * @param {RegexParser} oThis
-         * @param {Array.<Interval>} edges
-         * @reutrn {Nfa}
-         */
-        var _createNfaFromIntervals = function (oThis, edges) {
-            _assertIsArrayOfIntervals(edges);
-            
-            var nfa = new Nfa(
-                oThis._stateKeyGenerator,
-                detail._numberComparator,
-                _edgeComparator,
-                _constInterval.epsilon
-            );
-            var startKey = nfa.addState();
-            var endKey = nfa.addState();
-            var disjoinedEdges = Interval.disjoin(edges);
-            for(var i = 0; i < disjoinedEdges.length; ++i) {
-                nfa.addTransition(startKey, disjoinedEdges[i], endKey);
-            }
-            nfa.setStartState(startKey);
-            nfa.setStateAsFinal(endKey, true);
-            
-            return nfa;
-        };
-        
-        /**
-         * @private
-         * @function
-         * @param {Interval} interval
-         */
-        RegexParser.prototype._pushCharacterRange = function (interval) {
-            this._pushCharacterToken(_createNfaFromInterval(this, interval));
-        };
-        
-        /**
-         * @private
-         * @function
-         * @param {Array.<Interval>} intervals
-         */
-        RegexParser.prototype._pushCharacterRanges = function (intervals) {
-            this._pushCharacterToken(_createNfaFromIntervals(this, intervals));
-        };
-        
-        /**
-         * @private
-         * @function
-         * @param {Nfa} nfa
-         */
-        RegexParser.prototype._pushCharacterToken = function (nfa) {
-            if(this._isLastTokenTypeCharacter()) {
-                this._pushOperator('.');
-            }
-            
-            this._tokenStack.push(new Token(
-                Token.Type.character,
-                nfa
-            ));
-            this._lastTokenType = Token.Type.character;
-        };
-        
-        /**
-         * @private
-         * @function
-         * @return {Token|null}
-         */
-        RegexParser.prototype._getLastToken = function () {
-            return (
-                this._tokenStack.length > 0
-                ? this._tokenStack[this._tokenStack.length - 1]
-                : null
-            );
-        };
-        
-        /**
-         * @private
-         * @function
-         * @return {Boolean}
-         */
-        RegexParser.prototype._isLastTokenTypeCharacter = function () {
-            return this._lastTokenType === Token.Type.character;
-        };
-        
-        /**
-         * @private
-         * @function
-         */
-        RegexParser.prototype._evaluateGroupedTokens = function () {
-            var complete = false, op;
-            for(; !complete && !this._error.occured && this._opStack.length > 0; ) {
-                op = this._opStack.pop();
-                switch(op) {
-                case '(':
-                    complete = true;
-                break;
-                default:
-                    this._evaluateOperator(op);
-                }
-            }
-            
-            if(!complete && this._parsing) {
-                this._updateErrorAndStopParsing("A sub expression must start with '('.");
+                ++this._pos;
             }
         };
         
         /**
          * @private
-         * @function
-         * @param {String} op
-         */
-        RegexParser.prototype._evaluateOperator = function (op) {
-            switch(op) {
-            case '.':
-                if(this._tokenStack.length >= 2) {
-                    var rhs = this._tokenStack.pop();
-                    if(rhs.type !== Token.Type.character) {
-                        this._updateErrorAndStopParsing("The concatenation opeartor requires 2 character-like arguments.");
-                    }
-                    
-                    var lhs = this._tokenStack[this._tokenStack.length - 1];
-                    if(lhs.type !== Token.Type.character) {
-                        this._updateErrorAndStopParsing("The concatenation opeartor requires 2 character-like arguments.");
-                    }
-                    
-                    lhs.value.concatenate(rhs.value);
-                }
-                else {
-                    this._updateErrorAndStopParsing("The concatenation opeartor requires 2 character-like arguments.");
-                }
-            break;
-            case '|':
-                if(this._tokenStack.length >= 2) {
-                    var rhs = this._tokenStack.pop();
-                    if(rhs.type !== Token.Type.character) {
-                        this._updateErrorAndStopParsing("The alternation opeartor requires 2 character-like arguments.");
-                    }
-                    
-                    var lhs = this._tokenStack[this._tokenStack.length - 1];
-                    if(lhs.type !== Token.Type.character) {
-                        this._updateErrorAndStopParsing("The alternation opeartor requires 2 character-like arguments.");
-                    }
-                    
-                    lhs.value.alternate(rhs.value);
-                }
-                else {
-                    this._updateErrorAndStopParsing("The alternation opeartor requires 2 character-like arguments.");
-                }
-            break;
-            default:
-                this._updateErrorAndStopParsing("An unknown operator has been found.");
-            }
-        };
-        
-        /**
          * @function
          * @param {String} [message]
          * @param {Number} [position]
@@ -1958,159 +2689,433 @@
             this._parsing = false;
         };
         
+        /*////////////////////////////////*/
+        
+        /*////////////////////////////////*/
+        //InstructionBuffer
+        
+        /**
+         * @constructor
+         * @param {Boolean} byteOrderReversed
+         */
+        var InstructionBuffer = function (byteOrderReversed) {
+            this._byteOrderReversed = byteOrderReversed;
+//            this._bitCvrt = new BitConverter();
+//            this._bitCvrt.setByteOrderReversed(this._byteOrderReversed);
+            
+            this._insts = [];
+        };
+        
         /**
          * @function
-         * @param {Boolean}
+         * @return {Number}
          */
-        RegexParser.prototype._moveToNextCharacter = function () {
-            var hasNext = this._pos < this._regexLen;
-            if(hasNext) {
-                ++this._pos;
+        InstructionBuffer.getCount = function () {
+            return this._insts.length;
+        };
+        
+        /**
+         * @function
+         * @param {InstructionBuffer} rhs
+         * @return {InstructionBuffer}
+         */
+        InstructionBuffer.prototype.consume = function (rhs) {
+            for(var i = 0, len = rhs._insts.length; i < len; ++i) {
+                this._insts.push(rhs._insts[i]);
             }
             
-            return hasNext;
+            rhs.clear();
+            
+            return this;
         };
         
-        return RegexParser;
-    }());
-    
-    string.Lexer = (function () {
-        var Token = (function () {
-            /**
-             * @constructor
-             * @param {String} name
-             * @param {Nfa} fa
-             * @param {String} regexStr
-             */
-            var Token = function (name, fa, regexStr) {
-                this._name = name;
-                this._fa = fa;
-                this._regexStr = regexStr;
-            };
+        /**
+         * @function
+         * @param {RegexVm.Instruction} inst
+         * @param {...Number} [operands]
+         * @return {InstructionBuffer}
+         */
+        InstructionBuffer.prototype.put = function (inst) {
+            if(!(inst instanceof RegexVm.Instruction)) {
+                throw new TypeError("The parameter 'inst' must be an instance of 'RegexVm.Instruction.'.");
+            }
             
-            /**
-             * @function
-             * @return {String}
-             */
-            Token.prototype.toString = function () {
-                var str = '{';
-                
-                str += '"';
-                str += this._name;
-                str += '"';
-                
-                str += ", ";
-                str += this._fa.toString();
-                
-                str += ", ";
-                str += '/';
-                str += this._regexStr;
-                str += '/';
-                
-                str += '}';
-                
-                return str;
-            };
+            var args = Array.of(arguments);
+            for(var i = 1; i < args.length; ++i) {
+                if(!karbonator.isNumber(args[i])) {
+                    throw new TypeError("Optional arguments must be numbers.");
+                }
+            }
+
+            this._insts.push(inst.getOpCode());
+            for(var i = 1; i < args.length; ++i) {
+                this._insts.push(args[i]);
+            }
             
-            return Token;
-        }());
+            return this;
+        };
         
         /**
-         * @memberof karbonator.string
+         * @function
+         * @return {InstructionBuffer}
+         */
+        InstructionBuffer.prototype.clear = function () {
+            this._insts.length = 0;
+            
+            return this;
+        };
+        
+        /**
+         * @function
+         * @return {karbonator.ByteArray}
+         */
+        InstructionBuffer.prototype.printCodeBlock = function () {
+            var codeBlock = new ByteArray();
+            
+            debugger;
+            //TODO : 메소드 작성
+            
+            return codeBlock;
+        };
+        
+        /*////////////////////////////////*/
+        
+        /*////////////////////////////////*/
+        //CodeEmitter
+        
+        /**
          * @constructor
          */
-        var Lexer = function () {
-            this._tokenMap = new Map(detail._stringComparator);
-            this._inStr = "";
-            this._pos = 0;
-        };
-        
-        /**
-         * @function
-         * @param {String} str
-         */
-        Lexer.prototype.inputString = function (str) {
-            this._inStr += str;
-        };
-        
-        /**
-         * @function
-         * @return {Object}
-         */
-        Lexer.prototype.scanNextToken = function () {
+        var CodeEmitter = function () {
+            this._intervalListSet = new ListSet(_edgeComparator);
+            this._nodeCodeMap = new ListMap(
+                function (l, r) {
+                    return (l === r ? 0 : -1);
+                }
+            );
             
+            this._byteOrderReversed = true;
+            this._rootNode = null;
         };
         
         /**
          * @function
+         * @param {AstNode} rootNode
+         * @return {RegexVm.Bytecode} 
          */
-        Lexer.prototype.rewind = function () {
-            this._pos = 0;
+        CodeEmitter.prototype.emitBytecode = function (rootNode) {
+            if(!(rootNode instanceof AstNode)) {
+                throw new TypeError("The parameter must be an instance of 'AstNode'.");
+            }
+            
+            this._intervalListSet.clear();
+            this._nodeCodeMap.clear();
+            this._rootNode = rootNode;
+            
+            for(
+                var iter = this._rootNode.beginPrefix(),
+                endIter= this._rootNode.endPrefix();
+                !iter[karbonator.equals](endIter);
+                iter.tryMoveToNext()
+            ) {
+                this._processNode(iter.dereference());
+            }
+            
+            var instBuffer = this._nodeCodeMap.get(rootNode);
+            var codeBlock = instBuffer.printCodeBlock();
+            
+            return new RegexVm.Bytecode(
+                Array.from(this._intervalListSet),
+                this._byteOrderReversed,
+                codeBlock
+            );
         };
         
         /**
          * @private
          * @function
-         * @param {String} name
-         * @param {Nfa} fa
-         * @param {String} regexStr
+         * @param {AstNode} node
          */
-        Lexer.prototype._addToken = function (name, fa, regexStr) {
-            this._tokenMap.set(name, new Token(name, fa, regexStr));
+        CodeEmitter.prototype._processNode = function (node) {
+            if(this._nodeCodeMap.has(node)) {
+                throw new Error("The node has been already processed.");
+            }
+            
+            var buffer = null;
+            switch(node.getType()) {
+            case AstNodeType.operator:
+                var op = node.getValue();
+                switch(op.getType().getKey()) {
+                case OperatorTypeKeys.accept:
+                    buffer = this._visitAccept(node, op.getStaticArguments()[0]);
+                break;
+                case OperatorTypeKeys.regexAlternation:
+                case OperatorTypeKeys.alternation:
+                    buffer = this._visitAlternation(node);
+                break;
+                case OperatorTypeKeys.concatenation:
+                    buffer = this._visitConcatenation(node);
+                break;
+                case OperatorTypeKeys.repetition:
+                    buffer = this._visitRepetition(node, op.getStaticArguments()[0]);
+                break;
+                case OperatorTypeKeys.nonGreedyRepetition:
+                    throw new Error("Not implemented yet...");
+                break;
+                case OperatorTypeKeys.terminalRangeSetMatch:
+                    throw new Error("Not implemented yet...");
+                break;
+                default:
+                    throw new Error("An unknown operator has been found.");
+                }
+            break;
+            case AstNodeType.terminalRange:
+                buffer = this._visitRepetition(node);
+            break;
+            default:
+                throw new Error("Not implemented yet...");
+            }
+            
+            this._nodeCodeMap.set(node, buffer);
         };
         
-        return Lexer;
-    }());
-    
-    string.LexerGenerator = (function () {
-        var Token = (function () {
-            /**
-             * @constructor
-             * @param {String} name
-             * @param {String} regexStr
-             */
-            var Token = function (name, regexStr) {
-                this._name = name;
-                this._regexStr = regexStr;
-                /**@type {Nfa}*/this._nfa = null;
-            };
+        /**
+         * @private
+         * @function
+         * @param {AstNode} node
+         * @return {InstructionBuffer}
+         */
+        CodeEmitter.prototype._visitTerminalRange = function (node) {
+            var buffer = new InstructionBuffer(this._byteOrderReversed);
             
-            /**
-             * @function
-             * @param {Token} rhs
-             * @return {Boolean}
-             */
-            Token.prototype.equals = function (rhs) {
-                return this._name === rhs._name
-                    && this._regexStr === rhs._regexStr
-                ;
-            };
+            var inputRange = node.getValue();
+            if(inputRange.getMinimum() === inputRange.getMaximum()) {
+                buffer.put(
+                    RegexVm.Instructions.testInputCode,
+                    inputRange.getMinimum()
+                );
+            }
+            else {
+                this._intervalListSet.add(inputRange);
+                buffer.put(
+                    RegexVm.Instructions.testInputRange,
+                    this._intervalListSet.findIndex(inputRange)
+                );
+            }
             
-            return Token;
-        }());
+            return buffer;
+        };
+        
+        /**
+         * @private
+         * @function
+         * @param {AstNode} node
+         * @param {Number} tokenKey
+         * @return {InstructionBuffer}
+         */
+        CodeEmitter.prototype._visitAccept = function (node, tokenKey) {
+            var buffer = new InstructionBuffer(this._byteOrderReversed);
+            
+            buffer.consume(this._nodeCodeMap.get(node.getChildAt(0)));
+            //TODO : consume 명령어를 넣는 것이 타당한 지 테스트.
+            buffer.put(RegexVm.Instructions.consume);
+            buffer.put(RegexVm.Instructions.accept, tokenKey);
+            
+            return buffer;
+        };
+        
+        /**
+         * @private
+         * @function
+         * @param {AstNode} node
+         * @return {InstructionBuffer}
+         */
+        CodeEmitter.prototype._visitAlternation = function (node) {
+            var buffer = new InstructionBuffer(this._byteOrderReversed);
+            
+            var childCount = node.getChildCount();
+            var childCodeLens = [];
+            var offset = 0;
+            for(var i = 0; i < childCount; ++i) {
+                var len = this._nodeCodeMap.get(node.getChildAt(0)).getCount();
+                childCodeLens.push(len);
+                offset += len;
+            }
+            
+            var paramCount = node.getChildCount();
+            if(paramCount > 0) {
+                offset -= childCodeLens[0];
+                
+                buffer.put(RegexVm.Instructions.pushCur);
+                buffer.consume(this._nodeCodeMap.get(node.getChildAt(0)));
+                buffer.put(RegexVm.Instructions.beq, (childCount - 1) * 3 + 2 + offset);
+            }
+            
+            for(var i = 1; i < paramCount;++i) {
+                offset -= childCodeLens[i];
+                
+                buffer.put(RegexVm.Instructions.popCur);
+                
+                buffer.put(RegexVm.Instructions.pushCur);
+                buffer.consume(this._nodeCodeMap.get(node.getChildAt(i)));
+                buffer.put(RegexVm.Instructions.beq, (childCount - 1 - i) * 3 + 2 + offset);
+            }
+            
+            buffer.put(RegexVm.Instructions.popCur);
+            buffer.put(RegexVm.Instructions.rts);
+            
+            buffer.put(RegexVm.Instructions.collapseCur);
+            buffer.put(RegexVm.Instructions.incCur);
+            
+            return buffer;
+        };
+        
+        /**
+         * @private
+         * @function
+         * @param {AstNode} node
+         * @return {InstructionBuffer}
+         */
+        CodeEmitter.prototype._visitConcatenation = function (node) {
+            var buffer = new InstructionBuffer(this._byteOrderReversed);
+            
+            var childCount = node.getChildCount();
+            if(childCount > 0) {
+                buffer.consume(this._nodeCodeMap.get(node.getChildAt(0)));
+            }
+            
+            for(var i = 1; i < childCount; ++i) {
+                buffer.put(RegexVm.Instructions.beq, 1);
+                buffer.put(RegexVm.Instructions.rts);
+                buffer.put(RegexVm.Instructions.incCur);
+                buffer.consume(this._nodeCodeMap.get(node.getChildAt(i)));
+            }
+            
+            return buffer;
+        };
+        
+        /**
+         * @private
+         * @function
+         * @param {AstNode} node
+         * @param {karbonator.math.Interval} repRange
+         * @return {InstructionBuffer}
+         */
+        CodeEmitter.prototype._visitRepetition = function (node, repRange) {
+            var buffer = new InstructionBuffer(this._byteOrderReversed);
+            
+            var paramNode = node.getChildAt(0);
+            var paramCode = this._nodeCodeMap.get(paramNode);
+            var paramCodeLen = paramCode.getByteCount();
+            
+            if(
+                repRange.getMinimum() === 0
+                && repRange.getMaximum() === 1
+            ) {
+                buffer.consume(paramCode);
+                buffer.put(RegexVm.Instructions.bne, 1);
+                buffer.put(RegexVm.Instructions.incCur);
+                buffer.put(RegexVm.Instructions.clearZ);
+            }
+            else if(
+                repRange.getMinimum() === 0
+                && repRange.getMaximum() >= _maxInt
+            ) {
+                buffer.consume(paramCode);
+                buffer.put(RegexVm.Instructions.bne, 2);
+                buffer.put(RegexVm.Instructions.incCur);
+                buffer.put(RegexVm.Instructions.bra, -(3 + paramCodeLen));
+                buffer.put(RegexVm.Instructions.clearZ);
+            }
+            else {
+                buffer.put(RegexVm.Instructions.beginRep);
+                buffer.consume(paramCode);
+                
+                if(repRange.getMaximum() >= _maxInt) {
+                    buffer.put(RegexVm.Instructions.beq, 3);
+                    buffer.put(RegexVm.Instructions.testRep, repRange.getMinimum());
+                    buffer.put(RegexVm.Instructions.beq, 4);
+                    buffer.put(RegexVm.Instructions.rts);
+                    buffer.put(RegexVm.Instructions.incCur);
+                    buffer.put(RegexVm.Instructions.incRep);
+                    buffer.put(RegexVm.Instructions.bra, -(7 + paramCodeLen));
+                }
+                else if(repRange.getMinimum() >= repRange.getMaximum()) {
+                    buffer.put(RegexVm.Instructions.beq, 3);
+                    buffer.put(RegexVm.Instructions.testRep, repRange.getMinimum());
+                    buffer.put(RegexVm.Instructions.beq, 5);
+                    buffer.put(RegexVm.Instructions.rts);
+                    buffer.put(RegexVm.Instructions.incCur);
+                    buffer.put(RegexVm.Instructions.incRep);
+                    buffer.put(RegexVm.Instructions.testRep, repRange.getMaximum() + 1);
+                    buffer.put(RegexVm.Instructions.bne, -(8 + paramCodeLen));
+                }
+                else {
+                    buffer.put(RegexVm.Instructions.beq, 1);
+                    buffer.put(RegexVm.Instructions.rts);
+                    buffer.put(RegexVm.Instructions.incCur);
+                    buffer.put(RegexVm.Instructions.incRep);
+                    buffer.put(RegexVm.Instructions.testRep, repRange.getMinimum());
+                    buffer.put(RegexVm.Instructions.bne, -(6 + paramCodeLen));
+                }
+                
+                buffer.put(RegexVm.Instructions.endRep);
+            }
+            
+            return buffer;
+        };
+        
+        /*////////////////////////////////*/
+        
+        /*////////////////////////////////*/
+        //Token
+        
+        /**
+         * @constructor
+         * @param {String} name
+         * @param {String} regexStr
+         * @param {AstNode} astRootNode
+         */
+        var Token = function (name, regexStr, astRootNode) {
+            this._name = name;
+            this._regexStr = regexStr;
+            this._astRootNode = astRootNode;
+        };
+        
+        /**
+         * @function
+         * @return {String}
+         */
+        Token.prototype.toString = function () {
+            var str = '{';
+            
+            str += "name";
+            str += " : ";
+            str += this._name;
+            
+            str += "regex";
+            str += " : ";
+            str += this._regexStr;
+            
+            str += "ast";
+            str += " : ";
+            str += this._astRootNode;
+            
+            str += '}';
+            
+            return str;
+        };
+        
+        /*////////////////////////////////*/
         
         /**
          * @memberof karbonator.string
          * @constructor
          */
         var LexerGenerator = function () {
-            this._tokenMap = new Map(detail._stringComparator);
-            this._nfaStateKeyGenerator = {
-                generateKey : function () {
-                    var currentKey = this._count;
-                    var nextKey = currentKey + 1;
-                    if(nextKey !== 0) {
-                        this._count = nextKey;
-                        
-                        return currentKey;
-                    }
-                    
-                    return null;
-                },
-                
-                _count : 0
-            };
-            this._regexParser = new RegexParser(this._nfaStateKeyGenerator);
+            this._tokenMap = new Map(karbonator.stringComparator);
+            this._regexParser = new RegexParser();
+            this._bytecodeEmitter = new CodeEmitter();
         };
         
         /**
@@ -2136,7 +3141,14 @@
          * @param {String} regexStr
          */
         LexerGenerator.prototype.defineToken = function (name, regexStr) {
-            this._tokenMap.set(name, new Token(name, regexStr));
+            this._regexParser.inputString(regexStr);
+            var astRootNode = this._regexParser.createAst(name);
+            
+            if(null === astRootNode) {
+                throw new Error("");
+            }
+            
+            this._tokenMap.set(name, new Token(name, regexStr, astRootNode));
         };
         
         /**
@@ -2152,30 +3164,34 @@
          * @return {Lexer|null}
          */
         LexerGenerator.prototype.generateLexer = function () {
+            //TODO : 
+            //[V] 1. 모든 Ast를 하나의 root 노드로 통합.
+            //[-] 2. Ast 최적화
+            //[ ] 3. VmCode 방출
+            
             var lexer = new string.Lexer();
             
-            //TODO : 함수 작성
-            //[V] 1. 각 토큰에 대한 NFA 생성
-            //[V] 1-1. Regex 분석 및 NFA 생성
-            //[V] 1-2. 오류 발생 시 내용을 기록하고 종료
-            //[ ] 2. 별도의 시작 상태를 만들고 각 NFA의 시작 상태를 새로운 시작상태를 오메가로 연결
-            //[V] 3. NFA -> DFA
-            for(
-                var iter = this._tokenMap.values(), iterPair = iter.next();
-                !iterPair.done;
-                iterPair = iter.next()
-            ) {
-                var token = iterPair.value;
-                this._regexParser.inputString(token._regexStr);
-                token._nfa = this._regexParser.createNfa();
-                if(this._regexParser._error.occured) {
-                    break;
+            var rootNode = null;
+            if(this._tokenMap.getElementCount() >= 2) {
+                rootNode = new AstNode(
+                    AstNodeType.operator,
+                    new Operator(
+                        _opTypeMap.get(OperatorTypeKeys.regexAlternation)
+                    )
+                );
+                for(
+                    var i = this._tokenMap.values(), iP = i.next();
+                    !iP.done;
+                    iP = i.next()
+                ) {
+                    rootNode.addChild(iP.value._astRootNode);
                 }
-                
-                lexer._addToken(token._name, token._nfa, token._regexStr);
+            }
+            else {
+                rootNode = this._tokenMap.values().next().value._astRootNode;
             }
             
-            return (!this._regexParser._error.occured ? lexer : null);
+            return this._bytecodeEmitter.emitBytecode(rootNode);
         };
         
         return LexerGenerator;

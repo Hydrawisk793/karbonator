@@ -2,11 +2,12 @@
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
- * last-modified : 2017-06-21
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
 (function (g, factory) {
+    "use strict";
+    
     if(typeof(define) === "function" && define.amd) {
         define(["./karbonator.polyfill-es"], function (karbonator) {
             return factory(g, karbonator);
@@ -21,16 +22,16 @@
     "use strict";
     
     var detail = karbonator.detail;
+    var assertion = karbonator.assertion;
+    
+    var Number = global.Number;
+    var Symbol = detail._selectSymbol();
     
     /**
      * @memberof karbonator.detail
      * @readonly
      */
     detail._identifierRegEx = /^[a-zA-Z$_][0-9a-zA-Z$_]*$/;
-    
-    var _hasPropertyMethod = function (key) {
-        return (key in this);
-    };
     
     /**
      * @memberof karbonator.detail
@@ -43,7 +44,7 @@
             return "WebBrowser";
         }
         else if(
-            !detail._isUndefined(global.process)
+            !karbonator.isUndefined(global.process)
             && global.process.release.name === "node"
         ) {
             return "Node.js";
@@ -86,39 +87,45 @@
     /**
      * @memberof karbonator.detail
      * @function
-     * @param {Number} v
-     * @return {String}
+     * @param {Function} callback
+     * @return {Number}
      */
-    detail._intToString = function (v) {
-        if(v === detail._maxInt) {
-            return "INT_MAX";
-        }
-        else if(v === detail._minInt) {
-            return "INT_MIN";
+    detail._requestAnimationFrame = (function () {
+        if(window) {
+            return window.requestAnimationFrame
+                || window.webkitRequestAnimationFrame
+                || window.mozRequestAnimationFrame
+                || window.oRequestAnimationFrame
+                || window.msRequestAnimationFrame
+            ;
         }
         else {
-            return v.toString();
+            return function (callback) {
+                return global.setTimeout(callback, 1000 / 60);
+            };
         }
-    };
+    }());
     
     /**
      * @memberof karbonator.detail
      * @function
-     * @param {String} l
-     * @param {String} r
+     * @param {Number} id
      */
-    detail._stringComparator = function (l, r) {
-        var diff = 0;
-        var minLen = (l.length < r.length ? l.length : r.length);
-        for(var i = 0; i < minLen; ++i) {
-            diff = l.charCodeAt(i) - r.charCodeAt(i);
-            if(diff !== 0) {
-                break;
-            }
+    detail._cancelAnimationFrame = (function () {
+        if(window) {
+            return window.cancelAnimationFrame
+                || window.webkitCancelAnimationFrame
+                || window.mozCancelAnimationFrame
+                || window.oCancelAnimationFrame
+                || window.msCancelAnimationFrame
+            ;
         }
-        
-        return diff;
-    };
+        else {
+            return function (id) {
+                global.clearTimeout(id);
+            };
+        }
+    }());
     
     /*////////////////////////////////*/
     //global.Console polyfill.(usually for node.js)
@@ -147,26 +154,6 @@
     
     /*////////////////////////////////*/
     
-    /*////////////////////////////////*/
-    //XMLHttpRequest
-    
-    var XMLHttpRequest = (function (global) {
-        if(global.XMLHttpRequest) {
-            return global.XMLHttpRequest;
-        }
-        else if(global.ActiveXObject) {
-            return function() {
-                return new global.ActiveXObject(
-                    global.navigator.userAgent.indexOf("MSIE 5") >= 0
-                    ? "Microsoft.XMLHTTP"
-                    : "Msxml2.XMLHTTP"
-                );
-            };
-        }
-    }(global));
-    
-    /*////////////////////////////////*/
-    
     /*////////////////////////////////////////////////////////////////*/
     //The snapshots of 'polyfilled' ECMAScript built-in objects
     
@@ -180,7 +167,211 @@
     //karbonator namespace.
     
     /*////////////////////////////////*/
-    //Interface & Callback definitions.
+    //Trait test functions.
+    
+    /**
+     * @readonly
+     */
+    detail._twoPower8 = 256;
+    
+    /**
+     * @readonly
+     */
+    detail._twoPower16 = 65536;
+    
+    /**
+     * @readonly
+     */
+    detail._twoPower32 = 4294967296;
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isCallable = function (o) {
+        return karbonator.isFunction(o);
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isBoolean = function (o) {
+        return "boolean" === typeof o
+            || o instanceof Boolean
+        ;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isNumber = function (o) {
+        return ("number" === typeof o || o instanceof Number)
+            && !global.isNaN(o)
+        ;
+    }
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isNonNegativeSafeInteger = function (o) {
+        return karbonator.isSafeInteger(o) && o >= 0;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isInt8 = function (o) {
+        return karbonator.isSafeInteger(o)
+            && (o >= -128 && o < 128)
+        ;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isUint8 = function (o) {
+        return karbonator.isSafeInteger(o)
+            && (o >= 0 && o < detail._twoPower8)
+        ;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isInt16 = function (o) {
+        return karbonator.isSafeInteger(o)
+            && (o >= -32768 && o < 32768)
+        ;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isUint16 = function (o) {
+        return karbonator.isSafeInteger(o)
+            && (o >= 0 && o < detail._twoPower16)
+        ;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isInt32 = function (o) {
+        return karbonator.isSafeInteger(o)
+            && (o >= -2147483648 && o < 2147483648)
+        ;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isUint32 = function (o) {
+        return karbonator.isSafeInteger(o)
+            && (o >= 0 && o < detail._twoPower32)
+        ;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isEsIterable = function (o) {
+        return !karbonator.isUndefinedOrNull(o)
+            && !karbonator.isUndefinedOrNull(o[Symbol.iterator])
+        ;
+    };
+    
+    /*////////////////////////////////*/
+    
+    /*////////////////////////////////*/
+    //Object comparison.
+    
+    /**
+     * @readonly
+     */
+    karbonator.equals = Symbol("karbonator.equals");
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} lhs
+     * @param {*} rhs
+     * @return {Boolean}
+     */
+    karbonator.areEqual = (function (karbonator) {
+        var areEqual = function (lhs, rhs) {
+            if(lhs === rhs) {
+                return true;
+            }
+            
+            if(
+                karbonator.isArray(lhs)
+                && karbonator.isArray(rhs)
+            ) {
+                if(lhs.length !== rhs.length) {
+                    return false;
+                }
+                
+                var count = lhs.length;
+                for(var i = 0; i < count; ++i) {
+                    if(!areEqual(lhs[i], rhs[i])) {
+                        return false;
+                    }
+                }
+                
+                return true;
+            }
+            
+            if(
+                karbonator.isObjectOrFunction(lhs)
+                && lhs[karbonator.equals]
+            ) {
+                return lhs[karbonator.equals](rhs);
+            }
+            
+            if(
+                karbonator.isObjectOrFunction(rhs)
+                && rhs[karbonator.equals]
+            ) {
+                return rhs[karbonator.equals](lhs);
+            }
+            
+            return false;
+        };
+        
+        return areEqual;
+    }(karbonator));
     
     /**
      * 비교 함수<br/>
@@ -194,27 +385,194 @@
      */
     
     /**
-     * 복제 함수<br/>
-     * 컬렉션 객체 등에서 요소를 복제할 때 호출되며,
-     * 이 콜백이 제공되지 않으면 요소의 레퍼런스를 대입하는 얕은 복사가 진행 됨.
-     * @callback karbonator.cloner
-     * @param {Object} o
-     * @return {Object}
+     * @readonly
      */
+    karbonator.compareTo = Symbol("karbonator.compareTo");
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isComparator = function (o) {
+        return karbonator.isFunction(o)
+            && o.length >= 2
+        ;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {Number} l
+     * @param {Number} r
+     * @return {Number}
+     */
+    karbonator.numberComparator = function (l, r) {
+        if(!karbonator.isNumber(l) || !karbonator.isNumber(r)) {
+            throw new TypeError("Both 'l' and 'r' must be numbers.");
+        }
+        
+        return l - r;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {Number} l
+     * @param {Number} r
+     * @return {Number}
+     */
+    karbonator.booleanComparator = function (l, r) {
+        return karbonator.numberComparator(Number(l), Number(r));
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {String} l
+     * @param {String} r
+     */
+    karbonator.stringComparator = function (l, r) {
+        if(!karbonator.isString(l) || !karbonator.isString(r)) {
+            throw new TypeError("Both 'l' and 'r' must be strings.");
+        }
+        
+        var diff = 0;
+        var minLen = (l.length < r.length ? l.length : r.length);
+        for(var i = 0; i < minLen; ++i) {
+            diff = l.charCodeAt(i) - r.charCodeAt(i);
+            if(diff !== 0) {
+                break;
+            }
+        }
+        
+        return diff;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {Object} l
+     * @param {Object} r
+     * @return {Number}
+     */
+    karbonator.objectComparator = function (l, r) {
+        if(karbonator.areEqual(l, r)) {
+            return 0;
+        }
+        
+        var diff = karbonator.stringComparator(l.toString(), r.toString());
+        if(0 !== diff) {
+            return diff;
+        }
+        
+        for(var lKey in l) {
+            for(var rKey in r) {
+                var diff = karbonator.stringComparator(lKey.toString(), rKey.toString());
+                if(0 !== diff) {
+                    return diff;
+                }
+            }
+        }
+        
+        return -1;
+    };
+    
+    /*////////////////////////////////*/
+    
+    /*////////////////////////////////*/
+    //Object cloning.
     
     /**
      * @memberof karbonator
      * @readonly
-     * @type {Symbol}
      */
-    karbonator.shallowCopy = global.Symbol("karbonator.shallowCopy");
+    karbonator.shallowClone = Symbol("karbonator.shallowClone");
     
     /**
      * @memberof karbonator
      * @readonly
-     * @type {Symbol}
      */
-    karbonator.deepCopy = global.Symbol("karbonator.deepCopy");
+    karbonator.deepClone = Symbol("karbonator.deepClone");
+    
+    /**
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    var _isImmutablePrimitive = function (o) {
+        return karbonator.isUndefinedOrNull(o)
+            || karbonator.isNumber(o)
+            || karbonator.isBoolean(o)
+            || karbonator.isSymbol(o)
+            || karbonator.isString(o)
+            //|| karbonator.isFunction(o)
+        ;
+    };
+    
+    /**
+     * @function
+     * @param {*} o
+     * @return {*}
+     */
+    karbonator.shallowCloneObject = (function () {
+        var shallowCloneObject = function (o) {
+            if(_isImmutablePrimitive(o)) {
+                return o;
+            }
+            
+            if(karbonator.isArray(o)) {
+                var clonedArray = new Array(o.length);
+                
+                for(var i = 0; i < o.length; ++i) {
+                    clonedArray[i] = shallowCloneObject(o[i]);
+                }
+                
+                return clonedArray;
+            }
+            
+            if(o[karbonator.shallowClone]) {
+                return o[karbonator.shallowClone]();
+            }
+            
+            return o;
+        };
+        
+        return shallowCloneObject;
+    }());
+    
+    //TODO : Find a way to handle cyclic reference problems.
+//    /**
+//     * @function
+//     * @param {*} o
+//     * @return {*}
+//     */
+//    karbonator.deepCloneObject = (function () {
+//        var deepCloneObject = function (o) {
+//            if(_isImmutablePrimitive(o)) {
+//                return o;
+//            }
+//            
+//            if(karbonator.isArray(o)) {
+//                var clonedArray = new Array(o.length);
+//                
+//                for(var i = 0; i < o.length; ++i) {
+//                    clonedArray[i] = deepCloneObject(o[i]);
+//                }
+//                
+//                return clonedArray;
+//            }
+//            
+//            if(o[karbonator.deepClone]) {
+//                return o[karbonator.deepClone]();
+//            }
+//            
+//            return o;
+//        };
+//        
+//        return deepCloneObject;
+//    }());
     
     /*////////////////////////////////*/
     
@@ -226,25 +584,6 @@
      * @function
      */
     karbonator.onload = function () {};
-    
-    /**
-     * @memberof karbonator
-     * @function
-     * @param {Object} value
-     * @param {Object} defaultValue
-     */
-    karbonator.selectNonUndefined = detail._selectNonUndefined;
-    
-    /**
-     * @memberof karbonator
-     * @function
-     * @param {Object} lhs
-     * @param {Object} rhs
-     * @return {Boolean}
-     */
-    karbonator.areBothNull = function (lhs, rhs) {
-        return null === lhs === rhs;
-    };
     
     /**
      * @memberof karbonator
@@ -266,7 +605,11 @@
      * @param {Object} [options]
      * @return {Object}
      */
-    karbonator.mergeObjects = (function () {
+    karbonator.mergeObjects = (function () {    
+        var _hasPropertyMethod = function (key) {
+            return (key in this);
+        };
+        
         var _assignPropertyAndIgonoreExceptions = function (dest, src, key) {
             try {
                 dest[key] = src[key];
@@ -375,192 +718,1101 @@
         return current;
     };
     
+    /**
+     * @function
+     * @param {Object|Function} dest
+     * @param {iterable} pairs
+     * @return {Object|Function}
+     */
+    karbonator.appendAsMember = function (dest, pairs) {
+        if(!karbonator.isObjectOrFunction(dest)) {
+            throw new TypeError("The parameter 'dest' must be an object or a function.");
+        }
+        if(!karbonator.isEsIterable(pairs)) {
+            throw new TypeError("The parameter 'pairs' must have a property 'Symbol.iterator'.");
+        }
+        
+        var temp = {};
+        var propKeys = [];
+        for(
+            var i = pairs[Symbol.iterator](), iP = i.next();
+            !iP.done;
+            iP = i.next()
+        ) {
+            if(!karbonator.isArray(iP.value)) {
+                throw new TypeError(
+                    "The pair must be an array"
+                    + " which has a string or symbol as the first element"
+                    + " and a value or an object as the second element."
+                );
+            }
+            
+            var propKey = iP.value[0];
+            if(!karbonator.isString(propKey) && !karbonator.isSymbol(propKey)) {
+                throw new Error("An enum member name must be a string or a symbol.");
+            }
+            if(dest.hasOwnProperty(propKey)) {
+                throw new Error("'dest' has already have a property '" + propKey + "'.");
+            }
+            
+            temp[propKey] = iP.value[1];
+            propKeys.push(propKey);
+        }
+        
+        for(var i = 0, count = propKeys.length; i < count; ++i) {
+            var propKey = propKeys[i];
+            dest[propKey] = temp[propKey];
+        }
+        
+        return dest;
+    };
+    
+    /**
+     * @function
+     * @param {Object|Function} dest
+     * @param {Function} ctor
+     * @param {iterable} pairs
+     * @return {Object|Function}
+     */
+    karbonator.createAndAppendAsMember = function (dest, ctor, pairs) {
+        if(!karbonator.isObjectOrFunction(dest)) {
+            throw new TypeError("The parameter 'dest' must be an object or a function.");
+        }
+        if(!karbonator.isFunction(ctor)) {
+            throw new TypeError("The parameter 'ctor' must be a function.");
+        }
+        if(!karbonator.isEsIterable(pairs)) {
+            throw new TypeError("The parameter 'pairs' must have a property 'Symbol.iterator'.");
+        }
+        
+        var temp = {};
+        var propKeys = [];
+        for(
+            var i = pairs[Symbol.iterator](), iP = i.next();
+            !iP.done;
+            iP = i.next()
+        ) {
+            if(!karbonator.isArray(iP.value)) {
+                throw new TypeError(
+                    "The pair must be an array"
+                    + " which has a string or symbol as the first element"
+                    + " and an array of constructor arguments as the second element."
+                );
+            }
+            
+            var propKey = iP.value[0];
+            if(!karbonator.isString(propKey) && !karbonator.isSymbol(propKey)) {
+                throw new Error("An enum member name must be a string or a symbol.");
+            }
+            if(dest.hasOwnProperty(propKey)) {
+                throw new Error("'dest' has already have a property '" + propKey + "'.");
+            }
+            
+            if(!karbonator.isArray(iP.value[1])) {
+                throw new TypeError("The second element of a pair must be an array of constructor arguments.");
+            }
+            
+            temp[propKey] = Reflect.construct(ctor, iP.value[1]);
+            propKeys.push(propKey);
+        }
+        
+        for(var i = 0, count = propKeys.length; i < count; ++i) {
+            var propKey = propKeys[i];
+            dest[propKey] = temp[propKey];
+        }
+        
+        return dest;
+    };
+    
     /*////////////////////////////////*/
     
     /*////////////////////////////////*/
-    //class Environment
+    //karbonator.Enum
     
-    karbonator.Environment = (function () {
+//    karbonator.Enum = (function (global, karbonator) {
+//        /**
+//         * @constructor
+//         */
+//        var Enum = function () {
+//            
+//        };
+//        
+//        /**
+//         * @memberof karbonator.Enum
+//         * @function
+//         * @return {karbonator.Enum}
+//         */
+//        Enum.create = function (pairs) {
+//            var newEnumType = function () {};
+//            newEnumType.prototype = Object.create(Enum.prototype);
+//            newEnumType.findByKey = function () {
+//                
+//            };
+//            
+//        };
+//        
+//        Enum.prototype.getKey = function () {
+//            
+//        };
+//        
+//        Enum.prototype.getValue = function () {
+//            
+//        };
+//        
+//        return Enum;
+//    }(global, karbonator));
+    
+    /*////////////////////////////////*/
+    
+    /*////////////////////////////////*/
+    //karbonator.ByteArray
+    
+    karbonator.ByteArray = (function () {
+        /**
+         * @function
+         * @param {Number} v
+         * @return {Number}
+         */
+        var _assertIsNonNegativeSafeInteger = function (v) {
+            if(!karbonator.isNonNegativeSafeInteger(v)) {
+                throw new TypeError("The value must be a non-negative safe integer.");
+            }
+            
+            return v;
+        }
+        
+        /**
+         * @function
+         * @param {Number} v
+         * @return {Number}
+         */
+        var _assertIsUint8 = function (v) {
+            if(!karbonator.isUint8(v)) {
+                throw new TypeError("The value must be in range [0, 255].");
+            }
+            
+            return v;
+        };
+        
+        var _bitsPerByteEep = 3;
+        
+        var _bitsPerByte = 1 << _bitsPerByteEep;
+        
+        var _byteBm = (1 << _bitsPerByte) - 1;
+        
+        var _bufNdxExp = 2;
+        
+        var _subNdxBm = (1 << _bufNdxExp) - 1;
+        
+        var _bytesPerInt = 1 << _bufNdxExp;
+        
+        /**
+         * @function
+         * @param {Number} subIndex
+         * @return {Number}
+         */
+        var _calculateShiftCount = function (subIndex) {
+            return ((_bytesPerInt - 1) - subIndex) << _bitsPerByteEep;
+        };
+        
         /**
          * @memberof karbonator
          * @constructor
-         * @param {Object} global
+         * @param {Number} [elementCount=0]
+         * @param {Number} [initialValue=0]
          */
-        var Environment = function (global) {
-            this.global = global;
+        var ByteArray = function () {
+            var elementCount = (
+                karbonator.isUndefined(arguments[0])
+                ? 0
+                : _assertIsNonNegativeSafeInteger(arguments[0])
+            );
             
-            this.support["XMLHttpRequest"] = !detail._isUndefined(XMLHttpRequest);
-            
-            this.support["window"] = !detail._isUndefined(global.window);
-            this.support["document"] = !detail._isUndefined(global.document);
-            this.support["Window"] = !detail._isUndefined(global.Window);
-            this.support["HTMLDocument"] = !detail._isUndefined(global.HTMLDocument);
-            this.support["Element"] = !detail._isUndefined(global.Element);
-        };
-        
-        Environment.prototype.support = {};
-        
-        /**
-         * @function
-         * @return {String}
-         */
-        Environment.prototype.getType = function () {
-            return detail._testEnvironmentType(this.global);
-        };
-        
-        /**
-         * @function
-         * @return {String}
-         */
-        Environment.prototype.getAbsoluteRootPath = function () {
-            var path = "/";
-            
-            switch(this.type) {
-            case "WebBrowser":
-                path = global.location.href.replace(/[\\/][^/:<>\\\*\?\"\|\r\n\t]+$/, "");
-            break;
-            case "Node.js":
-                path = global.process.cwd();
-            break;
-            case "Other":
+            if(elementCount < 1) {
+                this._buffer = [0];
+                this._subIndex = 0;
                 
-            break;
+                if(!karbonator.isUndefined(arguments[1])) {
+                    this.fill(arguments[1]);
+                }
+            }
+            else {
+                this._buffer = new Array(((elementCount - 1) >>> _bufNdxExp) + 1);
+                this._subIndex = ((elementCount - 1) & _subNdxBm) + 1;
+                this.fill((karbonator.isUndefined(arguments[1]) ? 0 : arguments[1]));
+            }
+        };
+        
+        /**
+         * @function
+         * @param {ByteArray} oThis
+         * @param {Number} index
+         * @param {Number} [maxBound]
+         * @return {Number}
+         */
+        var _assertIsValidIndex = function (oThis, index) {
+            _assertIsNonNegativeSafeInteger(index);
+            
+            var maxBound = (karbonator.isUndefined(arguments[2]) ? oThis.getElementCount() : arguments[2]);
+            if(index >= maxBound) {
+                throw new RangeError("Index out of range.");
             }
             
-            return path;
+            return index;
+        };
+        
+        /**
+         * @function
+         * @param {Array.<Number>} buffer
+         * @param {Number} bufferIndex
+         * @param {Number} subIndex
+         * @return {Number}
+         */
+        var _get = function (buffer, bufferIndex, subIndex) {
+            var shiftCount = _calculateShiftCount(subIndex);
+            
+            return (buffer[bufferIndex] & (_byteBm << shiftCount)) >>> shiftCount;
+        };
+        
+        /**
+         * @function
+         * @param {Array.<Number>} buffer
+         * @param {Number} bufferIndex
+         * @param {Number} subIndex
+         * @param {Number} v
+         */
+        var _set = function (buffer, bufferIndex, subIndex, v) {
+            var shiftCount = _calculateShiftCount(subIndex);
+            
+            buffer[bufferIndex] &= ~(_byteBm << shiftCount);
+            buffer[bufferIndex] |= (v << shiftCount);
+        };
+        
+        /**
+         * @memberof karbonator.ByteArray
+         * @param {Object} numberArrayLike
+         * @param {Function} [mapFunction]
+         * @param {Object} [thisArg]
+         * @return {karbonator.ByteArray}
+         */
+        ByteArray.from = function (numberArrayLike) {
+            return detail._arrayFromFunctionBody(
+                new ByteArray(), _assertIsUint8,
+                "pushBack", numberArrayLike,
+                arguments[1], arguments[2]
+            );
+        };
+        
+        /**
+         * @function
+         * @return {karbonator.ByteArray}
+         */
+        ByteArray.prototype[karbonator.shallowClone] = function () {
+            return ByteArray.from(this);
+        };
+        
+        /**
+         * @function
+         * @return {karbonator.ByteArray}
+         */
+        ByteArray.prototype[karbonator.deepClone] = function () {
+            return ByteArray.from(this);
         };
         
         /**
          * @function
          * @return {Boolean}
          */
-        Environment.prototype.supportsSynchronousHttpRequest = function () {
-            if(typeof(XMLHttpRequest) === "undefined") {
+        ByteArray.prototype.isEmpty = function () {
+            return this._buffer.length < 2 && this._subIndex < 1;
+        };
+        
+        /**
+         * @function
+         * @return {Number}
+         */
+        ByteArray.prototype.getElementCount = function () {
+            return (this._buffer.length - 1) * _bytesPerInt + this._subIndex;
+        };
+        
+        /**
+         * @function
+         * @return {iterator}
+         */
+        ByteArray.prototype[Symbol.iterator] = function () {
+            return ({
+                next : function () {
+                    var done = this._index >= this._target.getElementCount();
+                    var value = undefined;
+                    
+                    if(!done) {
+                        value = this._target.get(this._index);
+                        ++this._index;
+                    }
+                    
+                    return ({
+                        done : done,
+                        value : value
+                    });
+                },
+                _target : this,
+                _index : 0
+            });
+        };
+        
+        /**
+         * @function
+         * @param {Number} index
+         * @return {Number}
+         */
+        ByteArray.prototype.get = function (index) {
+            _assertIsValidIndex(this, index);
+            
+            var bufNdx = index >>> _bufNdxExp;
+            var subNdx = index & _subNdxBm;
+            
+            return _get(this._buffer, bufNdx, subNdx);
+        };
+        
+        /**
+         * @function
+         * @param {Number} index
+         * @param {Number} v
+         * @return {karbonator.ByteArray}
+         */
+        ByteArray.prototype.set = function (index, v) {
+            _assertIsValidIndex(this, index);
+            _assertIsUint8(v); 
+            
+            var bufNdx = index >>> _bufNdxExp;
+            var subNdx = index & _subNdxBm;
+            
+            _set(this._buffer, bufNdx, subNdx, v);
+            
+            return this;
+        };
+        
+        /**
+         * @function
+         * @param {Number} v
+         * @param {Number} [start]
+         * @param {Number} [end]
+         * @return {karbonator.ByteArray}
+         */
+        ByteArray.prototype.fill = function (v) {
+            _assertIsUint8(v);
+            var start = (karbonator.isUndefined(arguments[1]) ? 0 : _assertIsValidIndex(this, arguments[1]));
+            var elemCount = this.getElementCount();
+            var end = (karbonator.isUndefined(arguments[2]) ? elemCount : _assertIsValidIndex(this, arguments[2], elemCount + 1));
+            
+            for(var i = start; i < end; ++i) {
+                this.set(i, v);
+            };
+            
+            return this;
+        };
+        
+        /**
+         * @function
+         * @param {Number} lhsIndex
+         * @param {Number} rhsIndex
+         * @return {karbonator.ByteArray}
+         */
+        ByteArray.prototype.swapElements = function (lhsIndex, rhsIndex) {
+            _assertIsValidIndex(this, lhsIndex);
+            _assertIsValidIndex(this, rhsIndex);
+            
+            var lhsElem = this.get(lhsIndex);
+            this.set(lhsIndex, this.get(rhsIndex));
+            this.set(rhsIndex, lhsElem);
+            
+            return this;
+        };
+        
+        /**
+         * @function
+         * @return {karbonator.ByteArray}
+         */
+        ByteArray.prototype.reverse = function () {
+            var count = this.getElementCount();
+            var halfCount = count >>> 1;
+            for(var i = 0, j = count; i < halfCount; ++i) {
+                --j;
+                this.swapElements(i, j);
+            }
+            
+            return this;
+        };
+        
+        /**
+         * @function
+         * @param {Number} v
+         * @param {Number} [index]
+         * @return {karbonator.ByteArray}
+         */
+        ByteArray.prototype.insert = function (v, index) {
+            _assertIsUint8(v);
+            var elemCount = this.getElementCount();
+            index = (karbonator.isUndefined(index) ? elemCount : index);
+            _assertIsValidIndex(this, index, elemCount + 1);
+            
+            if(this._subIndex >= _bytesPerInt) {
+                this._buffer.push(0);
+                this._subIndex = 0;
+            }
+            
+            var destBufNdx = index >>> _bufNdxExp;
+            var destSubNdx = index & _subNdxBm;
+            
+            for(var i = this._buffer.length - 1; i > destBufNdx; --i) {
+                this._buffer[i] >>>= _bitsPerByte;
+                _set(
+                    this._buffer,
+                    i, 0,
+                    _get(this._buffer, i - 1, _bytesPerInt - 1)
+                );
+            }
+            
+            if(destSubNdx === 0) {
+                this._buffer[destBufNdx] >>>= _bitsPerByte;
+            }
+            else if(destSubNdx < _bytesPerInt - 1) {
+                for(var i = _bytesPerInt - 1; i > destSubNdx; --i) {
+                    _set(
+                        this._buffer,
+                        destBufNdx, i,
+                        _get(this._buffer, destBufNdx, i - 1)
+                    );
+                }
+            }
+            
+            _set(this._buffer, destBufNdx, destSubNdx, v);
+            ++this._subIndex;
+            
+            return this;
+        };
+        
+        /**
+         * @function
+         * @param {Number} index
+         * @return {Number}
+         */
+        ByteArray.prototype.removeAt = function (index) {
+            if(this.isEmpty()) {
+                throw new Error("No more bytes left.");
+            }
+            
+            _assertIsValidIndex(this, index);
+            
+            var destBufNdx = index >>> _bufNdxExp;
+            var destSubNdx = index & _subNdxBm;
+            
+            var value = _get(this._buffer, destBufNdx, destSubNdx);
+            
+            if(destSubNdx === 0) {
+                this._buffer[destBufNdx] <<= _bitsPerByte;
+            }
+            else if(destSubNdx >= _bytesPerInt - 1) {
+                this._buffer[destBufNdx] &= ~_byteBm;
+            }
+            else {
+                for(var i = destSubNdx + 1; i < _bytesPerInt; ++i) {
+                    _set(
+                        this._buffer,
+                        destBufNdx, i - 1,
+                        _get(this._buffer, destBufNdx, i)
+                    );
+                }
+            }
+            
+            for(var i = destBufNdx + 1, len = this._buffer.length; i < len; ++i) {
+                _set(this._buffer,
+                    i - 1, _bytesPerInt - 1,
+                    _get(this._buffer, i, 0)
+                );
+                this._buffer[i] <<= _bitsPerByte;
+            };
+            
+            --this._subIndex;
+            if(this._subIndex < 1 && this._buffer.length > 1) {
+                this._buffer.pop();
+                this._subIndex = _bytesPerInt;
+            }
+            
+            return value;
+        };
+        
+        /**
+         * @function
+         * @param {iterable} iterable
+         * @return {karbonator.ByteArray}
+         */
+        ByteArray.prototype.concatenateAssign = function (iterable) {
+            return detail._arrayFromFunctionBody(
+                this, _assertIsUint8,
+                "pushBack", iterable
+            );
+            
+            return this;
+        };
+        
+        /**
+         * @function
+         * @param {Number} v
+         * @return {karbonator.ByteArray}
+         */
+        ByteArray.prototype.pushFront = function (v) {
+            this.insert(v, 0);
+            
+            return this;
+        };
+        
+        /**
+         * @function
+         * @param {Number} v
+         * @return {karbonator.ByteArray}
+         */
+        ByteArray.prototype.pushBack = function (v) {
+            this.insert(v);
+            
+            return this;
+        };
+        
+        /**
+         * @function
+         * @return {Number}
+         */
+        ByteArray.prototype.popFront = function () {
+            return this.removeAt(0);
+        };
+        
+        /**
+         * @function
+         * @return {Number}
+         */
+        ByteArray.prototype.popBack = function () {
+            return this.removeAt(this.getElementCount() - 1);
+        };
+        
+        /**
+         * @function
+         * @return {karbonator.ByteArray}
+         */
+        ByteArray.prototype.clear = function () {
+            this._buffer.length = 1;
+            this._buffer[0] = 0;
+            this._subIndex = 0;
+            
+            return this;
+        };
+        
+        /**
+         * @function
+         * @param {karbonator.ByteArray} rhs
+         * @return {Boolean}
+         */
+        ByteArray.prototype[karbonator.equals] = function (rhs) {
+            if(this === rhs) {
+                return true;
+            }
+            
+            if(karbonator.isUndefinedOrNull(rhs)) {
                 return false;
             }
             
-            var result = true;
-            var xhr = new XMLHttpRequest();
-            try {
-                xhr.open(
-                    "GET",
-                    (this.type === "WebBrowser" ? window.location.href : ""),
-                    false
-                );
-                xhr.abort();
-            }
-            catch(e) {
-                result = false;
+            var elemCount = this.getElementCount();
+            if(elemCount != rhs.getElementCount()) {
+                return false;
             }
             
-            return result;
+            for(var i = 0; i < elemCount; ++i) {
+                if(this.get(i) !== rhs.get(i)) {
+                    return false;
+                }
+            }
+            
+            return true;
         };
         
-        return Environment;
-    })();
+        /**
+         * @function
+         * @param {Number} [base=10]
+         * @return {String}
+         */
+        ByteArray.prototype.toString = function () {
+            var base = arguments[0];
+            var str = '[';
+            
+            var count = this.getElementCount();
+            if(count > 0) {
+                str += this.get(0).toString(base);
+            }
+            
+            for(var i = 1; i < count; ++i) {
+                str += ", ";
+                str += this.get(i).toString(base);
+            }
+            
+            str += ']';
+            
+            return str;
+        };
+        
+        return ByteArray;
+    }());
     
     /*////////////////////////////////*/
     
+    /*////////////////////////////////*/
+    //karbonator.BitConverter
+    
+    karbonator.BitConverter = (function () {
+        var ByteArray = karbonator.ByteArray;
+        
+        /**
+         * @function
+         * @param {*} v
+         * @return {Number}
+         */
+        var _assertIsUint8 = function (v) {
+            if(!karbonator.isUint8(v)) {
+                throw new TypeError("The parameter must be a 8-bit unsinged integer.");
+            }
+            
+            return v;
+        };
+        
+        /**
+         * @memberof karbonator
+         * @constructor
+         */
+        var BitConverter = function () {
+            this._littleEndian = false;
+            this._buffer = new ByteArray();
+        };
+        
+        /**
+         * @function
+         * @param {BitConverter} oThis
+         * @param {karbonator.ByteArray} byteArray
+         * @param {Number} n
+         * @param {Number} byteCount
+         * @return {karbonator.ByteArray}
+         */
+        var _getBytesFromInteger = function (oThis, byteArray, n, byteCount) {
+            var count = byteArray.getElementCount();
+            for(var i = 0; i < byteCount; ++i) {
+                byteArray.pushBack(0x00);
+            }
+            
+            if(oThis._littleEndian) {
+                for(var i = 0; i < byteCount; ++i) {
+                    byteArray.set(count + i, (n & 0xFF));
+                    n >>>= 8;
+                }
+            }
+            else {
+                for(var i = 0, j = byteCount; i < byteCount; ++i) {
+                    --j;
+                    byteArray.set(count + j, (n & 0xFF));
+                    n >>>= 8;
+                }
+            }
+            
+            return byteArray;
+        };
+        
+        /**
+         * @function
+         * @param {BitConverter} oThis
+         * @param {karbonator.ByteArray} byteArray
+         * @param {Number} startIndex
+         * @param {Number} byteCount
+         * @return {Number}
+         */
+        var _createIntegerFromBytes = function (oThis, byteArray, startIndex, byteCount) {
+            if(!(byteArray instanceof ByteArray)) {
+                throw new TypeError("The parameter 'byteArray' must be an instance of 'karbonator.ByteArray'.");
+            }
+            if(karbonator.isUndefined(startIndex)) {
+                startIndex = 0;
+            }
+            else if(!karbonator.isNonNegativeSafeNumber(startIndex)) {
+                throw new TypeError("The parameter 'startIndex' must be a non-negative safe integer.");
+            }
+            
+            var currentByteCount = 0;
+            oThis._buffer.clear();
+            for(var i = 0, len = byteArray.getElementCount(); i < len; ++i) {
+                oThis._buffer.pushBack((byteArray.get(i) & 0xFF));
+            }
+            
+            if(oThis._littleEndian) {
+                oThis._buffer.reverse();
+            }
+            
+            var value = 0;
+            for(var i = 0; i < currentByteCount; ++i) {
+                value <<= 8;
+                value |= oThis._buffer.get(i);
+            }
+            
+            return value;
+        };
+        
+        /**
+         * @function
+         * @return {Boolean}
+         */
+        BitConverter.prototype.isByteOrderReversed = function () {
+            return this._littleEndian;
+        };
+        
+        /**
+         * @function
+         * @param {Boolean}
+         */
+        BitConverter.prototype.setByteOrderReversed = function (reversed) {
+            this._littleEndian = !!reversed;
+        };
+        
+        /**
+         * @function
+         * @param {Number} n
+         * @param {karbonator.ByteArray} [dest]
+         * @return {karbonator.ByteArray}
+         */
+        BitConverter.prototype.getBytesFrom8BitInteger = function (n) {
+            if(!karbonator.isUint8(n) && !karbonator.isInt8(n)) {
+                throw new TypeError("The parameter must be a 16-bit integer.");
+            }
+            
+            var byteArray = (
+                karbonator.isUndefined(arguments[1])
+                ? new ByteArray()
+                : arguments[1]
+            );
+            
+            return _getBytesFromInteger(this, byteArray, n, 1);
+        };
+        
+        /**
+         * @function
+         * @param {karbonator.ByteArray} byteArray
+         * @param {Number} [startIndex=0]
+         * @return {Number}
+         */
+        BitConverter.prototype.getInt8FromBytes = function (byteArray) {
+            return _createIntegerFromBytes(this, byteArray, arguments[1], 1);
+        };
+        
+        /**
+         * @function
+         * @param {karbonator.ByteArray} byteArray
+         * @param {Number} [startIndex=0]
+         * @return {Number}
+         */
+        BitConverter.prototype.getUint8FromBytes = function (byteArray) {
+            var value = this.getInt16FromBytes(byteArray, arguments[1]);
+            if(value < 0) {
+                value += detail._twoPower8;
+            }
+            
+            return value;
+        };
+        
+        /**
+         * 
+         * 
+         * @function
+         * @param {Number} n
+         * @param {karbonator.ByteArray} [dest]
+         * @return {karbonator.ByteArray}
+         */
+        BitConverter.prototype.getBytesFrom16BitInteger = function (n) {
+            if(!karbonator.isUint16(n) && !karbonator.isInt16(n)) {
+                throw new TypeError("The parameter must be a 16-bit integer.");
+            }
+            
+            var byteArray = (
+                karbonator.isUndefined(arguments[1])
+                ? new ByteArray()
+                : arguments[1]
+            );
+            
+            return _getBytesFromInteger(this, byteArray, n, 2);
+        };
+        
+        /**
+         * @function
+         * @param {karbonator.ByteArray} byteArray
+         * @param {Number} [startIndex=0]
+         * @return {Number}
+         */
+        BitConverter.prototype.getInt16FromBytes = function (byteArray) {
+            return _createIntegerFromBytes(this, byteArray, arguments[1], 2);
+        };
+        
+        /**
+         * @function
+         * @param {karbonator.ByteArray} byteArray
+         * @param {Number} [startIndex=0]
+         * @return {Number}
+         */
+        BitConverter.prototype.getUint16FromBytes = function (byteArray) {
+            var value = this.getInt16FromBytes(byteArray, arguments[1]);
+            if(value < 0) {
+                value += detail._twoPower16;
+            }
+            
+            return value;
+        };
+        
+        /**
+         * @function
+         * @param {Number} n
+         * @param {karbonator.ByteArray} [dest]
+         * @return {karbonator.ByteArray}
+         */
+        BitConverter.prototype.getBytesFrom32BitInteger = function (n) {
+            if(!karbonator.isUint32(n) && !karbonator.isInt32(n)) {
+                throw new TypeError("The parameter must be a 32-bit integer.");
+            }
+            
+            var byteArray = (
+                karbonator.isUndefined(arguments[1])
+                ? new ByteArray()
+                : arguments[1]
+            );
+            
+            return _getBytesFromInteger(this, byteArray, n, 4);
+        };
+        
+        /**
+         * @function
+         * @param {karbonator.ByteArray} byteArray
+         * @param {Number} [startIndex=0]
+         * @return {Number}
+         */
+        BitConverter.prototype.getInt32FromBytes = function (iterable) {
+            return _createIntegerFromBytes(this, byteArray, arguments[1], 4);
+        };
+        
+        /**
+         * @function
+         * @param {karbonator.ByteArray} byteArray
+         * @param {Number} [startIndex=0]
+         * @return {Number}
+         */
+        BitConverter.prototype.getUint32FromBytes = function (byteArray) {
+            var value = this.getInt32FromBytes(byteArray, arguments[1]);
+            if(value < 0) {
+                value += detail._twoPower32;
+            }
+            
+            return value;
+        };
+        
+        return BitConverter;
+    }());
+    
+    /*////////////////////////////////*/
+    
+    /*////////////////////////////////////////////////////////////////*/
+    //karbonator.assertion namespace.
+    
     /**
      * @memberof karbonator
-     * @readonly
-     * @type {karbonator.Environment}
+     * @namespace
      */
-    karbonator.environment = new karbonator.Environment(global);
+    var assertion = karbonator.assertion || {};
+    karbonator.assertion = assertion;
+    
+    /**
+     * @memberof karbonator.assertion
+     * @function
+     * @param {Boolean} boolExpr
+     * @param {String} [message]
+     * @param {Function} [errorClass]
+     */
+    assertion.isTrue = function (boolExpr) {
+        if(!boolExpr) {
+            var errorClass = (
+                karbonator.isFunction(arguments[2])
+                ? arguments[2] :
+                Error
+            );
+            
+            throw new errorClass((
+                karbonator.isUndefinedOrNull(arguments[1])
+                ? "Assertion Failed" :
+                arguments[1].toString()
+            ));
+        }
+    };
+    
+    /**
+     * @memberof karbonator.assertion
+     * @function
+     * @param {Boolean} boolExpr
+     * @param {String} [message]
+     * @param {Function} [errorClass]
+     */
+    assertion.isFalse = function (boolExpr) {
+        return assertion.isTrue(
+            !boolExpr,
+            arguments[1],
+            arguments[2]
+        );
+    };
+    
+    /**
+     * @memberof karbonator.assertion
+     * @function
+     * @param {*} o
+     * @param {String} [message]
+     * @param {Function} [errorClass]
+     */
+    assertion.isNotUndefined = function (o) {
+        assertion.isTrue(!karbonator.isUndefined(o), arguments[1], arguments[2]);
+    };
+    
+    /**
+     * @memberof karbonator.assertion
+     * @function
+     * @param {Object} o
+     * @param {Function} klass
+     * @param {String} [message]
+     * @param {Function} [errorClass]
+     */
+    assertion.isInstanceOf = function (o, klass) {
+        assertion.isTrue(o instanceof klass, arguments[2], arguments[3]);
+    };
     
     /*////////////////////////////////////////////////////////////////*/
     
     /*////////////////////////////////////////////////////////////////*/
     //karbonator.math namespace.
     
-    (function (global, karbonator) {
+    /**
+     * @namespace
+     * @memberof karbonator
+     */
+    var math = karbonator.math || {};
+    karbonator.math = math;
+    
+    /**
+     * @memberof karbonator.math
+     * @readonly
+     */
+    math.epsilon = 1e-5;
+    
+    /**
+     * @memberof karbonator.math
+     * @function
+     * @param {Number} min
+     * @param {Number} max
+     * @return {Number}
+     */
+    math.nextInt = function (min, max) {
+        return karbonator.toInteger(
+            math.nextFloat(
+                karbonator.toInteger(min),
+                karbonator.toInteger(max)
+            )
+        );
+    };
+    
+    /**
+     * @memberof karbonator.math
+     * @function
+     * @param {Number} min
+     * @param {Number} max
+     * @return {Number}
+     */
+    math.nextFloat = function (min, max) {
+        return (Math.random() * (max - min)) + min;
+    };
+    
+    /**
+     * @memberof karbonator.math
+     * @function
+     * @param {Number} lhs
+     * @param {Number} rhs
+     * @param {Number} [epsilon=karbonator.math.epsilon]
+     * @return {Boolean}
+     */
+    math.numberEquals = function (lhs, rhs) {
+        return Math.abs(lhs - rhs) < (karbonator.isUndefined(arguments[2]) ? math.epsilon : arguments[2]);
+    };
+    
+    /**
+     * @memberof karbonator.math
+     * @function
+     * @param {Number} value
+     * @param {Number} start
+     * @param {Number} end
+     * @return {Number}
+     */
+    math.clamp = function (value, start, end) {
+        var result = value;
+        
+        if(value < start) {
+            result = start;
+        }
+        else if(value > end) {
+            result = end;
+        }
+        
+        return result;
+    };
+    
+    math.Interval = (function (global, karbonator) {
+        var detail = karbonator.detail;
+        var math = karbonator.math;
+        
+        var Number = global.Number;
+        var Error = global.Error;
+        var TypeError = global.TypeError;
+        
+        var _epsilon = math.epsilon;
+        var _minInt = karbonator.minimumSafeInteger;
+        var _maxInt = karbonator.maximumSafeInteger;
+        
         /**
-         * @namespace
-         * @memberof karbonator
+         * @memberof karbonator.math
+         * @constructor
+         * @param {Number} value1
+         * @param {Number} [value2]
          */
-        var math = (karbonator.math = karbonator.math || {
-            /**
-             * @readonly
-             */
-            epsilon : 1e-5,
-            
-            /**
-             * @memberof karbonator.math
-             * @function
-             * @param {*} v
-             * @return {Number}
-             */
-            toInt : detail._toInteger,
-            
-            /**
-             * @memberof karbonator.math
-             * @function
-             * @param {Number} min
-             * @param {Number} max
-             * @return {Number}
-             */
-            nextInt : function (min, max) {
-                return math.toInt(math.nextFloat(math.toInt(min), math.toInt(max)));
-            },
-            
-            /**
-             * @memberof karbonator.math
-             * @function
-             * @param {Number} min
-             * @param {Number} max
-             * @return {Number}
-             */
-            nextFloat : function (min, max) {
-                return (Math.random() * (max - min)) + min;
-            },
-            
-            /**
-             * @memberof karbonator.math
-             * @function
-             * @param {Number} lhs
-             * @param {Number} rhs
-             * @param {Number} [epsilon=karbonator.math.epsilon]
-             * @return {Boolean}
-             */
-            numberEquals : function (lhs, rhs) {
-                return Math.abs(lhs - rhs) < (typeof(arguments[2]) === "undefined" ? math.epsilon : arguments[2]);
-            },
-            
-            /**
-             * @memberof karbonator.math
-             * @function
-             * @param {Number} value
-             * @param {Number} start
-             * @param {Number} end
-             * @return {Number}
-             */
-            clamp : function (value, start, end) {
-                var result = value;
-                
-                if(value < start) {
-                    result = start;
+        var Interval = function (value1) {
+            switch(arguments.length) {
+            case 0:
+                throw new TypeError("At least one number or an Interval instance must be passed.");
+            break;
+            case 1:
+                if(value1 instanceof Interval) {
+                    this._min = value1._min;
+                    this._max = value1._max;
                 }
-                else if(value > end) {
-                    result = end;
+                else if(karbonator.isNumber(value1)) {
+                    this._min = this._max = value1;
                 }
+                else {
+                    throw new TypeError("The parameter must be a number or an Interval instance.");
+                }
+            break;
+            case 2:
+            default:
+                var value2 = arguments[1];
                 
-                return result;
-            }
-        });
-        
-        /*////////////////////////////////*/
-        
-        /*////////////////////////////////*/
-        //Interval
-        
-        math.Interval = (function () {
-            /**
-             * @memberof karbonator.math
-             * @constructor
-             * @param {Number} value1
-             * @param {Number} value2
-             */
-            var Interval = function (value1, value2) {
+                if(
+                    !karbonator.isNumber(value1)
+                    || !karbonator.isNumber(value2)
+                ) {
+                    throw new TypeError("Both 'value1' and 'value2' must be numbers.");
+                }            
+                    
                 if(value1 < value2) {
                     this._min = value1;
                     this._max = value2;
@@ -569,520 +1821,544 @@
                     this._min = value2;
                     this._max = value1;
                 }
-            };
+            //break;
+            }
+        };
+        
+        /**
+         * @function
+         * @param {*} o
+         */
+        var _assertIsInterval = function (o) {
+            if(!(o instanceof Interval)) {
+                throw new TypeError("The parameter must be an instance of karbonator.math.Interval.");
+            }
+        };
+        
+        /**
+         * @function
+         * @param {Interval} o
+         * @param {Number} value
+         * @return {Boolean}
+         */
+        var _isValueInInterval = function (o, value) {
+            return (value >= o._min || value <= o._max);
+        };
+        
+        /**
+         * @function
+         * @param {Array.<Interval>} sortedArray
+         * @param {Interval} o
+         * @param {Function} comparator
+         * @param {Object} [thisArg]
+         * @return {Boolean}
+         */
+        var _insertIfNotExistAndSort = function (sortedArray, o, comparator) {
+            var thisArg = arguments[3];
+            comparator = (
+                typeof(comparator) !== "undefined"
+                ? comparator
+                : (function (lhs, rhs) {return lhs - rhs;})
+            );
             
-            /**
-             * @function
-             * @param {Interval} o
-             * @param {Number} value
-             * @return {Boolean}
-             */
-            var _isValueInInterval = function (o, value) {
-                return (value >= o._min || value <= o._max);
-            };
-            
-            /**
-             * @function
-             * @param {Array.<Interval>} sortedArray
-             * @param {Interval} o
-             * @param {Function} comparator
-             * @param {Object} [thisArg]
-             * @return {Boolean}
-             */
-            var _insertIfNotExistAndSort = function (sortedArray, o, comparator) {
-                var thisArg = arguments[3];
-                comparator = (
-                    typeof(comparator) !== "undefined"
-                    ? comparator
-                    : (function (lhs, rhs) {return lhs - rhs;})
-                );
+            var len = sortedArray.length;
+            var result = true;
+            if(len < 1) {
+                sortedArray.push(o);
+            }
+            else {
+                var loop = true;
+                for(var i = 0; loop && i < len; ) {
+                    var cp = comparator.call(thisArg, sortedArray[i], o);                        
+                    if(cp === 0) {
+                        result = false;
+                        loop = false;
+                    }
+                    else if(cp > 0) {
+                        sortedArray.splice(i, 0, o);
+                        loop = false;
+                    }
+                    else {
+                        ++i;
+                    }
+                }
                 
-                var len = sortedArray.length;
-                var result = true;
-                if(len < 1) {
+                if(loop) {
                     sortedArray.push(o);
                 }
-                else {
-                    var loop = true;
-                    for(var i = 0; loop && i < len; ) {
-                        var cp = comparator.call(thisArg, sortedArray[i], o);                        
-                        if(cp === 0) {
-                            result = false;
-                            loop = false;
-                        }
-                        else if(cp > 0) {
-                            sortedArray.splice(i, 0, o);
-                            loop = false;
-                        }
-                        else {
-                            ++i;
-                        }
-                    }
+            }
+            
+            return result;
+        };
+        
+        /**
+         * @function
+         * @param {Interval} l
+         * @param {Interval} r
+         * @return {Number}
+         */
+        var _intervalComparatorForSort = function (l, r) {
+            var diff = l._min - r._min;
+            if(math.numberEquals(diff, 0, this.epsilon)) {
+                return (l[karbonator.equals](r) ? 0 : -1);
+            }
+            
+            return diff;
+        };
+        
+        /**
+         * @function
+         * @param {Array.<Interval>} intervals
+         * @param {Number} [epsilon=karbonator.math.epsilon]
+         * @return {Array.<Interval>}
+         */
+        var _createSortedIntervalListSet = function (intervals) {
+            var comparatorParams = {epsilon : arguments[1]};
+            var sortedIntervals = [];
+            for(var i = 0, len = intervals.length; i < len; ++i) {
+                _insertIfNotExistAndSort(
+                    sortedIntervals,
+                    intervals[i],
+                    _intervalComparatorForSort,
+                    comparatorParams
+                );
+            }
+            
+            return sortedIntervals;
+        };
+        
+        /**
+         * @function
+         * @param {Interval|Number} o
+         */
+        var _coerceArgumentToInterval = function (o) {
+            var result = o;
+            if(karbonator.isNumber(o)) {
+                result = new Interval(o, o);
+            }
+            
+            _assertIsInterval(result);
+            
+            return result;
+        };
+        
+        /**
+         * @function
+         * @param {Array.<Interval>} sortedListSet
+         * @param {Number} startIndex
+         * @return {Number}
+         */
+        var _findEndOfClosureIndex = function (sortedListSet, startIndex) {
+            var endOfClosureIndex = startIndex + 1;
+            for(
+                var i = startIndex, len = sortedListSet.length;
+                i < endOfClosureIndex && i < len;
+                ++i
+            ) {
+                var current = sortedListSet[i];
+                
+                var loopJ = true;
+                var endOfNeighborIndex = i + 1;
+                for(var j = endOfNeighborIndex; loopJ && j < len; ) {
+                    var other = sortedListSet[j];
                     
-                    if(loop) {
-                        sortedArray.push(o);
+                    if(current._max < other._min) {
+                        endOfNeighborIndex = j;
+                        loopJ = false;
+                    }
+                    else {
+                        ++j;
                     }
                 }
-                
-                return result;
-            };
-            
-            /**
-             * @function
-             * @param {Interval} l
-             * @param {Interval} r
-             * @return {Number}
-             */
-            var _intervalComparatorForSort = function (l, r) {
-                var diff = l._min - r._min;
-                if(math.numberEquals(diff, 0, this.epsilon)) {
-                    return (l.equals(r) ? 0 : -1);
+                if(loopJ) {
+                    endOfNeighborIndex = len;
                 }
                 
-                return diff;
-            };
+                endOfClosureIndex = (
+                    endOfClosureIndex < endOfNeighborIndex
+                    ? endOfNeighborIndex
+                    : endOfClosureIndex
+                );
+            }
             
-            /**
-             * @function
-             * @param {Array.<Interval>} intervals
-             * @param {Number} [epsilon=karbonator.math.epsilon]
-             * @return {Array.<Interval>}
-             */
-            var _createSortedIntervalListSet = function (intervals) {
-                var comparatorParams = {epsilon : arguments[1]};
-                var sortedIntervals = [];
-                for(var i = 0, len = intervals.length; i < len; ++i) {
+            return endOfClosureIndex;
+        };
+        
+        /**
+         * @memberof karbonator.math.Interval
+         * @function
+         * @param {Array.<karbonator.math.Interval>} intervals
+         * @param {Number} [epsilon=karbonator.math.epsilon]
+         * @param {Boolean} [mergePoints=false]
+         * @return {Array.<karbonator.math.Interval>}
+         */
+        Interval.disjoin = function (intervals) {
+            switch(intervals.length) {
+            case 0:
+                return [];
+            //break;
+            case 1:
+                return [new Interval(intervals[0]._min, intervals[0]._max)];
+            //break;
+            }
+            
+            var disjoinedIntervals = [];
+            
+            var j = 0, sortedPointMaxIndex = 0, endOfClosureIndex = 0;
+            var neighbor = null;
+            var sortedPoints = [];
+            var sortedListSet = _createSortedIntervalListSet(intervals, arguments[1]);
+            for(var i = 0, len = sortedListSet.length; i < len; ) {
+                j = 0;
+                
+                endOfClosureIndex = _findEndOfClosureIndex(sortedListSet, i);
+                sortedPoints.length = 0;
+                for(j = i; j < endOfClosureIndex; ++j) {
+                    neighbor = sortedListSet[j];
                     _insertIfNotExistAndSort(
-                        sortedIntervals,
-                        intervals[i],
-                        _intervalComparatorForSort,
-                        comparatorParams
+                        sortedPoints,
+                        neighbor._min
+                    );
+                    _insertIfNotExistAndSort(
+                        sortedPoints,
+                        neighbor._max
                     );
                 }
                 
-                return sortedIntervals;
-            };
-            
-            /**
-             * @memberof karbonator.math.Interval
-             * @function
-             * @param {Array.<karbonator.math.Interval>} intervals
-             * @param {Number} [epsilon=karbonator.math.epsilon]
-             * @param {Boolean} [mergePoints=false]
-             * @return {Array.<karbonator.math.Interval>}
-             */
-            Interval.disjoin = (function () {
-                /**
-                 * @function
-                 * @param {Array.<Interval>} sortedListSet
-                 * @param {Number} startIndex
-                 * @return {Number}
-                 */
-                var _findEndOfClosureIndex = function (sortedListSet, startIndex) {
-                    var endOfClosureIndex = startIndex + 1;
-                    for(
-                        var i = startIndex, len = sortedListSet.length;
-                        i < endOfClosureIndex && i < len;
-                        ++i
-                    ) {
-                        var current = sortedListSet[i];
-                        
-                        var loopJ = true;
-                        var endOfNeighborIndex = i + 1;
-                        for(var j = endOfNeighborIndex; loopJ && j < len; ) {
-                            var other = sortedListSet[j];
-                            
-                            if(current._max < other._min) {
-                                endOfNeighborIndex = j;
-                                loopJ = false;
-                            }
-                            else {
-                                ++j;
-                            }
-                        }
-                        if(loopJ) {
-                            endOfNeighborIndex = len;
-                        }
-                        
-                        endOfClosureIndex = (
-                            endOfClosureIndex < endOfNeighborIndex
-                            ? endOfNeighborIndex
-                            : endOfClosureIndex
-                        );
-                    }
-                    
-                    return endOfClosureIndex;
-                };
-                
-                return function (intervals) {
-                    switch(intervals.length) {
-                    case 0:
-                        return [];
-                    //break;
-                    case 1:
-                        return [new Interval(intervals[0]._min, intervals[0]._max)];
-                    //break;
-                    }
-                    
-                    var disjoinedIntervals = [];
-                    
-                    var j = 0, sortedPointMaxIndex = 0, endOfClosureIndex = 0;
-                    var neighbor = null;
-                    var sortedPoints = [];
-                    var sortedListSet = _createSortedIntervalListSet(intervals, arguments[1]);
-                    for(var i = 0, len = sortedListSet.length; i < len; ) {
-                        j = 0;
-                        
-                        endOfClosureIndex = _findEndOfClosureIndex(sortedListSet, i);
-                        sortedPoints.length = 0;
-                        for(j = i; j < endOfClosureIndex; ++j) {
-                            neighbor = sortedListSet[j];
-                            _insertIfNotExistAndSort(
-                                sortedPoints,
-                                neighbor._min
-                            );
-                            _insertIfNotExistAndSort(
-                                sortedPoints,
-                                neighbor._max
-                            );
-                        }
-                        
-                        sortedPointMaxIndex = sortedPoints.length - 1;
-                        if(arguments[2]) {
-                            disjoinedIntervals.push(new Interval(sortedPoints[0], sortedPoints[sortedPointMaxIndex]));
-                        }
-                        else {
-                            //TODO : 안전성 검사(e.g. Interval이 1개인 경우)
-                            j = 0;
-                            do {
-                                disjoinedIntervals.push(new Interval(sortedPoints[j], sortedPoints[j + 1]));
-                                ++j;
-                            }
-                            while(j < sortedPointMaxIndex);
-                        }
-                        
-                        i = endOfClosureIndex;
-                    }
-                    
-                    return disjoinedIntervals;
-                };
-            }());
-            
-            /**
-             * @memberof karbonator.math.Interval
-             * @function
-             * @param {Array.<karbonator.math.Interval>} intervals
-             * @param {Number} [minimumValue=Number.MIN_VALUE]
-             * @param {Number} [maximumValue=Number.MAX_VALUE]
-             * @param {Number} [epsilon=karbonator.math.epsilon]
-             * @return {Array.<karbonator.math.Interval>}
-             */
-            Interval.negate = function (intervals) {
-                var negatedIntervals = [];
-                
-                //Must be sorted in lowest minimum value order.
-                var epsilon = karbonator.selectNonUndefined(arguments[3], karbonator.math.epsilon);
-                var disjoinedIntervals = Interval.disjoin(intervals, epsilon, true);
-                var intervalCount = disjoinedIntervals.length;
-                var i, j = 0;
-                
-                if(intervalCount > 0) {
-                    var min = disjoinedIntervals[j]._min;
-                    if(Number.isInteger(min)) {
-                        negatedIntervals.push(new Interval(
-                            detail._selectInt(arguments[1], Number.MIN_SAFE_INTEGER),
-                            min - 1
-                        ));
-                    }
-                    else {
-                        negatedIntervals.push(new Interval(
-                            detail._selectFloat(arguments[1], -Number.MAX_VALUE),
-                            min - epsilon
-                        ));
-                    }
-                    
-                    i = 0, ++j;
-                }
-                
-                for(; j < intervalCount; ++j, ++i) {
-                    var max = disjoinedIntervals[i]._max;
-                    var min = disjoinedIntervals[j]._min;
-                    negatedIntervals.push(new Interval(
-                        max + (Number.isInteger(max) ? 1 : epsilon),
-                        min - (Number.isInteger(min) ? 1 : epsilon)
-                    ));
-                }
-                
-                if(i < intervalCount) {
-                    var max = disjoinedIntervals[i]._max;
-                    if(Number.isInteger(max)) {
-                        negatedIntervals.push(new Interval(
-                            max + 1,
-                            detail._selectInt(arguments[2], Number.MAX_SAFE_INTEGER)
-                        ));
-                    }
-                    else {
-                        negatedIntervals.push(new Interval(
-                            max + epsilon,
-                            detail._selectFloat(arguments[2], Number.MAX_VALUE)
-                        ));
-                    }
-                }
-                
-                return negatedIntervals;
-            };
-            
-            /**
-             * @memberof karbonator.math.Interval
-             * @function
-             * @param {Array.<karbonator.math.Interval>} intervals
-             * @param {Number} [targetIndex=0]
-             * @param {Number} [epsilon=karbonator.math.epsilon]
-             * @return {Array.<karbonator.math.Interval>}
-             */
-            Interval.findClosure = function (intervals) {
-                var sortedListSet = _createSortedIntervalListSet(intervals, arguments[2]);
-                
-                var targetIndex = (typeof(arguments[1]) !== "undefined" ? arguments[1] : 0);
-                var len = sortedListSet.length;
-                var visitFlags = [];
-                for(var i = 0; i < len; ++i) {
-                    visitFlags.push(false);
-                }
-                
-                var closureStartIndex = targetIndex;
-                var closureInclusiveEndIndex = targetIndex;
-                var targetIndices = [targetIndex];
-                for(; targetIndices.length > 0; ) {
-                    var i = targetIndices.pop();
-                    if(!visitFlags[i]) {
-                        visitFlags[i] = true;
-                        
-                        var lhs = sortedListSet[i];
-                        for(var j = 0; j < len; ++j) {
-                            if(j !== i && lhs.intersectsWith(sortedListSet[j])) {
-                                targetIndices.push(j);
-                                
-                                closureStartIndex = (closureStartIndex > j ? j : closureStartIndex);
-                                closureInclusiveEndIndex = (closureInclusiveEndIndex < j ? j : closureInclusiveEndIndex);
-                            }
-                        }
-                    }
-                }
-                
-                var closure = [];
-                for(var i = closureStartIndex; i <= closureInclusiveEndIndex; ++i) {
-                    closure.push(sortedListSet[i]);
-                }
-                
-                return closure;
-            };
-            
-            /**
-             * @function
-             * @return {Number}
-             */
-            Interval.prototype.getMinimum = function () {
-                return this._min;
-            };
-            
-            /**
-             * @function
-             * @return {Number}
-             */
-            Interval.prototype.getMaximum = function () {
-                return this._max;
-            };
-            
-            /**
-             * @function
-             * @param {karbonator.math.Interval} rhs
-             * @param {Number} [epsilon=karbonator.math.epsilon]
-             * @return {Boolean}
-             */
-            Interval.prototype.equals = function (rhs) {
-                var epsilon = arguments[1];
-                return math.numberEquals(this._min, rhs._min, epsilon)
-                    && math.numberEquals(this._max, rhs._max, epsilon)
-                ;
-            };
-            
-            /**
-             * @function
-             * @param {karbonator.math.Interval} rhs
-             * @return {Boolean}
-             */
-            Interval.prototype.intersectsWith = function (rhs) {
-                if(this._min < rhs._min) {
-                    return this._max >= rhs._min && rhs._max >= this._min;
+                sortedPointMaxIndex = sortedPoints.length - 1;
+                if(arguments[2]) {
+                    disjoinedIntervals.push(new Interval(sortedPoints[0], sortedPoints[sortedPointMaxIndex]));
                 }
                 else {
-                    return rhs._max >= this._min && this._max >= rhs._min;
-                }
-            };
-            
-            /**
-             * @function
-             * @param {karbonator.math.Interval|Array|String|Number} arg
-             * @return {Boolean}
-             */
-            Interval.prototype.contains = function (arg) {
-                var typeOfArg = typeof(arg);
-                switch(typeOfArg) {
-                case "object":
-                    if(arg instanceof Interval) {
-                        if(this._min < arg._min) {
-                            return _isValueInInterval(this, arg._min)
-                                && _isValueInInterval(this, arg._max)
-                            ;
-                        }
-                        else {
-                            return _isValueInInterval(arg, this._min)
-                                && _isValueInInterval(arg, this._max)
-                            ;
-                        }
+                    //TODO : 안전성 검사(e.g. Interval이 1개인 경우)
+                    j = 0;
+                    do {
+                        disjoinedIntervals.push(new Interval(sortedPoints[j], sortedPoints[j + 1]));
+                        ++j;
                     }
-                    else if(Array.isArray(arg)) {
-                        for(var i = 0, len = arg.length; i < len; ++i) {
-                            if(!this.contains(arg[i])) {
-                                return false;
-                            }
-                        }
-                        
-                        return true;
-                    }
-                    else {
-                        throw new TypeError("The parameter must be either an Interval instance, an array, a string or a number.");
-                    }
-                //break;
-                case "string":
-                    for(var i = 0; i < arg.length; ++i) {
-                        if(!_isValueInInterval(this, arg.charCodeAt(i))) {
-                            return false;
-                        }
-                    }
-                    
-                    return true;
-                //break;
-                case "number":
-                    return _isValueInInterval(this, arg);
-                //break;
-                default:
-                    throw new TypeError("The parameter must be either an Interval instance, an array, a string or a number.");
-                }
-            };
-            
-            /**
-             * @function
-             * @param {Number} [minimumValue]
-             * @param {Number} [maximumValue]
-             * @param {Number} [epsilon=karbonator.math.epsilon]
-             * @return {Array.<karbonator.math.Interval>}
-             */
-            Interval.prototype.negate = function () {
-                var negatedIntervals = [];
-                
-                if(Number.isInteger(this._min)) {
-                    negatedIntervals.push(new Interval(
-                        detail._selectInt(arguments[0], Number.MIN_SAFE_INTEGER),
-                        this._min - 1
-                    ));
-                }
-                else {
-                    negatedIntervals.push(new Interval(
-                        detail._selectFloat(arguments[0], -Number.MAX_VALUE),
-                        this._min - karbonator.selectNonUndefined(arguments[2], karbonator.math.epsilon)
-                    ));
+                    while(j < sortedPointMaxIndex);
                 }
                 
-                if(Number.isInteger(this._max)) {
-                    negatedIntervals.push(new Interval(
-                        detail._selectInt(arguments[1], Number.MAX_SAFE_INTEGER),
-                        this._max + 1
-                    ));
-                }
-                else {
-                    negatedIntervals.push(new Interval(
-                        detail._selectFloat(arguments[1], Number.MAX_VALUE),
-                        this._max + karbonator.selectNonUndefined(arguments[2], karbonator.math.epsilon)
-                    ));
-                }
-                
-                return negatedIntervals;
-            };
+                i = endOfClosureIndex;
+            }
             
-            /**
-             * @function
-             * @return {String}
-             */
-            Interval.prototype.toString = function () {
-                return '['
-                    + detail._intToString(this._min)
-                    + ", "
-                    + detail._intToString(this._max)
-                    + ']'
-                ;
-            };
-            
-            return Interval;
-        })();
+            return disjoinedIntervals;
+        };
         
-        /*////////////////////////////////*/
+        /**
+         * @memberof karbonator.math.Interval
+         * @function
+         * @param {Array.<karbonator.math.Interval>} intervals
+         * @param {Number} [minimumValue=Number.MIN_VALUE]
+         * @param {Number} [maximumValue=Number.MAX_VALUE]
+         * @param {Number} [epsilon=karbonator.math.epsilon]
+         * @return {Array.<karbonator.math.Interval>}
+         */
+        Interval.negate = function (intervals) {
+            var negatedIntervals = [];
+            
+            //Must be sorted in lowest minimum value order.
+            var epsilon = detail._selectNonUndefined(arguments[3], _epsilon);
+            var disjoinedIntervals = Interval.disjoin(intervals, epsilon, true);
+            var intervalCount = disjoinedIntervals.length;
+            var i, j = 0;
+            
+            if(intervalCount > 0) {
+                var min = disjoinedIntervals[j]._min;
+                if(karbonator.isInteger(min)) {
+                    negatedIntervals.push(new Interval(
+                        detail._selectInt(arguments[1], Number.MIN_SAFE_INTEGER),
+                        min - 1
+                    ));
+                }
+                else {
+                    negatedIntervals.push(new Interval(
+                        detail._selectFloat(arguments[1], -Number.MAX_VALUE),
+                        min - epsilon
+                    ));
+                }
+                
+                i = 0, ++j;
+            }
+            
+            for(; j < intervalCount; ++j, ++i) {
+                var max = disjoinedIntervals[i]._max;
+                var min = disjoinedIntervals[j]._min;
+                negatedIntervals.push(new Interval(
+                    max + (karbonator.isInteger(max) ? 1 : epsilon),
+                    min - (karbonator.isInteger(min) ? 1 : epsilon)
+                ));
+            }
+            
+            if(i < intervalCount) {
+                var max = disjoinedIntervals[i]._max;
+                if(karbonator.isInteger(max)) {
+                    negatedIntervals.push(new Interval(
+                        max + 1,
+                        detail._selectInt(arguments[2], Number.MAX_SAFE_INTEGER)
+                    ));
+                }
+                else {
+                    negatedIntervals.push(new Interval(
+                        max + epsilon,
+                        detail._selectFloat(arguments[2], Number.MAX_VALUE)
+                    ));
+                }
+            }
+            
+            return negatedIntervals;
+        };
+        
+        /**
+         * @memberof karbonator.math.Interval
+         * @function
+         * @param {Array.<karbonator.math.Interval>} intervals
+         * @param {Number} [targetIndex=0]
+         * @param {Number} [epsilon=karbonator.math.epsilon]
+         * @return {Array.<karbonator.math.Interval>}
+         */
+        Interval.findClosure = function (intervals) {
+            var sortedListSet = _createSortedIntervalListSet(intervals, arguments[2]);
+            
+            var targetIndex = (karbonator.isUndefined(arguments[1]) ? 0 : arguments[1]);
+            var len = sortedListSet.length;
+            var visitFlags = [];
+            for(var i = 0; i < len; ++i) {
+                visitFlags.push(false);
+            }
+            
+            var closureStartIndex = targetIndex;
+            var closureInclusiveEndIndex = targetIndex;
+            var targetIndices = [targetIndex];
+            for(; targetIndices.length > 0; ) {
+                var i = targetIndices.pop();
+                if(!visitFlags[i]) {
+                    visitFlags[i] = true;
+                    
+                    var lhs = sortedListSet[i];
+                    for(var j = 0; j < len; ++j) {
+                        if(j !== i && lhs.intersectsWith(sortedListSet[j])) {
+                            targetIndices.push(j);
+                            
+                            closureStartIndex = (closureStartIndex > j ? j : closureStartIndex);
+                            closureInclusiveEndIndex = (closureInclusiveEndIndex < j ? j : closureInclusiveEndIndex);
+                        }
+                    }
+                }
+            }
+            
+            var closure = [];
+            for(var i = closureStartIndex; i <= closureInclusiveEndIndex; ++i) {
+                closure.push(sortedListSet[i]);
+            }
+            
+            return closure;
+        };
         
         /**
          * @function
-         * @param {karbonator.math.Interval} l
-         * @param {karbonator.math.Interval} r
+         * @return {karbonator.math.Interval}
+         */
+        Interval.prototype[karbonator.shallowClone] = function () {
+            return new Interval(this._min, this._max);
+        };
+        
+        /**
+         * @function
          * @return {Number}
          */
-        detail._intervalComparator = function (l, r) {
-            if(l.equals(r)) {
+        Interval.prototype.getMinimum = function () {
+            return this._min;
+        };
+        
+        /**
+         * @function
+         * @return {Number}
+         */
+        Interval.prototype.getMaximum = function () {
+            return this._max;
+        };
+        
+        /**
+         * @function
+         * @param {karbonator.math.Interval|Number} rhs
+         * @param {Number} [epsilon=karbonator.math.epsilon]
+         * @return {Boolean}
+         */
+        Interval.prototype[karbonator.equals] = function (rhs) {
+            if(this === rhs) {
+                return true;
+            }
+            
+            if(karbonator.isUndefinedOrNull(rhs)) {
+                return false;
+            }
+            
+            var epsilon = arguments[1];
+            if(karbonator.isNumber(rhs)) {
+                return math.numberEquals(this._min, this._max, epsilon)
+                    && math.numberEquals(this._min, rhs, epsilon)
+                ;
+            }
+            
+            return math.numberEquals(this._min, rhs._min, epsilon)
+                && math.numberEquals(this._max, rhs._max, epsilon)
+            ;
+        };
+        
+        /**
+         * @function
+         * @param {karbonator.math.Interval|Number} rhs
+         * @param {Number} [epsilon=karbonator.math.epsilon]
+         * @return {Number}
+         */
+        Interval.prototype[karbonator.compareTo] = function (rhs) {
+            if(this.equals(rhs, arguments[1])) {
                 return 0;
             }
             
-            return l._min - r._min;
+            var target = _coerceArgumentToInterval(rhs);
+            var diff = this._min - target._min;
+            return (
+                math.numberEquals(diff, 0, epsilon)
+                ? 0
+                : diff
+            );
         };
         
-        return karbonator;
-    })(global, karbonator);
-    
-    /*////////////////////////////////////////////////////////////////*/
-    
-    /*////////////////////////////////////////////////////////////////*/
-    //karbonator.string namespace.
-    
-    (function (global, karbonator) {
-        "use strict";
-        
         /**
-         * @memberof karbonator
-         * @namespace
-         */
-        var string = karbonator.string || {};
-        karbonator.string = string;
-        
-        ////////////////////////////////
-        //Namespace functions.
-        
-        /**
-         * @memberof karbonator.string
          * @function
-         * @param {String} lhs
-         * @param {String} rhs
-         * @return {Number}
+         * @param {karbonator.math.Interval|Number} rhs
+         * @return {Boolean}
          */
-        string.compareTo = function (lhs, rhs) {
-            if(detail._isString(lhs) || detail._isString(rhs)) {
-                throw new TypeError("Both 'lhs' and 'rhs' must be strings.");
+        Interval.prototype.intersectsWith = function (rhs) {
+            var target = _coerceArgumentToInterval(rhs);
+            
+            if(this._min < target._min) {
+                return this._max >= target._min && target._max >= this._min;
+            }
+            else {
+                return target._max >= this._min && this._max >= target._min;
+            }
+        };
+        
+        /**
+         * @function
+         * @param {karbonator.math.Interval|Number|Array|String} rhs
+         * @return {Boolean}
+         */
+        Interval.prototype.contains = function (rhs) {
+            if(rhs instanceof Interval) {
+                if(this._min < rhs._min) {
+                    return _isValueInInterval(this, rhs._min)
+                        && _isValueInInterval(this, rhs._max)
+                    ;
+                }
+                else {
+                    return _isValueInInterval(rhs, this._min)
+                        && _isValueInInterval(rhs, this._max)
+                    ;
+                }
             }
             
-            return detail._stringComparator(lhs, rhs);
+            if(karbonator.isNumber(rhs)) {
+                return _isValueInInterval(this, rhs);
+            }
+            
+            if(karbonator.isArray(rhs)) {
+                for(var i = 0, len = rhs.length; i < len; ++i) {
+                    if(!this.contains(rhs[i])) {
+                        return false;
+                    }
+                }
+                
+                return true;
+            }
+            
+            if(karbonator.isString(rhs)) {
+                for(var i = 0; i < rhs.length; ++i) {
+                    if(!_isValueInInterval(this, rhs.charCodeAt(i))) {
+                        return false;
+                    }
+                }
+                
+                return true;
+            }
+            
+            throw new TypeError("The parameter must be either an karbonator.math.Interval instance, an array, a string or a number.");
         };
         
-        ////////////////////////////////
+        /**
+         * @function
+         * @param {Number} [minimumValue]
+         * @param {Number} [maximumValue]
+         * @param {Number} [epsilon=karbonator.math.epsilon]
+         * @return {Array.<karbonator.math.Interval>}
+         */
+        Interval.prototype.negate = function () {
+            var negatedIntervals = [];
+            
+            if(karbonator.isInteger(this._min)) {
+                negatedIntervals.push(new Interval(
+                    detail._selectInt(arguments[0], _minInt),
+                    this._min - 1
+                ));
+            }
+            else {
+                negatedIntervals.push(new Interval(
+                    detail._selectFloat(arguments[0], -Number.MAX_VALUE),
+                    this._min - detail._selectNonUndefined(arguments[2], _epsilon)
+                ));
+            }
+            
+            if(karbonator.isInteger(this._max)) {
+                negatedIntervals.push(new Interval(
+                    detail._selectInt(arguments[1], _maxInt),
+                    this._max + 1
+                ));
+            }
+            else {
+                negatedIntervals.push(new Interval(
+                    detail._selectFloat(arguments[1], Number.MAX_VALUE),
+                    this._max + detail._selectNonUndefined(arguments[2], _epsilon)
+                ));
+            }
+            
+            return negatedIntervals;
+        };
         
-        return karbonator;
-    })(global, karbonator);
+        /**
+         * @function
+         * @param {Number} v
+         * @return {String}
+         */
+        var _intToString = function (v) {
+            if(v === detail._maxInt) {
+                return "INT_MAX";
+            }
+            else if(v === detail._minInt) {
+                return "INT_MIN";
+            }
+            else {
+                return v.toString();
+            }
+        };
+        
+        /**
+         * @function
+         * @return {String}
+         */
+        Interval.prototype.toString = function () {
+            return '['
+                + _intToString(this._min)
+                + ", "
+                + _intToString(this._max)
+                + ']'
+            ;
+        };
+        
+        return Interval;
+    }(global, karbonator));
     
     /*////////////////////////////////////////////////////////////////*/
     

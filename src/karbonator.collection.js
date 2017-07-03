@@ -2,11 +2,12 @@
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
- * last-modified : 2017-06-21
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
 (function (g, factory) {
+    "use strict";
+    
     if(typeof(define) === "function" && define.amd) {
         define(["./karbonator.core"], function (karbonator) {
             return factory(g, karbonator);
@@ -22,13 +23,21 @@
     
     var detail = karbonator.detail;
     
+    var Array = global.Array;
     var Symbol = detail._selectSymbol();
+    var Reflect = detail._selectReflect();
     
-    var _selectNonUndefined = detail._selectNonUndefined;
+    /**
+     * @memberof karbonator.detail
+     * @readonly
+     */
+    detail._colStrBegin = '{';
     
-    var _colStrBegin = '{';
-    
-    var _colStrEnd = '}';
+    /**
+     * @memberof karbonator.detail
+     * @readonly
+     */
+    detail._colStrEnd = '}';
     
     var _colStrSeparator = ", ";
     
@@ -38,37 +47,22 @@
      * @memberof karbonator.detail
      * @function
      * @param {*} o
-     * @return {Boolean}
      */
-    detail._isEsIterable = function (o) {
-        return !detail._isUndefinedOrNull(o)
-            && !detail._isUndefinedOrNull(o[Symbol.iterator])
-        ;
+    detail._assertIsArray = function (o) {
+        if(!karbonator.isArray(o)) {
+            throw new TypeError("The parameter must be an array.");
+        }
     };
     
     /**
      * @memberof karbonator.detail
      * @function
-     * @param {Number} l
-     * @param {Number} r
-     * @return {Number}
+     * @param {*} o
      */
-    detail._numberComparator = function (l, r) {
-        return l - r;
-    };
-    
-    /**
-     * @function
-     * @param {Object} l
-     * @param {Object} r
-     * @return {Number}
-     */
-    detail._objectComparator = function (l, r) {
-        return (
-            l === r
-            ? 0
-            : detail._stringComparator(l.toString(), r.toString())
-        );
+    detail._assertIsEsIterable = function (o) {
+        if(!karbonator.isEsIterable(o)) {
+            throw new TypeError("The parameter must be an object that has the property 'Symbol.iterator'.");
+        }
     };
     
     /**
@@ -77,8 +71,10 @@
      * @return {Boolean}
      */
     var _isDefaultValueOfArgumentTrue = function (arg) {
-        return (typeof(arguments[2]) === "undefined" || !!arguments[2]);
+        return (karbonator.isUndefined(arguments[2]) || !!arguments[2]);
     };
+    
+    var _selectNonUndefined = detail._selectNonUndefined;
     
     /**
      * @memberof karbonator
@@ -87,62 +83,71 @@
     var collection = karbonator.collection || {};
     karbonator.collection = collection;
     
-    var defaultArrayLikeObjectWrapper = {
-        get : function (arr, index) {
-            return arr[index];
-        },
-        
-        getLength : function (arr) {
-            return arr.length;
-        },
-        
-        removeAt : function (arr, index) {
-            return Array.prototype.splice.call(arr, index, 1);
-        },
-        
-        equals : function (lhs, rhs) {
-            return lhs === rhs;
-        }
-    };
+//    /**
+//     * @memberof karbonator.collection
+//     * @function
+//     * @param {Array} arr
+//     * @param {iterable} iterable
+//     * @return {Array}
+//     */
+//    collection.concatenateAssign = function (arr, iterable) {
+//        detail._assertIsArray(arr);
+//        detail._assertIsEsIterable(iterable);
+//        
+//        for(
+//            var i = iterable[Symbol.iterator](), iP = i.next();
+//            !iP.done;
+//            iP = i.next()
+//        ) {
+//            arr.push(iP.value);
+//        }
+//        
+//        return arr;
+//    };
     
     /**
-     * @memberof karbonator.collection
      * @function
-     * @param {Array} arr
-     * @param {Object} callbacks
-     * @return {Array}
+     * @param {karbonator.comparator} o
      */
-    collection.removeDuplicates = function (arr, callbacks) {
-        callbacks = karbonator.selectNonUndefined(
-            callbacks,
-            defaultArrayLikeObjectWrapper
-        );
-        
-        for(var i = 0; i < callbacks.getLength(arr); ++i) {
-            var lhs = callbacks.get(arr, i);
-            
-            for(var j = i + 1; j < getLength(arr); ) {
-                var rhs = callbacks.get(arr, j);
-                if(callbacks.equals(lhs, rhs)) {
-                    callbacks.removeAt(arr, j);
-                }
-                else {
-                    ++j;
-                }
-            }
+    detail._assertIsComparator = function (o) {
+        if(!karbonator.isComparator(o)) {
+            throw new TypeError(detail._selectNonUndefined(
+                arguments[1],
+                "A valid comparator function for key comparision must be specified."
+            ));
         }
-        
-        return arr;
     };
     
     /**
      * @function
-     * @param {Function} SetClass
+     * @param {Set} setObj
+     * @param {iterable} iterable
+     * @return {Set}
+     */
+    var _setConcatenateAssign = function (setObj, iterable) {
+        if(!karbonator.isEsIterable(iterable)) {
+            throw new TypeError("The second parameter 'iterable' must have a property 'Symbol.iterator'.");
+        }
+        
+        for(
+            var i = iterable[Symbol.iterator](), iP = i.next();
+            !iP.done;
+            iP = i.next()
+        ) {
+            setObj.add(iP.value);
+        }
+        
+        return setObj;
+    };
+    
+    /**
+     * @function
+     * @param {Function} setKlass
      * @param {o} set
      * @return {Set}
      */
-    var _setShallowCopy = function (SetClass, o) {
-        var copyOfThis = new SetClass(o._comparator);
+    var _setShallowCopy = function (setKlass, o) {
+        var copyOfThis = new setKlass(o._comparator);
         
         for(
             var i = o.keys(), iP = i.next();
@@ -175,18 +180,17 @@
     
     /**
      * @function
-     * @param {Function} SetClass
+     * @param {Function} setKlass
      * @param {Set} lhs
      * @param {Set} rhs
      * @return {Set}
      */
-    var _setUnite = function (SetClass, lhs, rhs) {
-        return _setUniteAssign(_setShallowCopy(SetClass, lhs), rhs);
+    var _setUnite = function (setKlass, lhs, rhs) {
+        return _setUniteAssign(_setShallowCopy(setKlass, lhs), rhs);
     };
     
     /**
      * @function
-     * @param {Function} SetClass
      * @param {Set} lhs
      * @param {Set} rhs
      * @return {Set}
@@ -205,35 +209,35 @@
     
     /**
      * @function
-     * @param {Function} SetClass
+     * @param {Function} setKlass
      * @param {Set} lhs
      * @param {Set} rhs
      * @return {Set}
      */
-    var _setSubtract = function (SetClass, lhs, rhs) {
-        return _setSubtractAssign(_setShallowCopy(SetClass, lhs), rhs);
+    var _setSubtract = function (setKlass, lhs, rhs) {
+        return _setSubtractAssign(_setShallowCopy(setKlass, lhs), rhs);
     };
     
     /**
      * @function
-     * @param {Function} SetClass
+     * @param {Function} setKlass
      * @param {Set} lhs
      * @param {Set} rhs
      * @return {Set}
      */
-    var _setIntersectAssign = function (SetClass, lhs, rhs) {
-        return _setSubtractAssign(lhs, _setSubtract(SetClass, lhs, rhs));
+    var _setIntersectAssign = function (setKlass, lhs, rhs) {
+        return _setSubtractAssign(lhs, _setSubtract(setKlass, lhs, rhs));
     };
     
     /**
      * @function
-     * @param {Function} SetClass
+     * @param {Function} setKlass
      * @param {Set} lhs
      * @param {Set} rhs
      * @return {Set}
      */
-    var _setIntersect = function (SetClass, lhs, rhs) {
-        return _setIntersectAssign(SetClass, _setShallowCopy(SetClass, lhs), rhs);
+    var _setIntersect = function (setKlass, lhs, rhs) {
+        return _setIntersectAssign(setKlass, _setShallowCopy(setKlass, lhs), rhs);
     };
     
     /**
@@ -241,7 +245,7 @@
      * @return {String}
      */
     var _setToStringMethod = function () {
-        var str = _colStrBegin;
+        var str = detail._colStrBegin;
         
         var iter = this.keys();
         var pair = iter.next();
@@ -254,19 +258,41 @@
             str += pair.value;
         }
         
-        str += _colStrEnd;
+        str += detail._colStrEnd;
         
         return str;
     };
     
     /**
      * @function
-     * @param {Function} MapClass
+     * @param {Map} mapObj
+     * @param {iterable} iterable
+     * @return {Map}
+     */
+    var _mapConcatenateAssign = function (mapObj, iterable) {
+        if(!karbonator.isEsIterable(iterable)) {
+            throw new TypeError("The second parameter 'iterable' must have a property 'Symbol.iterator'.");
+        }
+        
+        for(
+            var i = iterable[Symbol.iterator](), iP = i.next();
+            !iP.done;
+            iP = i.next()
+        ) {
+            mapObj.set(iP.value[0], iP.value[1]);
+        }
+        
+        return mapObj;
+    };
+    
+    /**
+     * @function
+     * @param {Function} mapklass
      * @param {o} map
      * @return {Map}
      */
-    var _mapShallowCopy = function (MapClass, o) {
-        var copyOfThis = new MapClass(o._comparator);
+    var _mapShallowCopy = function (mapklass, o) {
+        var copyOfThis = new mapklass(o._comparator);
         
         for(
             var i = o.entries(), iP = i.next();
@@ -298,7 +324,7 @@
      * @return {String}
      */
     var _mapToStringMethod = function () {
-        var str = _colStrBegin;
+        var str = detail._colStrBegin;
         
         var iter = this.entries();
         var pair = iter.next();
@@ -311,7 +337,7 @@
             str += _mapPairToString(pair.value[0], pair.value[1]);
         }
         
-        str += _colStrEnd;
+        str += detail._colStrEnd;
         
         return str;
     };
@@ -1292,7 +1318,7 @@
              * @param {RbTreeSetBase.IteratorBase} rhs
              * @return {Boolean}
              */
-            IteratorBase.prototype.equals = function (rhs) {
+            IteratorBase.prototype[karbonator.equals] = function (rhs) {
                 return this._tree === rhs._tree
                     && this._node === rhs._node
                 ;
@@ -1489,10 +1515,15 @@
          * @memberof karbonator.collection
          * @constructor
          * @param {karbonator.comparator} comparator
+         * @param {iterable} [iterable]
          */
         var TreeSet = function (comparator) {
             this._comparator = comparator;
             this._rbTreeSet = new RbTreeSetBase(comparator);
+            
+            if(!karbonator.isUndefined(arguments[1])) {
+                _setConcatenateAssign(this, arguments[1]);
+            }
         };
         
         var PairIterator = (function () {
@@ -1510,7 +1541,7 @@
              * @return {Object}
              */
             PairIterator.prototype.next = function () {
-                var done = this._iter.equals(this._end);
+                var done = this._iter[karbonator.equals](this._end);
                 var value = (!done ? this._iter.dereference() : undefined);
                 var out = {
                     value : (value ? [value, value] : undefined),
@@ -1540,7 +1571,7 @@
              * @return {Object}
              */
             ValueIterator.prototype.next = function () {
-                var done = this._iter.equals(this._end);
+                var done = this._iter[karbonator.equals](this._end);
                 var out = {
                     value : (!done ? this._iter.dereference() : undefined),
                     done : done
@@ -1558,7 +1589,7 @@
          * @function
          * @return {karbonator.collection.TreeSet}
          */
-        TreeSet.prototype[karbonator.shallowCopy] = function () {
+        TreeSet.prototype[karbonator.shallowClone] = function () {
             return _setShallowCopy(TreeSet, this);
         };
         
@@ -1576,7 +1607,7 @@
          * @return {Boolean}
          */
         TreeSet.prototype.has = function (value) {
-            return !this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.equal).equals(this._rbTreeSet.end());
+            return !this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.equal)[karbonator.equals](this._rbTreeSet.end());
         };
         
         /**
@@ -1587,7 +1618,7 @@
         TreeSet.prototype.findNotLessThan = function (value) {
             var endIter = this._rbTreeSet.end();
             var iter = this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.greaterOrEqual);
-            if(!iter.equals(endIter)) {
+            if(!iter[karbonator.equals](endIter)) {
                 return iter.dereference();
             }
         };
@@ -1600,7 +1631,7 @@
         TreeSet.prototype.findGreaterThan = function (value) {
             var endIter = this._rbTreeSet.end();
             var iter = this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.greater);
-            if(!iter.equals(endIter)) {
+            if(!iter[karbonator.equals](endIter)) {
                 return iter.dereference();
             }
         };
@@ -1613,7 +1644,7 @@
         TreeSet.prototype.forEach = function (callback, thisArg) {
             for(
                 var end = this._rbTreeSet.end(), iter = this._rbTreeSet.begin();
-                !iter.equals(end);
+                !iter[karbonator.equals](end);
                 iter.moveToNext()
             ) {
                 var value = iter.dereference();
@@ -1669,7 +1700,7 @@
          * @return {Boolean}
          */
         TreeSet.prototype.tryAdd = function (value) {
-            return !this._rbTreeSet.insert(value).equals(this._rbTreeSet.end());
+            return !this._rbTreeSet.insert(value)[karbonator.equals](this._rbTreeSet.end());
         };
         
         /**
@@ -1791,10 +1822,15 @@
          * @memberof karbonator.collection
          * @constructor
          * @param {karbonator.comparator} comparator
+         * @param {iterable} [iterable]
          */
         var TreeMap = function (comparator) {
             this._rbTreeSet = new RbTreeSetBase(comparator, _treeMapKeyGetter);
             this._comparator = comparator;
+            
+            if(!karbonator.isUndefined(arguments[1])) {
+                _mapConcatenateAssign(this, arguments[1]);
+            }
         };
         
         var PairIterator = (function () {
@@ -1812,7 +1848,7 @@
              * @return {Object}
              */
             PairIterator.prototype.next = function () {
-                var done = this._iter.equals(this._end);
+                var done = this._iter[karbonator.equals](this._end);
                 var pair = (!done ? this._iter.dereference() : undefined);
                 var out = {
                     value : (pair ? [pair.key, pair.value] : undefined),
@@ -1842,7 +1878,7 @@
              * @return {Object}
              */
             KeyIterator.prototype.next = function () {
-                var done = this._iter.equals(this._end);
+                var done = this._iter[karbonator.equals](this._end);
                 var out = {
                     value : (!done ? this._iter.dereference().key : undefined),
                     done : done
@@ -1871,7 +1907,7 @@
              * @return {Object}
              */
             ValueIterator.prototype.next = function () {
-                var done = this._iter.equals(this._end);
+                var done = this._iter[karbonator.equals](this._end);
                 var out = {
                     value : (!done ? this._iter.dereference().value : undefined),
                     done : done
@@ -1889,7 +1925,7 @@
          * @function
          * @return {TreeMap}
          */
-        TreeMap.prototype[karbonator.shallowCopy] = function () {
+        TreeMap.prototype[karbonator.shallowClone] = function () {
             return _mapShallowCopy(TreeMap, this);
         };
         
@@ -1909,7 +1945,7 @@
         TreeMap.prototype.get = function (key) {
             var endIter = this._rbTreeSet.end();
             var iter = this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.equal);
-            if(!iter.equals(endIter)) {
+            if(!iter[karbonator.equals](endIter)) {
                 return iter.dereference().value;
             }
         };
@@ -1923,7 +1959,7 @@
         TreeMap.prototype.set = function (key, value) {
             var endIter = this._rbTreeSet.end();
             var iter = this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.equal);
-            if(iter.equals(endIter)) {
+            if(iter[karbonator.equals](endIter)) {
                 this._rbTreeSet.insert({key : key, value : value});
             }
             else {
@@ -1942,7 +1978,7 @@
         TreeMap.prototype.tryAdd = function (key, value) {
             var endIter = this._rbTreeSet.end();
             var iter = this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.equal);
-            var result = iter.equals(endIter);
+            var result = iter[karbonator.equals](endIter);
             if(result) {
                 this._rbTreeSet.insert({key : key, value : value});
             }
@@ -1956,7 +1992,7 @@
          * @return {Boolean}
          */
         TreeMap.prototype.has = function (key) {
-            return !this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.equal).equals(this._rbTreeSet.end());
+            return !this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.equal)[karbonator.equals](this._rbTreeSet.end());
         };
         
         /**
@@ -1967,7 +2003,7 @@
         TreeMap.prototype.findNotLessThan = function (key) {
             var endIter = this._rbTreeSet.end();
             var iter = this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.greaterOrEqual);
-            if(!iter.equals(endIter)) {
+            if(!iter[karbonator.equals](endIter)) {
                 var pair = iter.dereference();
                 return {
                     key : pair.key,
@@ -1984,7 +2020,7 @@
         TreeMap.prototype.findGreaterThan = function (key) {
             var endIter = this._rbTreeSet.end();
             var iter = this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.greater);
-            if(!iter.equals(endIter)) {
+            if(!iter[karbonator.equals](endIter)) {
                 var pair = iter.dereference();
                 return {
                     key : pair.key,
@@ -2001,7 +2037,7 @@
         TreeMap.prototype.forEach = function (callback, thisArg) {
             for(
                 var end = this._rbTreeSet.end(), iter = this._rbTreeSet.begin();
-                !iter.equals(end);
+                !iter[karbonator.equals](end);
                 iter.moveToNext()
             ) {
                 var pair = iter.dereference();
@@ -2083,12 +2119,17 @@
          * @memberof karbonator.collection
          * @constructor
          * @param {karbonator.comparator} comparator
+         * @param {iterable} [iterable]
          */
         var ListSet = function (comparator) {
             detail._assertIsComparator(comparator);
             
             this._comparator = comparator;
             this._elements = [];
+            
+            if(!karbonator.isUndefined(arguments[1])) {
+                _setConcatenateAssign(this, arguments[1]);
+            }
         };
         
         var ValueIterator = (function () {
@@ -2099,7 +2140,7 @@
              */
             var ValueIterator = function (listSet) {
                 this._listSet = listSet;
-                this._index = karbonator.selectNonUndefined(arguments[1], 0);
+                this._index = detail._selectNonUndefined(arguments[1], 0);
             };
             
             /**
@@ -2129,7 +2170,7 @@
              */
             var PairIterator = function (listSet) {
                 this._listSet = listSet;
-                this._index = karbonator.selectNonUndefined(arguments[1], 0);
+                this._index = detail._selectNonUndefined(arguments[1], 0);
             };
             
             /**
@@ -2156,7 +2197,7 @@
          * @function
          * @return {karbonator.collection.ListSet}
          */
-        ListSet.prototype[karbonator.shallowCopy] = function () {
+        ListSet.prototype[karbonator.shallowClone] = function () {
             return _setShallowCopy(ListSet, this);
         };
         
@@ -2241,11 +2282,11 @@
         /**
          * @function
          * @param {Object} element
-         * @param {karbonator.comparator} comparator
+         * @param {karbonator.comparator} [comparator]
          * @return {Number}
          */
-        ListSet.prototype.findIndex = function (element, comparator) {
-            comparator = karbonator.selectNonUndefined(comparator, this._comparator);
+        ListSet.prototype.findIndex = function (element) {
+            var comparator = detail._selectNonUndefined(arguments[1], this._comparator);
             for(var i = 0; i < this._elements.length; ++i) {
                 if(comparator(this._elements[i], element) === 0) {
                     return i;
@@ -2405,12 +2446,17 @@
          * @memberof karbonator.collection
          * @constructor
          * @param {karbonator.comparator} comparator
+         * @param {iterable} iterable
          */
         var ListMap = function (comparator) {
             detail._assertIsComparator(comparator);
             
             this._comparator = comparator;
             this._pairs = [];
+            
+            if(!karbonator.isUndefined(arguments[1])) {
+                _mapConcatenateAssign(this, arguments[1]);
+            }
         };
         
         var PairIterator = (function () {
@@ -2421,7 +2467,7 @@
              */
             var PairIterator = function (listMap) {
                 this._listMap = listMap;
-                this._index = karbonator.selectNonUndefined(arguments[1], 0);
+                this._index = detail._selectNonUndefined(arguments[1], 0);
             };
             
             /**
@@ -2454,7 +2500,7 @@
              */
             var KeyIterator = function (listMap) {
                 this._listMap = listMap;
-                this._index = karbonator.selectNonUndefined(arguments[1], 0);
+                this._index = detail._selectNonUndefined(arguments[1], 0);
             };
             
             /**
@@ -2487,7 +2533,7 @@
              */
             var ValueIterator = function (listMap) {
                 this._listMap = listMap;
-                this._index = karbonator.selectNonUndefined(arguments[1], 0);
+                this._index = detail._selectNonUndefined(arguments[1], 0);
             };
             
             /**
@@ -2516,7 +2562,7 @@
          * @function
          * @return {TreeMap}
          */
-        ListMap.prototype[karbonator.shallowCopy] = function () {
+        ListMap.prototype[karbonator.shallowClone] = function () {
             return _mapShallowCopy(ListMap, this);
         };
         
