@@ -5,16 +5,20 @@
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
+/**
+ * @param {global|window} g
+ * @param {Function} factory
+ */
 (function (g, factory) {
     "use strict";
     
-    if(typeof(define) === "function" && define.amd) {
-        define(["./karbonator.core"], function (karbonator) {
+    if(typeof(g.define) === "function" && g.define.amd) {
+        g.define(["./karbonator.core"], function (karbonator) {
             return factory(g, karbonator);
         });
     }
-    else if(typeof(module) !== "undefined" && module.exports) {
-        exports = module.exports = factory(g, require("./karbonator.core"));
+    else if(typeof(g.module) !== "undefined" && g.module.exports) {
+        g.exports = g.module.exports = factory(g, require("./karbonator.core"));
     }
 }(
 (typeof(global) !== "undefined" ? global : (typeof(window) !== "undefined" ? window : this)),
