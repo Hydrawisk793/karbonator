@@ -2,7 +2,8 @@
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
- * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
+ * disclaimer : The author is not responsible for any problems 
+ * that that may arise by using this source code.
  */
 
 /**
@@ -13,15 +14,24 @@
     "use strict";
     
     if(typeof(g.define) === "function" && g.define.amd) {
-        g.define(["./karbonator.polyfill-es"], function (karbonator) {
-            return factory(g, karbonator);
-        });
+        g.define(["./karbonator.polyfill-es"],
+            function (karbonator) {
+                return factory(g, karbonator);
+            }
+        );
     }
     else if(typeof(g.module) !== "undefined" && g.module.exports) {
-        g.exports = g.module.exports = factory(g, require("./karbonator.polyfill-es"));
+        g.exports = g.module.exports = factory(
+            g,
+            require("./karbonator.polyfill-es")
+        );
     }
 }(
-(typeof(global) !== "undefined" ? global : (typeof(window) !== "undefined" ? window : this)),
+(
+    typeof(global) !== "undefined"
+    ? global
+    : (typeof(window) !== "undefined" ? window : this)
+),
 (function (global, karbonator) {
     "use strict";
     
@@ -330,7 +340,7 @@
      * @param {*} rhs
      * @return {Boolean}
      */
-    karbonator.areEqual = (function (karbonator) {
+    karbonator.areEqual = (function () {
         var areEqual = function (lhs, rhs) {
             if(lhs === rhs) {
                 return true;
@@ -372,7 +382,7 @@
         };
         
         return areEqual;
-    }(karbonator));
+    }());
     
     /**
      * 비교 함수<br/>
@@ -806,7 +816,7 @@
                 throw new Error("An enum member name must be a string or a symbol.");
             }
             if(dest.hasOwnProperty(propKey)) {
-                throw new Error("'dest' has already have a property '" + propKey + "'.");
+                throw new Error("'dest' has already have a property '" + propKey.toString() + "'.");
             }
             
             if(!karbonator.isArray(iP.value[1])) {
@@ -830,38 +840,257 @@
     /*////////////////////////////////*/
     //karbonator.Enum
     
-//    karbonator.Enum = (function (global, karbonator) {
-//        /**
-//         * @constructor
-//         */
-//        var Enum = function () {
-//            
-//        };
-//        
-//        /**
-//         * @memberof karbonator.Enum
-//         * @function
-//         * @return {karbonator.Enum}
-//         */
-//        Enum.create = function (pairs) {
-//            var newEnumType = function () {};
-//            newEnumType.prototype = Object.create(Enum.prototype);
-//            newEnumType.findByKey = function () {
-//                
-//            };
-//            
-//        };
-//        
-//        Enum.prototype.getKey = function () {
-//            
-//        };
-//        
-//        Enum.prototype.getValue = function () {
-//            
-//        };
-//        
-//        return Enum;
-//    }(global, karbonator));
+    karbonator.Enum = (function () {
+        var _pSymMemberIndex = Symbol("karbonator.Enum.prototype.index");
+        var _pSymMemberKey = Symbol("karbonator.Enum.prototype.key");
+        var _pSymStaticKeys = Symbol("karbonator.Enum.keys");
+        
+        /**
+         * @memberof karbonator
+         * @constructor
+         */
+        var Enum = function () {
+            throw new Error(
+                "'karbonator.Enum' cannot be directly instantiated."
+                + " use 'karbonator.Enum.create' static method"
+                + " to create a subtype of 'karbonator.Enum'."
+            );
+        };
+        
+        /**
+         * @memberof karbonator.Enum
+         * @readonly
+         * @type {Symbol}
+         */
+        Enum.getIndex = Symbol("karbonator.Enum.getIndex");
+        
+        /**
+         * @memberof karbonator.Enum
+         * @readonly
+         * @type {Symbol}
+         */
+        Enum.getKey = Symbol("karbonator.Enum.getKey");
+        
+        /**
+         * @memberof karbonator.Enum
+         * @readonly
+         * @type {Symbol}
+         */
+        Enum.getValue = Symbol("karbonator.Enum.getValue");
+        
+        /**
+         * @function
+         * @return {Number}
+         */
+        Enum.prototype[Enum.getIndex] = function () {
+            return this[_pSymMemberIndex];
+        };
+        
+        /**
+         * @function
+         * @return {String|Symbol}
+         */
+        Enum.prototype[Enum.getKey] = function () {
+            return this[_pSymMemberKey];
+        };
+        
+        /**
+         *  var ColorEnum = karbonator.Enum.create(
+         *      function (proto) {
+         *          proto.getNumber = function () {
+         *              return this._num;
+         *          };
+         *          proto.getAlpha = function () {
+         *              return this._alpha;
+         *          };
+         *      },
+         *      function (num, alpha) {
+         *          this._num = num;
+         *          this._alpha = alpha;
+         *      },
+         *      [["red", [0, 0.125]], ["green", [1, 0.125]], ["blue", [2, 0.125]], [Symbol("violet"), [123, 0.5]]]
+         *  );
+         *
+         * @memberof karbonator.Enum
+         * @function
+         * @param {Function} protoHandler
+         * @param {Function} ctor
+         * @param {iterable} pairs
+         * @return {karbonator.Enum}
+         */
+        Enum.create = function (protoHandler, ctor, pairs) {
+            if(!karbonator.isFunction(protoHandler)) {
+                throw new TypeError("The parameter 'protoHandler' must be a function.");
+            }
+            
+            if(!karbonator.isFunction(ctor)) {
+                throw new TypeError("The parameter 'ctor' must be a function.");
+            }
+            
+            if(!karbonator.isEsIterable(pairs)) {
+                throw new TypeError(
+                    "The parameter "
+                    + "'pairs'"
+                    + " must have a property "
+                    + "'Symbol.iterator'."
+                );
+            }
+            
+            var proto = Object.create(Enum.prototype);
+            protoHandler(proto);
+            
+            var EnumType = ctor;
+            EnumType.prototype = proto;
+            
+            var temp = {};
+            var keys = [];
+            for(
+                var i = pairs[Symbol.iterator](), iP = i.next(), ndx = 0;
+                !iP.done;
+                iP = i.next(), ++ndx
+            ) {
+                var key = iP.value[0];
+                if(!karbonator.isString(key) && !karbonator.isSymbol(key)) {
+                    throw new TypeError("Keys of enum members must be strings or symbols.");
+                }
+                if(temp.hasOwnProperty(key)) {
+                    throw new Error(
+                        "The key '"
+                        + key
+                        + "' already exists."
+                    );
+                }
+                keys.push(key);
+                
+                temp[key] = Reflect.construct(EnumType, iP.value[1]);
+                temp[key][_pSymMemberIndex] = ndx;
+                temp[key][_pSymMemberKey] = key;
+            }
+            
+            EnumType = function () {
+                throw new Error("Cannot instantiate the enum type directly.");
+            };
+            EnumType.prototype = proto;
+            proto.constructor = EnumType;
+            
+            EnumType[_pSymStaticKeys] = keys;
+            for(var i = 0; i < keys.length; ++i) {
+                var key = keys[i];
+                EnumType[key] = temp[key];
+            }
+            
+            EnumType[Symbol.iterator] = function () {
+                return ({
+                    _keys : EnumType[_pSymStaticKeys],
+                    
+                    _index : 0,
+                    
+                    next : function () {
+                        var result = {
+                            done : this._index >= this._keys.length
+                        };
+                        
+                        if(!result.done) {
+                            var key = this._keys[this._index];
+                            result.value = [
+                                this._keys[this._index],
+                                EnumType[key]
+                            ];
+                            
+                            ++this._index;
+                        }
+                        
+                        return result;
+                    }
+                });
+            };
+            
+            return EnumType;
+        };
+        
+        var _assertIsEnumType = function (enumType) {
+            if(!karbonator.isFunction(enumType)) {
+                throw new TypeError(
+                    "The paramter 'enumType'"
+                    + " must be a derived type of "
+                    + "'karbonator.Enum'."
+                );
+            }
+        };
+        
+        /**
+         * @memberof karbonator.Enum
+         * @function
+         * @param {Function} enumType
+         * @returns {Array.<String|Symbol>}
+         */
+        Enum.getKeys = function (enumType) {
+            _assertIsEnumType(enumType);
+            
+            return enumType[_pSymStaticKeys].slice();
+        };
+        
+        /**
+         * @memberof karbonator.Enum
+         * @function
+         * @param {Function} enumType
+         * @param {Number} index
+         * @return {String|Symbol}
+         */
+        Enum.getKeyAt = function (enumType, index) {
+            _assertIsEnumType(enumType);
+            
+            return enumType[_pSymStaticKeys][index];
+        };
+        
+        /**
+         * @memberof karbonator.Enum
+         * @function
+         * @param {Function} enumType
+         * @param {Number} index
+         * @return {*}
+         */
+        Enum.getValueAt = function (enumType, index) {
+            _assertIsEnumType(enumType);
+            
+            return Enum.findByKey(enumType, Enum.getKeyAt(enumType, index));
+        };
+        
+        /**
+         * @memberof karbonator.Enum
+         * @function
+         * @param {Function} enumType
+         * @return {Number}
+         */
+        Enum.getCount = function (enumType) {
+            _assertIsEnumType(enumType);
+            
+            return enumType[_pSymStaticKeys].length;
+        };
+        
+        /**
+         * @memberof karbonator.Enum
+         * @function
+         * @param {Function} enumType
+         * @param {String|Symbol} key
+         * @return {karbonator.Enum}
+         */
+        Enum.findByKey = function (enumType, key) {
+            _assertIsEnumType(enumType);
+            
+            if(!enumType.hasOwnProperty(key)) {
+                throw new Error(
+                    "The enum member '"
+                    + key
+                    + "' doesn't exist."
+                );
+            }
+            
+            return enumType[key];
+        };
+        
+        return Enum;
+    }());
     
     /*////////////////////////////////*/
     
@@ -1365,257 +1594,140 @@
     /*////////////////////////////////*/
     
     /*////////////////////////////////*/
-    //karbonator.BitConverter
+    //karbonator namespace bit conversion functions.
     
-    karbonator.BitConverter = (function () {
-        var ByteArray = karbonator.ByteArray;
+    /**
+     * @memberof karbonator.detail
+     * @function
+     * @param {Number} byteCount
+     * @return {Number}
+     */
+    detail._assertByteCountInRange = function (byteCount) {
+        if(!karbonator.isNonNegativeSafeInteger(byteCount)) {
+            throw new TypeError("'byteCount' must be a non-negative safe integer.");
+        }
+        if(!([1, 2, 4].includes(byteCount))) {
+            throw new RangeError("'byteCount' can be only 1, 2 or 4.");
+        }
         
-        /**
-         * @function
-         * @param {*} v
-         * @return {Number}
-         */
-        var _assertIsUint8 = function (v) {
-            if(!karbonator.isUint8(v)) {
-                throw new TypeError("The parameter must be a 8-bit unsinged integer.");
+        return byteCount;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {Number} value
+     * @param {Number} byteCount - 1, 2 or 4 only.
+     * @param {Boolean} [byteOrderReversed=false]
+     * @param {karbonator.ByteArray} [dest]
+     * @param {Number} [destIndex]
+     * @returns {karbonator.ByteArray}
+     */
+    karbonator.integerToBytes = function (value, byteCount) {
+        if(!karbonator.isInteger(value)) {
+            throw new TypeError("'value' must be an integer.");
+        }
+        
+        detail._assertByteCountInRange(byteCount);
+        
+        var dest = null;
+        if(karbonator.isUndefined(arguments[3])) {
+            dest = new karbonator.ByteArray(byteCount);
+        }
+        else {
+            dest = arguments[3];
+            if(!(dest instanceof karbonator.ByteArray)) {
+                throw new TypeError("'dest' must be an instance of 'karboantor.ByteArray'.");
             }
-            
-            return v;
-        };
+        }
         
-        /**
-         * @memberof karbonator
-         * @constructor
-         */
-        var BitConverter = function () {
-            this._littleEndian = false;
-            this._buffer = new ByteArray();
-        };
+        var destIndex = dest.getElementCount();
+        if(!karbonator.isUndefined(arguments[4])) {
+            destIndex = arguments[4];
+            if(!karbonator.isNonNegativeSafeInteger(destIndex)) {
+                throw new RangeError("'destIndex' must be a non-negative safe integer.");
+            }            
+        }
         
-        /**
-         * @function
-         * @param {BitConverter} oThis
-         * @param {karbonator.ByteArray} byteArray
-         * @param {Number} n
-         * @param {Number} byteCount
-         * @return {karbonator.ByteArray}
-         */
-        var _getBytesFromInteger = function (oThis, byteArray, n, byteCount) {
-            var count = byteArray.getElementCount();
+        if(!!arguments[2]) {
             for(var i = 0; i < byteCount; ++i) {
-                byteArray.pushBack(0x00);
+                dest.insert((value & 0xFF), destIndex + i);
+                value >>>= 8;
             }
-            
-            if(oThis._littleEndian) {
-                for(var i = 0; i < byteCount; ++i) {
-                    byteArray.set(count + i, (n & 0xFF));
-                    n >>>= 8;
-                }
+        }
+        else {
+            for(var i = 0, j = byteCount; i < byteCount; ++i) {
+                --j;
+                dest.insert((value & 0xFF), destIndex + j);
+                value >>>= 8;
             }
-            else {
-                for(var i = 0, j = byteCount; i < byteCount; ++i) {
-                    --j;
-                    byteArray.set(count + j, (n & 0xFF));
-                    n >>>= 8;
-                }
-            }
-            
-            return byteArray;
-        };
+        }
         
-        /**
-         * @function
-         * @param {BitConverter} oThis
-         * @param {karbonator.ByteArray} byteArray
-         * @param {Number} startIndex
-         * @param {Number} byteCount
-         * @return {Number}
-         */
-        var _createIntegerFromBytes = function (oThis, byteArray, startIndex, byteCount) {
-            if(!(byteArray instanceof ByteArray)) {
-                throw new TypeError("The parameter 'byteArray' must be an instance of 'karbonator.ByteArray'.");
-            }
-            if(karbonator.isUndefined(startIndex)) {
-                startIndex = 0;
-            }
-            else if(!karbonator.isNonNegativeSafeNumber(startIndex)) {
+        return dest;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {karbonator.ByteArray} bytes
+     * @param {Number} byteCount - 1, 2 or 4 only.
+     * @param {Boolean} [signed=false]
+     * @param {Boolean} [byteOrderReversed=false]
+     * @param {Number} [startIndex=0]
+     * @returns {Number}
+     */
+    karbonator.bytesToInteger = function (bytes, byteCount) {
+        if(!(bytes instanceof karbonator.ByteArray)) {
+            throw new TypeError("The parameter 'byteArray' must be an instance of 'karbonator.ByteArray'.");
+        }
+        
+        detail._assertByteCountInRange(byteCount);
+        
+        var startIndex = 0;
+        if(!karbonator.isUndefined(arguments[4])) {
+            startIndex = arguments[4];
+            if(!karbonator.isNonNegativeSafeInteger(startIndex)) {
                 throw new TypeError("The parameter 'startIndex' must be a non-negative safe integer.");
             }
-            
-            var currentByteCount = 0;
-            oThis._buffer.clear();
-            for(var i = 0, len = byteArray.getElementCount(); i < len; ++i) {
-                oThis._buffer.pushBack((byteArray.get(i) & 0xFF));
+        }
+        
+        var buffer = new karbonator.ByteArray();
+        var count = 0;
+        for(var len = bytes.getElementCount(); count < byteCount && count < len; ++count) {
+            buffer.pushBack((bytes.get(startIndex + count) & 0xFF));
+        }
+        if(count < byteCount) {
+            throw new Error("Not enough bytes.");
+        }
+        
+        if(!!arguments[3]) {
+            buffer.reverse();
+        }
+        
+        var value = 0;
+        for(var i = 0; i < byteCount; ++i) {
+            value <<= 8;
+            value |= buffer.get(i);
+        }
+        
+        if((byteCount & 0x01) !== 0) {
+            if(!!arguments[2] && (value & 0x80) !== 0) {
+                value -= detail._twoPower8;
             }
-            
-            if(oThis._littleEndian) {
-                oThis._buffer.reverse();
+        }
+        else if(((byteCount >>> 1) & 0x01) !== 0) {
+            if(!!arguments[2] && (value & 0x8000) !== 0) {
+                value -= detail._twoPower16;
             }
-            
-            var value = 0;
-            for(var i = 0; i < currentByteCount; ++i) {
-                value <<= 8;
-                value |= oThis._buffer.get(i);
-            }
-            
-            return value;
-        };
-        
-        /**
-         * @function
-         * @return {Boolean}
-         */
-        BitConverter.prototype.isByteOrderReversed = function () {
-            return this._littleEndian;
-        };
-        
-        /**
-         * @function
-         * @param {Boolean} reversed
-         */
-        BitConverter.prototype.setByteOrderReversed = function (reversed) {
-            this._littleEndian = !!reversed;
-        };
-        
-        /**
-         * @function
-         * @param {Number} n
-         * @param {karbonator.ByteArray} [dest]
-         * @return {karbonator.ByteArray}
-         */
-        BitConverter.prototype.getBytesFrom8BitInteger = function (n) {
-            if(!karbonator.isUint8(n) && !karbonator.isInt8(n)) {
-                throw new TypeError("The parameter must be a 16-bit integer.");
-            }
-            
-            var byteArray = (
-                karbonator.isUndefined(arguments[1])
-                ? new ByteArray()
-                : arguments[1]
-            );
-            
-            return _getBytesFromInteger(this, byteArray, n, 1);
-        };
-        
-        /**
-         * @function
-         * @param {karbonator.ByteArray} byteArray
-         * @param {Number} [startIndex=0]
-         * @return {Number}
-         */
-        BitConverter.prototype.getInt8FromBytes = function (byteArray) {
-            return _createIntegerFromBytes(this, byteArray, arguments[1], 1);
-        };
-        
-        /**
-         * @function
-         * @param {karbonator.ByteArray} byteArray
-         * @param {Number} [startIndex=0]
-         * @return {Number}
-         */
-        BitConverter.prototype.getUint8FromBytes = function (byteArray) {
-            var value = this.getInt16FromBytes(byteArray, arguments[1]);
-            if(value < 0) {
-                value += detail._twoPower8;
-            }
-            
-            return value;
-        };
-        
-        /**
-         * 
-         * 
-         * @function
-         * @param {Number} n
-         * @param {karbonator.ByteArray} [dest]
-         * @return {karbonator.ByteArray}
-         */
-        BitConverter.prototype.getBytesFrom16BitInteger = function (n) {
-            if(!karbonator.isUint16(n) && !karbonator.isInt16(n)) {
-                throw new TypeError("The parameter must be a 16-bit integer.");
-            }
-            
-            var byteArray = (
-                karbonator.isUndefined(arguments[1])
-                ? new ByteArray()
-                : arguments[1]
-            );
-            
-            return _getBytesFromInteger(this, byteArray, n, 2);
-        };
-        
-        /**
-         * @function
-         * @param {karbonator.ByteArray} byteArray
-         * @param {Number} [startIndex=0]
-         * @return {Number}
-         */
-        BitConverter.prototype.getInt16FromBytes = function (byteArray) {
-            return _createIntegerFromBytes(this, byteArray, arguments[1], 2);
-        };
-        
-        /**
-         * @function
-         * @param {karbonator.ByteArray} byteArray
-         * @param {Number} [startIndex=0]
-         * @return {Number}
-         */
-        BitConverter.prototype.getUint16FromBytes = function (byteArray) {
-            var value = this.getInt16FromBytes(byteArray, arguments[1]);
-            if(value < 0) {
-                value += detail._twoPower16;
-            }
-            
-            return value;
-        };
-        
-        /**
-         * @function
-         * @param {Number} n
-         * @param {karbonator.ByteArray} [dest]
-         * @return {karbonator.ByteArray}
-         */
-        BitConverter.prototype.getBytesFrom32BitInteger = function (n) {
-            if(!karbonator.isUint32(n) && !karbonator.isInt32(n)) {
-                throw new TypeError("The parameter must be a 32-bit integer.");
-            }
-            
-            var byteArray = (
-                karbonator.isUndefined(arguments[1])
-                ? new ByteArray()
-                : arguments[1]
-            );
-            
-            return _getBytesFromInteger(this, byteArray, n, 4);
-        };
-        
-        /**
-         * @function
-         * @param {karbonator.ByteArray} byteArray
-         * @param {Number} [startIndex=0]
-         * @return {Number}
-         */
-        BitConverter.prototype.getInt32FromBytes = function (byteArray) {
-            return _createIntegerFromBytes(this, byteArray, arguments[1], 4);
-        };
-        
-        /**
-         * @function
-         * @param {karbonator.ByteArray} byteArray
-         * @param {Number} [startIndex=0]
-         * @return {Number}
-         */
-        BitConverter.prototype.getUint32FromBytes = function (byteArray) {
-            var value = this.getInt32FromBytes(byteArray, arguments[1]);
-            if(value < 0) {
+        }
+        else if(((byteCount >>> 2) & 0x01) !== 0) {
+            if(!arguments[2] && value < 0) {
                 value += detail._twoPower32;
             }
-            
-            return value;
-        };
+        }
         
-        return BitConverter;
-    }());
+        return value;
+    };
     
     /*////////////////////////////////*/
     
@@ -2214,7 +2326,7 @@
          * @return {Number}
          */
         Interval.prototype[karbonator.compareTo] = function (rhs) {
-            if(this.equals(rhs, arguments[1])) {
+            if(this[karbonator.equals](rhs, arguments[1])) {
                 return 0;
             }
             

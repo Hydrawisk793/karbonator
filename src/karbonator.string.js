@@ -45,7 +45,6 @@
     var ListSet = collection.ListSet;
     
     var ByteArray = karbonator.ByteArray;
-    var BitConverter = karbonator.BitConverter;
     var Interval = karbonator.math.Interval;
     var Set = collection.ListSet;
     var Map = collection.ListMap;
@@ -220,6 +219,7 @@
         var StackFrame = function (returnAddress) {
             this._returnAddress = returnAddress;
             this._repStack = [];
+            this._yieldStack = [];
         };
         
         /**
@@ -229,7 +229,6 @@
             this._inStr = "";
             
             this._bytecode = null;
-            this._bitCvrt = null;
             
             this._pc = 0;
             this._consumePtr = 0;
@@ -240,99 +239,91 @@
         };
         
         /*////////////////////////////////*/
+        //IntegerType
+        
+        var IntegerType = karbonator.Enum.create(
+            function (proto) {
+                proto.getByteCount = function () {
+                    return this._byteCount;
+                };
+                
+                proto.bytesToValue = function (bytes) {
+                    return karbonator.bytesToInteger(
+                        bytes,
+                        this._byteCount, this._signed,
+                        arguments[1],
+                        arguments[2]
+                    );
+                };
+                
+                proto.valueToBytes = function (v) {
+                    return karbonator.integerToBytes(
+                        v, this._byteCount,
+                        arguments[1],
+                        arguments[2], arguments[3]
+                    );
+                };
+            },
+            function (byteCount, signed) {
+                this._byteCount = byteCount;
+                this._signed = signed;
+            },
+            [
+                ["int16", [2, true]],
+                ["uint16", [2, false]],
+                ["int32", [4, true]],
+                ["uint32", [4, false]]
+            ]
+        );
+        
+        /*////////////////////////////////*/
+        
+        /*////////////////////////////////*/
         //RegexVm.OperandType
         
         /**
          * @memberof RegexVm
          * @constructor
-         * @param {Number} key
-         * @param {String} name
-         * @param {Number} byteCount
          */
-        var OperandType = function (key, name, byteCount) {
-            if(!karbonator.isNonNegativeSafeInteger(key)) {
-                throw new TypeError("The parameter 'key' must be a non-negative safe integer.");
-            }
-            if(!karbonator.isString(name)) {
-                throw new TypeError("The parameter 'name' must be a string.");
-            }
-            if(!karbonator.isNonNegativeSafeInteger(byteCount)) {
-                throw new TypeError("The parameter 'byteCount' must be a non-negative integer.");
-            }
-//            if(!karbonator.isFunction(byteReader)) {
-//                throw new TypeError("The parameter 'byteReader' must be a function.");
-//            }
-            
-            this._key = key;
-            this._name = name;
-            this._byteCount = byteCount;
-            //this._byteReader = byteReader;
-        };
-        
-        /**
-         * @function
-         * @return {Number}
-         */
-        OperandType.prototype.getKey = function () {
-            return this._key;
-        };
-        
-        /**
-         * @function
-         * @return {String}
-         */
-        OperandType.prototype.getName = function () {
-            return this._name;
-        };
-        
-        /**
-         * @function
-         * @return {Number}
-         */
-        OperandType.prototype.getByteCount = function () {
-            return this._byteCount;
-        };
-        
-//        /**
-//         * @function
-//         * @param {karbonator.ByteArray} byteArray
-//         * @param {Number} [startIndex=0]
-//         * @return {*}
-//         */
-//        OperandType.prototype.readBytes = function (byteArray) {
-//            return this._byteReader.call(this, byteArray, arguments[1]);
-//        };
-        
-        /**
-         * @memberof
-         * @readonly
-         * @enum {Number}
-         */
-        OperandType.keys = {
-            uint16 : 0,
-            int32 : 1,
-            uint32 : 2
-        };
-        
-        /**
-         * @memberof RegexVm.OperandType
-         */
-        OperandType.int16 = new OperandType(
-            OperandType.keys.uint16, "int16", 2
-        );
-        
-        /**
-         * @memberof RegexVm.OperandType
-         */
-        OperandType.int32 = new OperandType(
-            OperandType.keys.int32, "int32", 4
-        );
-        
-        /**
-         * @memberof RegexVm.OperandType
-         */
-        OperandType.uint32 = new OperandType(
-            OperandType.keys.uint32, "uint32", 4
+        var OperandType = karbonator.Enum.create(
+            /**
+             * @param {Object} proto
+             */
+            function (proto) {
+                proto.getByteCount = function () {
+                    return this._typeMeta.getByteCount();
+                };
+                
+                proto.valueToBytes = function (v) {
+                    return this._typeMeta.valueToBytes(
+                        v,
+                        arguments[1],
+                        arguments[2], arguments[3]
+                    );
+                };
+                
+                proto.toString = function () {
+                    var str = '{';
+                    
+                    str += "name";
+                    str += " : ";
+                    str += this[karbonator.Enum.getKey]();
+                    
+                    str += '}';
+                    
+                    return str;
+                };
+            },
+            function (typeMeta) {
+                this._typeMeta = typeMeta;
+            },
+            [
+                ["offset", [IntegerType.int16]],
+                ["address", [IntegerType.uint32]],
+                ["index", [IntegerType.uint32]],
+                ["characterCode", [IntegerType.uint32]],
+                ["integerLiteral", [IntegerType.uint32]]
+            ]
         );
         
         RegexVm.OperandType = OperandType;
@@ -345,104 +336,469 @@
         /**
          * @memberof RegexVm
          * @constructor
-         * @param {Number} opCode
-         * @param {Array.<Number>} operandSizes
-         * @param {String} mnemonic
-         * @param {Function} action
          */
-        var Instruction = function (opCode, operandSizes, mnemonic, action) {
-            if(!karbonator.isNonNegativeSafeInteger(opCode)) {
-                throw new TypeError("The parameter 'opCode' must be a non-negative integer.");
-            }
-            if(null !== operandSizes && !karbonator.isArray(operandSizes)) {
-                throw new TypeError("The parameter 'operandSizes' must be an array of 'Number'.");
-            }
-            if(!karbonator.isString(mnemonic)) {
-                throw new TypeError("The parameter 'mnemonic' must be a string.");
-            }
-            if(!karbonator.isFunction(action)) {
-                throw new TypeError("The parameter 'action' must be a function.");
-            }
-            
-            this._opCode = opCode;
-            this._operandSizes = (null === operandSizes ? [] : Array.from(operandSizes));
-            this._mnemonic = mnemonic;
-            this._action = action;
-        };
-        
-        /**
-         * @function
-         * @return {Number}
-         */
-        Instruction.prototype.getOpCode = function () {
-            return this._opCode;
-        };
-        
-        /**
-         * @function
-         * @return {Number}
-         */
-        Instruction.prototype.getOperandCount = function () {
-            return this._operandSizes.length;
-        };
-        
-        /**
-         * @function
-         * @param {Number} index
-         * @return {Number}
-         */
-        Instruction.prototype.getOperandSizeAt = function (index) {
-            if(
-                !karbonator.isNonNegativeSafeInteger(index)
-                || index >= this._operandTypes.length
-            ) {
-                throw new RangeError("Index out of range.");
-            }
-            
-            return this._operandSizes[index];
-        };
-        
-        /**
-         * @function
-         * @return {String}
-         */
-        Instruction.prototype.getMnemonic = function () {
-            return this._mnemonic;
-        };
-        
-        /**
-         * @function
-         * @param {RegexVm} vm
-         */
-        Instruction.prototype.doAction = function (vm) {
-            this._action(vm);
-        };
-        
-        /**
-         * @function
-         * @return {String}
-         */
-        Instruction.prototype.toString = function () {
-            var str = '{';
-            
-            str += "opCode";
-            str += " : ";
-            str += this._opCode.toString(16);
-            
-            str += ", ";
-            str += "operandSizes";
-            str += " : ";
-            str += '[' + this._operandSizes + ']';
-            
-            str += ", ";
-            str += "mnemonic";
-            str += " : ";
-            str += '\"' + this._mnemonic + '\"';
-            
-            str += '}';
-            
-            return str;
-        };
+        var Instruction = karbonator.Enum.create(
+            /**
+             * @param {Object} proto
+             */
+            function (proto) {
+                /**
+                 * @function
+                 * @return {Number}
+                 */
+                proto.getOpCode = function () {
+                    return this._opCode;
+                };
+                
+                /**
+                 * @function
+                 * @return {Number}
+                 */
+                proto.getOperandCount = function () {
+                    return this._operandTypes.length;
+                };
+                
+                /**
+                 * @function
+                 * @param {Number} index
+                 * @return {RegexVm.OperandType}
+                 */
+                proto.getOperandTypeAt = function (index) {
+                    if(
+                        !karbonator.isNonNegativeSafeInteger(index)
+                        || index >= this._operandTypes.length
+                    ) {
+                        throw new RangeError("Index out of range.");
+                    }
+
+                    return this._operandTypes[index];
+                };
+                
+                /**
+                 * @function
+                 * @param {Number} index
+                 * @return {Number}
+                 */
+                proto.getOperandSizeAt = function (index) {
+                    return this.getOperandTypeAt(index).getByteCount();
+                };
+                
+                /**
+                 * @function
+                 * @return {Number}
+                 */
+                proto.getSize = function () {
+                    return 1 + this._operandTypes.reduce(
+                        function (acc, current) {
+                            return acc + current.getByteCount();
+                        },
+                        0
+                    );
+                };
+                
+                /**
+                 * @function
+                 * @return {String}
+                 */
+                proto.getMnemonic = function () {
+                    return this._mnemonic;
+                };
+                
+                /**
+                 * @function
+                 * @param {RegexVm} vm
+                 */
+                proto.doAction = function (vm) {
+                    this._action(vm);
+                };
+                
+                /**
+                 * @function
+                 * @return {String}
+                 */
+                proto.toString = function () {
+                    var str = '{';
+                    
+                    str += "opCode";
+                    str += " : ";
+                    str += this._opCode.toString(16);
+                    
+                    str += ", ";
+                    str += "operandTypes";
+                    str += " : ";
+                    str += '[' + this._operandTypes + ']';
+                        
+                    str += ", ";
+                    str += "mnemonic";
+                    str += " : ";
+                    str += '\"' + this._mnemonic + '\"';
+                    
+                    str += '}';
+                    
+                    return str;
+                };
+            },
+            function (mnemonic, opCode, operandTypes, action) {
+                if(!karbonator.isString(mnemonic)) {
+                    throw new TypeError("The parameter 'mnemonic' must be a string.");
+                }
+                if(!karbonator.isNonNegativeSafeInteger(opCode)) {
+                    throw new TypeError("The parameter 'opCode' must be a non-negative integer.");
+                }
+                if(null !== operandTypes && !karbonator.isArray(operandTypes)) {
+                    throw new TypeError("The parameter 'operandTypes' must be an array of type meta objects.");
+                }
+                if(!karbonator.isFunction(action)) {
+                    throw new TypeError("The parameter 'action' must be a function.");
+                }
+                
+                this._opCode = opCode;
+                this._operandTypes = (null === operandTypes ? [] : operandTypes);
+                this._mnemonic = mnemonic;
+                this._action = action;
+            },
+            Array.from(
+                [
+                    [
+                        "nop",
+                        0x00,
+                        null,
+                        function () {}
+                    ],
+                    [
+                        "bra",
+                        0x01,
+                        [OperandType.offset],
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            //Do not delete this line.
+                            //Some side effects are needed.
+                            var offset = vm._readInt16();
+                            
+                            vm._pc += offset;
+                        }
+                    ],
+                    [
+                        "bne",
+                        0x02,
+                        [OperandType.offset],
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            //Do not delete this line.
+                            //Some side effects are needed.
+                            var offset = vm._readInt16();
+                            
+                            if(!vm._zFlag) {
+                                vm._pc += offset;
+                            }
+                        }
+                    ],
+                    [
+                        "beq",
+                        0x03,
+                        [OperandType.offset],
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            //Do not delete this line.
+                            //Some side effects are needed.
+                            var offset = vm._readInt16();
+                            
+                            if(vm._zFlag) {
+                                vm._pc += offset;
+                            }
+                        }
+                    ],
+                    [
+                        "jsr",
+                        0x04,
+                        [OperandType.address],
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            vm._stackFrameStack.push(
+                                new StackFrame(vm._pc)
+                            );
+                            
+                            //Do not delete this line.
+                            //Some side effects are needed.
+                            var offset = vm._readUint32();
+                            vm._pc = offset;
+                        }
+                    ],
+                    [
+                        "jmp",
+                        0x05,
+                        [OperandType.address],
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            //Do not delete this line.
+                            //Some side effects are needed.
+                            var offset = vm._readInt32();
+                            vm._pc = offset;
+                        }
+                    ],
+                    [
+                        "accept",
+                        0x06,
+                        [OperandType.integerLiteral],
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            vm._acceptedTokenKey = vm._readUint32();
+
+                            vm._stackFrameStack.length = 0;
+                        }
+                    ],
+                    [
+                        "rts",
+                        0x07,
+                        null,
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            vm._pc = vm._getCurrentStackFrame()._returnAddress;
+                            vm._stackFrameStack.pop();
+                        }
+                    ],
+                    [
+                        "skip",
+                        0x08,
+                        null,
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            vm._consumePtr = vm._getCursor();
+                        }
+                    ],
+                    [
+                        "consume",
+                        0x09,
+                        null,
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            for(var i = vm._consumePtr; i < vm._getCursor(); ++i) {
+                                vm._consumedValues.push(vm._getCharacterCodeAt(i));
+                            }
+                        }
+                    ],
+                    [
+                        "clear.z",
+                        0x0A,
+                        null,
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            vm._zFlag = false;
+                        }
+                    ],
+                    [
+                        "set.z",
+                        0x0B,
+                        null,
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            vm._zFlag = true;
+                        }
+                    ],
+                    [
+                        "teq.input.code",
+                        0xC,
+                        [OperandType.characterCode],
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            var charCode = vm._readUint32();
+                            var curCharCode = vm._getCurrentCharacterCode();
+                            
+                            vm._zFlag = (curCharCode === charCode);
+                        }
+                    ],
+                    [
+                        "tin.input.range",
+                        0x0D,
+                        [OperandType.index],
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            vm._zFlag = vm._getIntervalAt(vm._readUint32()).contains(vm._getCurrentCharacterCode());
+                        }
+                    ],
+                    [
+                        "teq.rep",
+                        0x0E,
+                        [OperandType.integerLiteral],
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            var intValue = vm._readUint32();
+                            var rep = vm._getRepetition();
+                            
+                            vm._zFlag = (rep === intValue);
+                        }
+                    ],
+                    [
+                        "ths.rep",
+                        0x0F,
+                        [OperandType.integerLiteral],
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            var intValue = vm._readUint32();
+                            var rep = vm._getRepetition();
+                            
+                            vm._zFlag = (rep >= intValue);
+                        }
+                    ],
+                    [
+                        "inc.rep",
+                        0x10,
+                        null,
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            vm._increaseRepetition();
+                        }
+                    ],
+                    [
+                        "inc.cur",
+                        0x11,
+                        null,
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            vm._increaseCursor();
+                        }
+                    ],
+                    [
+                        "begin.rep",
+                        0x12,
+                        null,
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            vm._pushRepetition();
+                        }
+                    ],
+                    [
+                        "push.cur",
+                        0x13,
+                        null,
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            vm._pushCursor();
+                        }
+                    ],
+                    [
+                        "end.rep",
+                        0x14,
+                        null,
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            vm._popReptition();
+                        }
+                    ],
+                    [
+                        "pop.cur",
+                        0x15,
+                        null,
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            vm._popCursor();
+                        }
+                    ],
+                    [
+                        "dec.cur",
+                        0x16,
+                        null,
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            vm._decreaseCursor();
+                        }
+                    ],
+                    [
+                        "collapse.cur",
+                        0x17,
+                        null,
+                        /**
+                         * @param {RegexVm} vm
+                         */
+                        function (vm) {
+                            vm._collapseCursor();
+                        }
+                    ],
+                    [
+                        "yield",
+                        0x18,
+                        [OperandType.offset],
+                        function (vm) {
+                            var offset = vm._readInt16();
+                            
+                            vm._pushYieldAddress(vm._pc);
+                            vm._pushReptition();
+                            
+                            vm._pc += offset;
+                        }
+                    ],
+                    [
+                        "rtyne",
+                        0x19,
+                        null,
+                        function (vm) {
+                            if(vm.zFlag) {
+                                vm._popReptition();
+                                vm._popYieldAddress();
+                            }
+                            else {
+                                vm._pc = vm._getCurrentYieldAddress();
+                            }
+                        }
+                    ]
+                ],
+                function (current) {
+                    return ([
+                        current[0].replace(
+                            /(\.[A-Za-z0-9]+)/g,
+                            function (text) {
+                                return text[1].toUpperCase() + text.substring(2);
+                            }
+                        ),
+                        current
+                    ]);
+                }
+            )
+        );
         
         RegexVm.Instruction = Instruction;
         
@@ -457,6 +813,7 @@
          * @param {iterable} intervals
          * @param {Boolean} littleEndian
          * @param {karbonator.ByteArray} codeBlock
+         * @param {String} [sourceCodeForDebug]
          */
         var Bytecode = function (intervals, littleEndian, codeBlock) {
             if(!karbonator.isEsIterable(intervals)) {
@@ -469,6 +826,10 @@
             this._intervals = Array.from(intervals);
             this._littleEndian = !!littleEndian;
             this._codeBlock = ByteArray.from(codeBlock);
+            this._sourceCodeForDebug = arguments[3];
+            if(karbonator.isUndefined(this._sourceCodeForDebug)) {
+                this._sourceCodeForDebug = "";
+            }
         };
         
         RegexVm.Bytecode = Bytecode;
@@ -480,267 +841,90 @@
          * @private
          * @readonly
          */
-        RegexVm._opCodeInstMap = new collection.TreeMap(
+        RegexVm._opCodeInstMap = new karbonator.collection.TreeMap(
             karbonator.numberComparator,
             Array.from(
-                [
-                    new Instruction(
-                        0x00,
-                        null,
-                        "nop",
-                        function () {}
-                    ),
-                    new Instruction(
-                        0x01,
-                        [2],
-                        "bra",
-                        function (vm) {
-                            vm._pc += vm._readInt32();
-                        }
-                    ),
-                    new Instruction(
-                        0x02,
-                        [2],
-                        "bne",
-                        function (vm) {
-                            if(!vm._zFlag) {
-                                vm._pc += vm._readInt32();
-                            }
-                        }
-                    ),
-                    new Instruction(
-                        0x03,
-                        [2],
-                        "beq",
-                        function (vm) {
-                            if(vm._zFlag) {
-                                vm._pc += vm._readInt32();
-                            }
-                        }
-                    ),
-                    new Instruction(
-                        0x04,
-                        [4],
-                        "jsr",
-                        function (vm) {
-                            vm._stackFrameStack.push(
-                                new StackFrame(vm._pc)
-                            );
-                            
-                            vm._pc = vm._readUint32();
-                        }
-                    ),
-                    new Instruction(
-                        0x05,
-                        [4],
-                        "jmp",
-                        function (vm) {
-                            vm._pc = vm._readInt32();
-                        }
-                    ),
-                    new Instruction(
-                        0x06,
-                        [4],
-                        "accept",
-                        function (vm) {
-                            vm._acceptedTokenKey = vm._readUint32();
-                            
-                            vm._stackFrameStack.length = 0;
-                        }
-                    ),
-                    new Instruction(
-                        0x07,
-                        null,
-                        "rts",
-                        function (vm) {
-                            vm._pc = vm._getStackFrame()._returnAddress;
-                            vm._stackFrameStack.pop();
-                        }
-                    ),
-                    new Instruction(
-                        0x08,
-                        null,
-                        "skip",
-                        function (vm) {
-                            vm._consumePtr = vm._getCursor();
-                        }
-                    ),
-                    new Instruction(
-                        0x09,
-                        null,
-                        "consume",
-                        function (vm) {
-                            for(var i = vm._consumePtr; i < vm._getCursor(); ++i) {
-                                vm._consumedValues.push(vm._inStr.charCodeAt(i));
-                            }
-                        }
-                    ),
-                    new Instruction(
-                        0x0A,
-                        null,
-                        "clear.z",
-                        function (vm) {
-                            vm._zFlag = false;
-                        }
-                    ),
-                    new Instruction(
-                        0x0B,
-                        null,
-                        "set.z",
-                        function (vm) {
-                            vm._zFlag = true;
-                        }
-                    ),
-                    new Instruction(
-                        0xC,
-                        [4],
-                        "test.input.code",
-                        function (vm) {
-                            vm._zFlag = (vm._readUint32() === vm._inStr.charCodeAt(vm.getCursor()));
-                        }
-                    ),
-                    new Instruction(
-                        0x0D,
-                        [4],
-                        "test.input.range",
-                        function (vm) {
-                            vm._zFlag = vm._getIntervalAt(vm._readUint32()).contains(vm._inStr.charCodeAt(vm._getCursor()));
-                        }
-                    ),
-                    new Instruction(
-                        0x0E,
-                        [4],
-                        "test.rep",
-                        function (vm) {
-                            vm._zFlag = (vm._readUint32() === vm._getRepetition());
-                        }
-                    ),
-                    new Instruction(
-                        0x0F,
-                        [4],
-                        "reserved01",
-                        function () {}
-                    ),
-                    new Instruction(
-                        0x10,
-                        null,
-                        "inc.rep",
-                        function (vm) {
-                            vm._increaseRepetition();
-                        }
-                    ),
-                    new Instruction(
-                        0x11,
-                        null,
-                        "inc.cur",
-                        function (vm) {
-                            vm._increaseCursor();
-                        }
-                    ),
-                    new Instruction(
-                        0x12,
-                        null,
-                        "begin.rep",
-                        function (vm) {
-                            vm._pushRepetition();
-                        }
-                    ),
-                    new Instruction(
-                        0x13,
-                        null,
-                        "push.cur",
-                        function (vm) {
-                            vm._pushCursor();
-                        }
-                    ),
-                    new Instruction(
-                        0x14,
-                        null,
-                        "end.rep",
-                        function (vm) {
-                            vm._popReptition();
-                        }
-                    ),
-                    new Instruction(
-                        0x15,
-                        null,
-                        "pop.cur",
-                        function (vm) {
-                            vm._popCursor();
-                        }
-                    ),
-                    new Instruction(
-                        0x16,
-                        null,
-                        "reserved02",
-                        function () {}
-                    ),
-                    new Instruction(
-                        0x17,
-                        null,
-                        "collapse.cur",
-                        function (vm) {
-                            vm._collapseCursor();
-                        }
-                    )
-                ],
-                function (current) {
-                    return [current.getOpCode(), current];
+                RegexVm.Instruction,
+                /**
+                 * @param {Array} enumPair
+                 * @returns {Array}
+                 */
+                function (enumPair) {
+                    var inst = enumPair[1];
+                    return [inst.getOpCode(), inst];
                 }
             )
         );
         
         /**
-         * @memberof RegexVm
-         * @readonly
-         * @enum {RegexVm.Instruction}
+         * @function
+         * @param {RegexVm.Bytecode} bytecode
          */
-        RegexVm.Instructions = karbonator.appendAsMember(
-            {},
-            Array.from(
-                RegexVm._opCodeInstMap,
-                function (current) {
-                    var instObj = current[1];
-                    var propKey = instObj.getMnemonic().replace(
-                        /(\.[a-z0-9][a-z0-9]*)/g,
-                        function (str) {
-                            var rest = (str.length >= 3 ? str.substring(2) : "");
-                            var first = str.charAt(1).toUpperCase();
-                            return first + rest;
-                        }
-                    );
-                    
-                    return [propKey, instObj];
-                }
-            )
-        );
+        RegexVm.prototype.setBytecode = function (bytecode) {
+            this._bytecode = bytecode;
+        };
         
-        RegexVm.prototype.initialize = function (str) {
-            this._inStr = str;
+        /**
+         * @function
+         * @param {String} str
+         * @param {Number} [startIndex=0]
+         * @return {Object}
+         */
+        RegexVm.prototype.test = function (str) {
+            if(karbonator.isUndefinedOrNull(this._bytecode)) {
+                throw new Error("Set the bytecode of the regex first.");
+            }
             
-            this._bytecode = arguments[1];
-            this._bitCvrt = new BitConverter();
-            this._bitCvrt.setByteOrderReversed(this._bytecode._littleEndian);
+            if(!karbonator.isString(str)) {
+                throw new TypeError("'str' must be a string.");
+            }
+            this._inStr = Array.from(
+                str,
+                function (cur) {
+                    return cur.charCodeAt(0);
+                }
+            );
+            this._inStr.push(-1);
+            
+            var startIndex = arguments[1];
+            if(karbonator.isUndefined(startIndex)) {
+                startIndex = 0;
+            }
+            else if(!karbonator.isNonNegativeInteger(startIndex)) {
+                throw new TypeError("'startIndex' must be a non-negative integer.");
+            }
+            this._cursorStack.length = 0;
+            this._cursorStack.push(startIndex);
             
             this._pc = 0;
             this._consumePtr = 0;
-            this._zFlag = false;
+            this._zFlag = true;
             this._acceptedTokenKey = -1;
-            this._cursorStack.length = 0;
-            this._cursorStack.push(0);
             this._stackFrameStack.length = 0;
             this._stackFrameStack.push(new StackFrame(0));
             this._consumedValues = [];
+            
+            while(this._stackFrameStack.length > 0) {
+                this._execute();
+            }
+            
+            return {
+                matched : this._zFlag,
+                text : this._consumedValues.reduce(
+                    function (acc, cur) {
+                        return acc + String.fromCharCode(cur);
+                    },
+                    ""
+                ),
+                range : [startIndex, startIndex + this._consumePtr]
+            };
         };
         
-        RegexVm.prototype.executeAll = function () {
-            
-        };
-        
-        //TODO : Instruction enum 정리
-        RegexVm.prototype.executeNext = function () {
-            var operand = 0;
-            
+        /**
+         * @private
+         * @function
+         */
+        RegexVm.prototype._execute = function () {
             var opCode = this._bytecode._codeBlock.get(this._pc);
             ++this._pc;
             
@@ -748,6 +932,9 @@
             if(karbonator.isUndefined(inst)) {
                 throw new Error("An invalid opcode has been found.");
             }
+            
+            console.log(inst.getMnemonic());
+            debugger;
             
             inst.doAction(this);
         };
@@ -758,8 +945,10 @@
          * @return {Number}
          */
         RegexVm.prototype._readInt16 = function () {
-            var value = this._bitCvrt.getInt16FromBytes(
+            var value = karbonator.bytesToInteger(
                 this._bytecode._codeBlock,
+                2, true,
+                this._bytecode._littleEndian,
                 this._pc
             );
             this._pc += 2;
@@ -773,8 +962,10 @@
          * @return {Number}
          */
         RegexVm.prototype._readInt32 = function () {
-            var value = this._bitCvrt.getInt32FromBytes(
+            var value = karbonator.bytesToInteger(
                 this._bytecode._codeBlock,
+                4, true,
+                this._bytecode._littleEndian,
                 this._pc
             );
             this._pc += 4;
@@ -788,13 +979,34 @@
          * @return {Number}
          */
         RegexVm.prototype._readUint32 = function () {
-            var value = this._bitCvrt.getUint32FromBytes(
+            var value = karbonator.bytesToInteger(
                 this._bytecode._codeBlock,
+                4, false,
+                this._bytecode._littleEndian,
                 this._pc
             );
             this._pc += 4;
             
             return value;
+        };
+        
+        /**
+         * @private
+         * @function
+         * @returns {Number}
+         */
+        RegexVm.prototype._getCurrentCharacterCode = function () {
+            return this._inStr[this._getCursor()];
+        };
+        
+        /**
+         * @private
+         * @function
+         * @param {Number} index
+         * @returns {Number}
+         */
+        RegexVm.prototype._getCharacterCodeAt = function (index) {
+            return this._inStr[index];
         };
         
         /**
@@ -812,8 +1024,44 @@
          * @function
          * @return {StackFrame}
          */
-        RegexVm.prototype._getStackFrame = function () {
+        RegexVm.prototype._getCurrentStackFrame = function () {
             return this._stackFrameStack[this._stackFrameStack.length - 1];
+        };
+        
+        /**
+         * @private
+         * @function
+         * @param {Number} addr
+         */
+        RegexVm.prototype._pushYieldAddress = function (addr) {
+            this._getCurrentStackFrame()._yieldStack.push(addr);
+        };
+        
+        /**
+         * @private
+         * @function
+         */
+        RegexVm.prototype._popYieldAddress = function () {
+            var yieldStack = this._getCurrentStackFrame()._yieldStack;
+            if(yieldStack.length < 1) {
+                throw new Error("Yield stack underflow.");
+            }
+            
+            yieldStack.pop();
+        };
+        
+        /**
+         * @private
+         * @function
+         * @return {Number} addr
+         */
+        RegexVm.prototype._getCurrentYieldAddress = function () {
+            var yieldStack = this._getCurrentStackFrame()._yieldStack;
+            if(yieldStack.length < 1) {
+                throw new Error("Yield stack underflow.");
+            }
+            
+            return yieldStack[yieldStack.length - 1];
         };
         
         /**
@@ -822,7 +1070,7 @@
          * @return {Array.<Number>}
          */
         RegexVm.prototype._getRepetitionStack = function () {
-            return this._getStackFrame()._repStack;
+            return this._getCurrentStackFrame()._repStack;
         };
         
         /**
@@ -851,7 +1099,7 @@
          * @function
          */
         RegexVm.prototype._pushRepetition = function () {
-            this._getRepetitionStack().push(this._getRepetition());
+            this._getRepetitionStack().push(0);
         };
         
         /**
@@ -877,6 +1125,14 @@
          */
         RegexVm.prototype._increaseCursor = function () {
             ++this._cursorStack[this._cursorStack.length - 1];
+        };
+        
+        /**
+         * @private
+         * @function
+         */
+        RegexVm.prototype._decreaseCursor = function () {
+            --this._cursorStack[this._cursorStack.length - 1];
         };
         
         /**
@@ -980,16 +1236,6 @@
             
         };
         
-        /**
-         * @private
-         * @function
-         * @param {String} name
-         * @param {Nfa} fa
-         * @param {String} regexStr
-         */
-        Lexer.prototype._addToken = function (name, fa, regexStr) {
-            this._tokenMap.set(name, new Token(name, fa, regexStr));
-        };
         
         return Lexer;
     }());
@@ -2628,10 +2874,10 @@
                     //Skip those characters.
                 break;
                 case '^':
-                    this._updateErrorAndStopParsing("Start of string meta character is not implemented yet...");
+                    this._cancelParsing("Start of string meta character is not implemented yet...");
                 break;
                 case '$':
-                    this._updateErrorAndStopParsing("End of string meta character is not implemented yet...");
+                    this._cancelParsing("End of string meta character is not implemented yet...");
                 break;
                 case '(':
                     this._exprCtxStack.push(new RegexParser.ExpressionContext());
@@ -2677,11 +2923,11 @@
                         this._pos = scannerResult.position;
                     }
                     else {
-                        this._updateErrorAndStopParsing(scannerResult.error.message);
+                        this._cancelParsing(scannerResult.error.message);
                     }
                 break;
                 case '}':
-                    this._updateErrorAndStopParsing("An invalid token that specifies end of constrained repetition has been found.");
+                    this._cancelParsing("An invalid token that specifies end of constrained repetition has been found.");
                 break;
                 case '|':
                     exprCtx.pushOperator(OperatorTypeKeys.alternation);
@@ -2689,10 +2935,10 @@
                     this._moveToNextIfNoError();
                 break;
                 case '[':
-                    this._updateErrorAndStopParsing("Character set is not implemented yet...");
+                    this._cancelParsing("Character set is not implemented yet...");
                 break;
                 case ']':
-                    this._updateErrorAndStopParsing("An invalid token that specifies end of a character set has been found.");
+                    this._cancelParsing("An invalid token that specifies end of a character set has been found.");
                 break;
                 case '\\':
                     scannerResult = this._primitiveScanner.scanEscapedCharacter(
@@ -2705,7 +2951,7 @@
                         this._pos = scannerResult.position;
                     }
                     else {
-                        this._updateErrorAndStopParsing(scannerResult.error.message);
+                        this._cancelParsing(scannerResult.error.message);
                     }
                 break;
                 case '.':
@@ -2732,7 +2978,7 @@
             }
             
             if(null === exprRootNode) {
-                this._updateErrorAndStopParsing("An unknown parsing token error has been occured.");
+                this._cancelParsing("An unknown parsing token error has been occured.");
             }
             else {
                 //TODO : 토큰 맵에서 토큰 인덱스 찾아내기
@@ -2774,7 +3020,7 @@
          * @param {String} [message]
          * @param {Number} [position]
          */
-        RegexParser.prototype._updateErrorAndStopParsing = function () {
+        RegexParser.prototype._cancelParsing = function () {
             this._error = {
                 occured : true,
                 message : detail._selectNonUndefined(arguments[1], "An error occured."),
@@ -2795,9 +3041,6 @@
          */
         var InstructionBuffer = function (byteOrderReversed) {
             this._byteOrderReversed = byteOrderReversed;
-//            this._bitCvrt = new BitConverter();
-//            this._bitCvrt.setByteOrderReversed(this._byteOrderReversed);
-            
             this._lines = [];
         };
         
@@ -2807,6 +3050,16 @@
          */
         InstructionBuffer.prototype.getCount = function () {
             return this._lines.length;
+        };
+        
+        /**
+         * @function
+         * @param {Number} index
+         * @return {Array}
+         * 
+         */
+        InstructionBuffer.prototype.getLineAt = function (index) {
+            return this._lines[index];
         };
         
         /**
@@ -2866,26 +3119,44 @@
          * @return {karbonator.ByteArray}
          */
         InstructionBuffer.prototype.printCodeBlock = function () {
-            var codeBlock = new ByteArray();
-            
-            var labels = new collection.ListMap(karbonator.numberComparator);
-            
-            for(var i = 0, len = this._lines.length; i < len; ++i) {
-                var inst = this._lines[i];
-                switch(inst[0]) {
-                case RegexVm.Instructions.beq.getOpCode():
-                case RegexVm.Instructions.bne.getOpCode():
-                case RegexVm.Instructions.bra.getOpCode():
-                    labels.set(i, i + inst[1] + 1);
-                break;
-                case RegexVm.Instructions.jmp.getOpCode():
-                    labels.set(i, inst[1]);
-                break;
+            var lineLen = this._lines.length;
+            for(var i = 0; i < lineLen; ++i) {
+                var line = this._lines[i];
+                
+                var inst = RegexVm._opCodeInstMap.get(line[0]);
+                if(inst.getOperandCount() > 0) {
+                    if(inst.getOperandTypeAt(0) === RegexVm.OperandType.offset) {
+                        var offset = line[1];
+                        
+                        line[1] = (
+                            offset < 0
+                            ? -this._calculateByteCount(i + offset + 1, i + 1)
+                            : this._calculateByteCount(i + 1, i + offset + 1)
+                        );
+                    }
+                    else if(inst.getOperandTypeAt(0) === RegexVm.OperandType.address) {
+                        line[1] = this._calculateByteCount(0, line[1]);
+                    }
                 }
             }
             
-            debugger;
-            console.log(this.toString());
+            var codeBlock = new karbonator.ByteArray();
+            for(var i = 0; i < lineLen; ++i) {
+                var line = this._lines[i];
+                
+                var opCode = line[0] & 0xFF;
+                codeBlock.pushBack(opCode);
+                
+                var inst = RegexVm._opCodeInstMap.get(opCode);
+                for(var j = 0; j < inst.getOperandCount(); ++j) {
+                    var opType = inst.getOperandTypeAt(j);
+                    opType.valueToBytes(
+                        line[j + 1],
+                        this._byteOrderReversed,
+                        codeBlock
+                    );
+                }
+            }
             
             return codeBlock;
         };
@@ -2897,12 +3168,16 @@
         InstructionBuffer.prototype.toString = function () {
             var str = "";
             
+            var offset = 0;
             for(var i = 0, len = this._lines.length; i < len; ++i) {
                 var line = this._lines[i];
+                var inst = RegexVm._opCodeInstMap.get(line[0]);
+                
+                str += offset + '\t';
                 
                 str += i + '\t';
                 
-                str += RegexVm._opCodeInstMap.get(line[0]).getMnemonic();
+                str += inst.getMnemonic();
                 
                 for(var j = 1; j < line.length; ++j) {
                     str += ' ';
@@ -2910,9 +3185,35 @@
                 }
                 
                 str += "\r\n";
+                
+                offset += inst.getSize();
             };
             
             return str;
+        };
+        
+        /**
+         * @param {Number} startLineIndex
+         * @param {Number} endLineIndex
+         * @returns {Number}
+         */
+        InstructionBuffer.prototype._calculateByteCount = function (
+            startLineIndex,
+            endLineIndex
+        ) {
+            if(startLineIndex < 0) {
+                throw new RangeError("'startLineIndex' can not be less than zero.");
+            }
+            
+            return this._lines
+                .slice(startLineIndex, endLineIndex)
+                .reduce(
+                    function (acc, line) {
+                        return acc + RegexVm._opCodeInstMap.get(line[0]).getSize();
+                    },
+                    0
+                )
+            ;
         };
         
         /*////////////////////////////////*/
@@ -2961,10 +3262,13 @@
             var instBuffer = this._nodeCodeMap.get(rootNode);
             var codeBlock = instBuffer.printCodeBlock();
             
+            console.log(instBuffer.toString());
+            
             return new RegexVm.Bytecode(
                 Array.from(this._intervalListSet),
                 this._byteOrderReversed,
-                codeBlock
+                codeBlock,
+                instBuffer.toString()
             );
         };
         
@@ -2994,10 +3298,8 @@
                     buffer = this._visitConcatenation(node);
                 break;
                 case OperatorTypeKeys.repetition:
-                    buffer = this._visitRepetition(node, op.getStaticArguments()[0]);
-                break;
                 case OperatorTypeKeys.nonGreedyRepetition:
-                    throw new Error("Not implemented yet...");
+                    buffer = this._visitRepetition(node, op.getStaticArguments()[0]);
                 break;
                 case OperatorTypeKeys.terminalRangeSetMatch:
                     throw new Error("Not implemented yet...");
@@ -3028,17 +3330,19 @@
             var inputRange = node.getValue();
             if(inputRange.getMinimum() === inputRange.getMaximum()) {
                 buffer.put(
-                    RegexVm.Instructions.testInputCode,
+                    RegexVm.Instruction.teqInputCode,
                     inputRange.getMinimum()
                 );
             }
             else {
                 this._intervalListSet.add(inputRange);
                 buffer.put(
-                    RegexVm.Instructions.testInputRange,
+                    RegexVm.Instruction.tinInputRange,
                     this._intervalListSet.findIndex(inputRange)
                 );
             }
+            buffer.put(RegexVm.Instruction.bne, 1);
+            buffer.put(RegexVm.Instruction.incCur);
             
             return buffer;
         };
@@ -3053,10 +3357,14 @@
         CodeEmitter.prototype._visitAccept = function (node, tokenKey) {
             var buffer = new InstructionBuffer(this._byteOrderReversed);
             
-            buffer.consume(this._nodeCodeMap.get(node.getChildAt(0)));
+            this._mergeCode(buffer, node, 0);
+            
             //TODO : consume 명령어를 넣는 것이 타당한 지 테스트.
-            buffer.put(RegexVm.Instructions.consume);
-            buffer.put(RegexVm.Instructions.accept, tokenKey);
+            buffer.put(RegexVm.Instruction.bne, 2);
+            buffer.put(RegexVm.Instruction.consume);
+            buffer.put(RegexVm.Instruction.accept, tokenKey);
+            
+            buffer.put(RegexVm.Instruction.rts);
             
             return buffer;
         };
@@ -3070,39 +3378,31 @@
         CodeEmitter.prototype._visitAlternation = function (node) {
             var buffer = new InstructionBuffer(this._byteOrderReversed);
             
+            var offsetInfo = this._caculateSumOfChildCodeOffset(node);
+            var offset = offsetInfo.sum;
             var childCount = node.getChildCount();
-            var childCodeLens = [];
-            var offset = 0;
-            for(var i = 0; i < childCount; ++i) {
-                var len = this._nodeCodeMap.get(node.getChildAt(0)).getCount();
-                childCodeLens.push(len);
-                offset += len;
+            if(childCount > 0) {
+                offset -= offsetInfo.lengths[0];
+                
+                buffer.put(RegexVm.Instruction.pushCur);
+                this._mergeCode(buffer, node, 0);
+                buffer.put(RegexVm.Instruction.beq, (childCount - 1) * 3 + 2 + offset);
             }
             
-            var paramCount = node.getChildCount();
-            if(paramCount > 0) {
-                offset -= childCodeLens[0];
+            for(var i = 1; i < childCount; ++i) {
+                offset -= offsetInfo.lengths[i];
                 
-                buffer.put(RegexVm.Instructions.pushCur);
-                buffer.consume(this._nodeCodeMap.get(node.getChildAt(0)));
-                buffer.put(RegexVm.Instructions.beq, (childCount - 1) * 3 + 2 + offset);
+                buffer.put(RegexVm.Instruction.popCur);
+                
+                buffer.put(RegexVm.Instruction.pushCur);
+                this._mergeCode(buffer, node, i);
+                buffer.put(RegexVm.Instruction.beq, (childCount - 1 - i) * 3 + 2 + offset);
             }
             
-            for(var i = 1; i < paramCount;++i) {
-                offset -= childCodeLens[i];
-                
-                buffer.put(RegexVm.Instructions.popCur);
-                
-                buffer.put(RegexVm.Instructions.pushCur);
-                buffer.consume(this._nodeCodeMap.get(node.getChildAt(i)));
-                buffer.put(RegexVm.Instructions.beq, (childCount - 1 - i) * 3 + 2 + offset);
-            }
+            buffer.put(RegexVm.Instruction.popCur);
+            buffer.put(RegexVm.Instruction.bra, 0.1);
             
-            buffer.put(RegexVm.Instructions.popCur);
-            buffer.put(RegexVm.Instructions.rts);
-            
-            buffer.put(RegexVm.Instructions.collapseCur);
-            buffer.put(RegexVm.Instructions.incCur);
+            buffer.put(RegexVm.Instruction.collapseCur);
             
             return buffer;
         };
@@ -3117,15 +3417,26 @@
             var buffer = new InstructionBuffer(this._byteOrderReversed);
             
             var childCount = node.getChildCount();
-            if(childCount > 0) {
-                buffer.consume(this._nodeCodeMap.get(node.getChildAt(0)));
-            }
-            
-            for(var i = 1; i < childCount; ++i) {
-                buffer.put(RegexVm.Instructions.beq, 1);
-                buffer.put(RegexVm.Instructions.rts);
-                buffer.put(RegexVm.Instructions.incCur);
-                buffer.consume(this._nodeCodeMap.get(node.getChildAt(i)));
+            for(var i = 0; i < childCount; ++i) {
+                this._mergeCode(buffer, node, i);
+                
+                if(i > 0) {
+                    var prevChild = node.getChildAt(i - 1);
+                    if(
+                        prevChild.getType() === AstNodeType.operator
+                        && (
+                            prevChild.getValue().getType().getKey() === OperatorTypeKeys.repetition
+                            || prevChild.getValue().getType().getKey() === OperatorTypeKeys.nonGreedyRepetition
+                        )
+                    ) {
+                        buffer.put(RegexVm.Instruction.rtyne);
+                    }
+                }
+                
+                if(i < childCount - 1) {
+                    buffer.put(RegexVm.Instruction.beq, 1);
+                    buffer.put(RegexVm.Instruction.bra, 0.1);
+                }
             }
             
             return buffer;
@@ -3141,65 +3452,155 @@
         CodeEmitter.prototype._visitRepetition = function (node, repRange) {
             var buffer = new InstructionBuffer(this._byteOrderReversed);
             
-            var paramNode = node.getChildAt(0);
-            var paramCode = this._nodeCodeMap.get(paramNode);
-            var paramCodeLen = paramCode.getCount();
+            buffer.put(RegexVm.Instruction.yield, 0);
             
-            if(
-                repRange.getMinimum() === 0
-                && repRange.getMaximum() === 1
-            ) {
-                buffer.consume(paramCode);
-                buffer.put(RegexVm.Instructions.bne, 1);
-                buffer.put(RegexVm.Instructions.incCur);
-                buffer.put(RegexVm.Instructions.clearZ);
+            this._mergeCode(buffer, node, 0);
+            buffer.put(RegexVm.Instruction.beq, 3);
+            buffer.put(RegexVm.Instruction.thsRep, repRange.getMinimum());
+            buffer.put(RegexVm.Instruction.beq, 3);
+            buffer.put(RegexVm.Instruction.bra, 0.1);
+            buffer.put(RegexVm.Instruction.incRep);
+            
+            buffer.getLineAt(0)[1] = buffer.getCount() - 1;
+            
+//            var paramCodeLen = this._nodeCodeMap.get(node.getChildAt(0)).getCount();
+//            
+//            var yieldLineIndex = -1;
+//            if(node.getValue().getType().getKey() === OperatorTypeKeys.nonGreedyRepetition) {
+//                yieldLineIndex = buffer.getCount();
+//                buffer.put(RegexVm.Instruction.yield, 0);
+//            }
+//            
+//            if(repRange.getMinimum() === 0) {
+//                this._mergeCode(buffer, node, 0);
+//                
+//                if(repRange.getMaximum() === 1) {
+//                    buffer.put(RegexVm.Instruction.setZ);
+//                }
+//                else {
+//                    buffer.put(RegexVm.Instruction.bne, 1);
+//                    buffer.put(RegexVm.Instruction.bra, -(2 + paramCodeLen));
+//                    buffer.put(RegexVm.Instruction.setZ);
+//                }
+//            }
+//            else {
+//                buffer.put(RegexVm.Instruction.beginRep);
+//                
+//                //beginRep를 제외한 길이만큼 거슬러 올라가야 함.
+//                
+//                if(repRange.getMinimum() === repRange.getMaximum()) {
+//                    this._mergeCode(buffer, node, 0);
+//                    buffer.put(RegexVm.Instruction.beq, 1);
+//                    buffer.put(RegexVm.Instruction.bra, 0.1);
+//                    buffer.put(RegexVm.Instruction.incRep);
+//                    buffer.put(RegexVm.Instruction.teqRep, repRange.getMinimum());
+//                    buffer.put(RegexVm.Instruction.bne, -(5 + paramCodeLen));
+//                }
+//                else {
+//                    this._mergeCode(buffer, node, 0);
+//                    buffer.put(RegexVm.Instruction.beq, 3);
+//                    buffer.put(RegexVm.Instruction.thsRep, repRange.getMinimum());
+//                    
+//                    if(repRange.getMaximum() >= _maxInt) {
+//                        buffer.put(RegexVm.Instruction.beq, 3);
+//                        buffer.put(RegexVm.Instruction.bra, 0.1);
+//                        buffer.put(RegexVm.Instruction.incRep);
+//                        buffer.put(RegexVm.Instruction.bra, -(6 + paramCodeLen));
+//                    }
+//                    else {
+//                        //TODO : 코드 다시 짜기
+//                        buffer.put(RegexVm.Instruction.beq, 4);
+//                        buffer.put(RegexVm.Instruction.bra, 0.1);
+//                        buffer.put(RegexVm.Instruction.incRep);
+//                        buffer.put(RegexVm.Instruction.teqRep, repRange.getMaximum() + 1);
+//                        buffer.put(RegexVm.Instruction.bne, -(7 + paramCodeLen));
+//                    }
+//                }
+//                
+//                buffer.put(RegexVm.Instruction.endRep);
+//            }
+//            
+//            if(yieldLineIndex >= 0) {
+//                buffer.getLineAt(yieldLineIndex)[1] = buffer.getCount() - 1;
+//            }
+            
+            return buffer;
+        };
+        
+        /**
+         * @private
+         * @function
+         * @param {InstructionBuffer} destBuffer
+         * @param {AstNode} parentNode
+         * @param {Number} childIndex
+         * @returns {InstructionBuffer}
+         */
+        CodeEmitter.prototype._mergeCode = function (destBuffer, parentNode, childIndex) {
+            var childCode = this._nodeCodeMap.get(parentNode.getChildAt(childIndex));
+            this._setLabelAddress(childCode, childCode.getCount(), 0.1);
+            destBuffer.consume(childCode);
+            
+            return destBuffer;
+        };
+        
+        /**
+         * @private
+         * @function
+         * @param {InstructionBuffer} buffer
+         * @param {Number} labelAddress
+         * @param {Number} placeholderValue
+         * @param {Number} [epsilon]
+         * @returns {InstructionBuffer}
+         */
+        CodeEmitter.prototype._setLabelAddress = function (
+            buffer,
+            labelAddress,
+            placeholderValue
+        ) {
+            var epsilon = arguments[3];
+            if(karbonator.isUndefined(epsilon)) {
+                epsilon = karbonator.math.epsilon;
             }
-            else if(
-                repRange.getMinimum() === 0
-                && repRange.getMaximum() >= _maxInt
-            ) {
-                buffer.consume(paramCode);
-                buffer.put(RegexVm.Instructions.bne, 2);
-                buffer.put(RegexVm.Instructions.incCur);
-                buffer.put(RegexVm.Instructions.bra, -(3 + paramCodeLen));
-                buffer.put(RegexVm.Instructions.clearZ);
-            }
-            else {
-                buffer.put(RegexVm.Instructions.beginRep);
-                buffer.consume(paramCode);
+            
+            for(var i = 0, lineCount = buffer.getCount(); i < lineCount; ++i) {
+                --labelAddress;
                 
-                if(repRange.getMaximum() >= _maxInt) {
-                    buffer.put(RegexVm.Instructions.beq, 3);
-                    buffer.put(RegexVm.Instructions.testRep, repRange.getMinimum());
-                    buffer.put(RegexVm.Instructions.beq, 4);
-                    buffer.put(RegexVm.Instructions.rts);
-                    buffer.put(RegexVm.Instructions.incCur);
-                    buffer.put(RegexVm.Instructions.incRep);
-                    buffer.put(RegexVm.Instructions.bra, -(7 + paramCodeLen));
-                }
-                else if(repRange.getMinimum() >= repRange.getMaximum()) {
-                    buffer.put(RegexVm.Instructions.beq, 3);
-                    buffer.put(RegexVm.Instructions.testRep, repRange.getMinimum());
-                    buffer.put(RegexVm.Instructions.beq, 5);
-                    buffer.put(RegexVm.Instructions.rts);
-                    buffer.put(RegexVm.Instructions.incCur);
-                    buffer.put(RegexVm.Instructions.incRep);
-                    buffer.put(RegexVm.Instructions.testRep, repRange.getMaximum() + 1);
-                    buffer.put(RegexVm.Instructions.bne, -(8 + paramCodeLen));
-                }
-                else {
-                    buffer.put(RegexVm.Instructions.beq, 1);
-                    buffer.put(RegexVm.Instructions.rts);
-                    buffer.put(RegexVm.Instructions.incCur);
-                    buffer.put(RegexVm.Instructions.incRep);
-                    buffer.put(RegexVm.Instructions.testRep, repRange.getMinimum());
-                    buffer.put(RegexVm.Instructions.bne, -(6 + paramCodeLen));
-                }
+                var line = buffer.getLineAt(i);
                 
-                buffer.put(RegexVm.Instructions.endRep);
+                //함수 마지막 부분으로 점프하는 모든 레이블 조사
+                var inst = RegexVm._opCodeInstMap.get(line[0]);
+                if(
+                    inst.getOperandCount() > 0
+                    && inst.getOperandTypeAt(0) === RegexVm.OperandType.offset
+                    && !karbonator.isNonNegativeSafeInteger(line[1])
+                    && karbonator.math.numberEquals(line[1], placeholderValue, epsilon)
+                ) {
+                    line[1] = labelAddress;
+                }
             }
             
             return buffer;
+        };
+        
+        /**
+         * @private
+         * @function
+         * @param {AstNode} node
+         * @returns {Object}
+         */
+        CodeEmitter.prototype._caculateSumOfChildCodeOffset = function (node) {
+            var childCodeLens = [];
+            var sumOfOffset = 0;
+            for(var i = 0, childCount = node.getChildCount(); i < childCount; ++i) {
+                var len = this._nodeCodeMap.get(node.getChildAt(i)).getCount();
+                childCodeLens.push(len);
+                sumOfOffset += len;
+            }
+            
+            return ({
+                sum : sumOfOffset,
+                lengths : childCodeLens
+            });
         };
         
         /*////////////////////////////////*/
@@ -3298,7 +3699,7 @@
         
         /**
          * @function
-         * @return {Lexer|null}
+         * @return {karbonator.string.Lexer|null}
          */
         LexerGenerator.prototype.generateLexer = function () {
             //TODO : 
@@ -3328,7 +3729,9 @@
                 rootNode = this._tokenMap.values().next().value._astRootNode;
             }
             
-            return this._bytecodeEmitter.emitCode(rootNode);
+            lexer._regexVm._bytecode = this._bytecodeEmitter.emitCode(rootNode);
+            
+            return lexer;
         };
         
         return LexerGenerator;

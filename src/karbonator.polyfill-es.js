@@ -17,9 +17,11 @@
         var karbonator = factory(g);
         
         if(typeof(g.define) === "function" && g.define.amd) {
-            g.define(function () {
-                return karbonator;
-            });
+            g.define(
+                function () {
+                    return karbonator;
+                }
+            );
         }
         else if(typeof(g.module) !== "undefined" && g.module.exports) {
             g.module.exports = karbonator;
@@ -33,16 +35,18 @@
     
     /*////////////////////////////////*/
     //For release version.
-//
+
 //    if(typeof(g.define) === "function" && g.define.amd) {
-//        g.define(function () {
-//            return factory(g);
-//        });
+//        g.define(
+//            function () {
+//                return factory(g);
+//            }
+//        );
 //    }
 //    else if(typeof(g.module) !== "undefined" && g.module.exports) {
 //        g.exports = g.module.exports = factory(g);
 //    }
-//
+
     /*////////////////////////////////*/
 }(
 (typeof(global) !== "undefined" ? global : (typeof(window) !== "undefined" ? window : this)),
