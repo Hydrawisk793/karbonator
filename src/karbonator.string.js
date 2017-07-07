@@ -211,957 +211,936 @@
     
     /*////////////////////////////////*/
     
-    var RegexVm = (function () {
-        /**
-         * @constructor
-         * @param {Number} returnAddress
-         */
-        var StackFrame = function (returnAddress) {
-            this._returnAddress = returnAddress;
+    /*////////////////////////////////*/
+    //RegexVm
+    
+    /**
+     * @constructor
+     */
+    var RegexVm = function () {
+        this._inStr = "";
+        this._bytecode = null;
+        
+        this._acceptedTokenKey = -1;
+        this._acceptedText = "";
+        this._thNdx = 0;
+        this._ctxts = [];
+        this._suspendedCtxts = [];
+    };
+    
+    /**
+     * @memberof RegexVm
+     * @private
+     * @constructor
+     * @param {RegexVm._Frame|Number} arg0
+     */
+    RegexVm._Frame = function (arg0) {
+        if(arg0 instanceof RegexVm._Frame) {
+            this._returnAddress = arg0._returnAddress;
+            this._repStack = arg0._repStack.slice();
+        }
+        else if(karbonator.isNonNegativeSafeInteger(arg0)) {
+            this._returnAddress = arg0;
             this._repStack = [];
-            this._yieldStack = [];
-        };
-        
-        /**
-         * @constructor
-         */
-        var RegexVm = function () {
-            this._inStr = "";
-            
-            this._bytecode = null;
-            
-            this._pc = 0;
-            this._consumePtr = 0;
-            this._zFlag = false;
-            this._acceptedTokenKey = -1;
-            this._cursorStack = [];
-            this._stackFrameStack = [];
-        };
-        
-        /*////////////////////////////////*/
-        //IntegerType
-        
-        var IntegerType = karbonator.Enum.create(
-            function (proto) {
-                proto.getByteCount = function () {
-                    return this._byteCount;
-                };
-                
-                proto.bytesToValue = function (bytes) {
-                    return karbonator.bytesToInteger(
-                        bytes,
-                        this._byteCount, this._signed,
-                        arguments[1],
-                        arguments[2]
-                    );
-                };
-                
-                proto.valueToBytes = function (v) {
-                    return karbonator.integerToBytes(
-                        v, this._byteCount,
-                        arguments[1],
-                        arguments[2], arguments[3]
-                    );
-                };
-            },
-            function (byteCount, signed) {
-                this._byteCount = byteCount;
-                this._signed = signed;
-            },
-            [
-                ["int16", [2, true]],
-                ["uint16", [2, false]],
-                ["int32", [4, true]],
-                ["uint32", [4, false]]
-            ]
-        );
-        
-        /*////////////////////////////////*/
-        
-        /*////////////////////////////////*/
-        //RegexVm.OperandType
-        
-        /**
-         * @memberof RegexVm
-         * @constructor
-         */
-        var OperandType = karbonator.Enum.create(
-            /**
-             * @param {Object} proto
-             */
-            function (proto) {
-                proto.getByteCount = function () {
-                    return this._typeMeta.getByteCount();
-                };
-                
-                proto.valueToBytes = function (v) {
-                    return this._typeMeta.valueToBytes(
-                        v,
-                        arguments[1],
-                        arguments[2], arguments[3]
-                    );
-                };
-                
-                proto.toString = function () {
-                    var str = '{';
-                    
-                    str += "name";
-                    str += " : ";
-                    str += this[karbonator.Enum.getKey]();
-                    
-                    str += '}';
-                    
-                    return str;
-                };
-            },
-            function (typeMeta) {
-                this._typeMeta = typeMeta;
-            },
-            [
-                ["offset", [IntegerType.int16]],
-                ["address", [IntegerType.uint32]],
-                ["index", [IntegerType.uint32]],
-                ["characterCode", [IntegerType.uint32]],
-                ["integerLiteral", [IntegerType.uint32]]
-            ]
-        );
-        
-        RegexVm.OperandType = OperandType;
-        
-        /*////////////////////////////////*/
-        
-        /*////////////////////////////////*/
-        //RegexVm.Instruction
-        
-        /**
-         * @memberof RegexVm
-         * @constructor
-         */
-        var Instruction = karbonator.Enum.create(
-            /**
-             * @param {Object} proto
-             */
-            function (proto) {
-                /**
-                 * @function
-                 * @return {Number}
-                 */
-                proto.getOpCode = function () {
-                    return this._opCode;
-                };
-                
-                /**
-                 * @function
-                 * @return {Number}
-                 */
-                proto.getOperandCount = function () {
-                    return this._operandTypes.length;
-                };
-                
-                /**
-                 * @function
-                 * @param {Number} index
-                 * @return {RegexVm.OperandType}
-                 */
-                proto.getOperandTypeAt = function (index) {
-                    if(
-                        !karbonator.isNonNegativeSafeInteger(index)
-                        || index >= this._operandTypes.length
-                    ) {
-                        throw new RangeError("Index out of range.");
-                    }
-
-                    return this._operandTypes[index];
-                };
-                
-                /**
-                 * @function
-                 * @param {Number} index
-                 * @return {Number}
-                 */
-                proto.getOperandSizeAt = function (index) {
-                    return this.getOperandTypeAt(index).getByteCount();
-                };
-                
-                /**
-                 * @function
-                 * @return {Number}
-                 */
-                proto.getSize = function () {
-                    return 1 + this._operandTypes.reduce(
-                        function (acc, current) {
-                            return acc + current.getByteCount();
-                        },
-                        0
-                    );
-                };
-                
-                /**
-                 * @function
-                 * @return {String}
-                 */
-                proto.getMnemonic = function () {
-                    return this._mnemonic;
-                };
-                
-                /**
-                 * @function
-                 * @param {RegexVm} vm
-                 */
-                proto.doAction = function (vm) {
-                    this._action(vm);
-                };
-                
-                /**
-                 * @function
-                 * @return {String}
-                 */
-                proto.toString = function () {
-                    var str = '{';
-                    
-                    str += "opCode";
-                    str += " : ";
-                    str += this._opCode.toString(16);
-                    
-                    str += ", ";
-                    str += "operandTypes";
-                    str += " : ";
-                    str += '[' + this._operandTypes + ']';
-                        
-                    str += ", ";
-                    str += "mnemonic";
-                    str += " : ";
-                    str += '\"' + this._mnemonic + '\"';
-                    
-                    str += '}';
-                    
-                    return str;
-                };
-            },
-            function (mnemonic, opCode, operandTypes, action) {
-                if(!karbonator.isString(mnemonic)) {
-                    throw new TypeError("The parameter 'mnemonic' must be a string.");
-                }
-                if(!karbonator.isNonNegativeSafeInteger(opCode)) {
-                    throw new TypeError("The parameter 'opCode' must be a non-negative integer.");
-                }
-                if(null !== operandTypes && !karbonator.isArray(operandTypes)) {
-                    throw new TypeError("The parameter 'operandTypes' must be an array of type meta objects.");
-                }
-                if(!karbonator.isFunction(action)) {
-                    throw new TypeError("The parameter 'action' must be a function.");
-                }
-                
-                this._opCode = opCode;
-                this._operandTypes = (null === operandTypes ? [] : operandTypes);
-                this._mnemonic = mnemonic;
-                this._action = action;
-            },
-            Array.from(
-                [
-                    [
-                        "nop",
-                        0x00,
-                        null,
-                        function () {}
-                    ],
-                    [
-                        "bra",
-                        0x01,
-                        [OperandType.offset],
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            //Do not delete this line.
-                            //Some side effects are needed.
-                            var offset = vm._readInt16();
-                            
-                            vm._pc += offset;
-                        }
-                    ],
-                    [
-                        "bne",
-                        0x02,
-                        [OperandType.offset],
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            //Do not delete this line.
-                            //Some side effects are needed.
-                            var offset = vm._readInt16();
-                            
-                            if(!vm._zFlag) {
-                                vm._pc += offset;
-                            }
-                        }
-                    ],
-                    [
-                        "beq",
-                        0x03,
-                        [OperandType.offset],
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            //Do not delete this line.
-                            //Some side effects are needed.
-                            var offset = vm._readInt16();
-                            
-                            if(vm._zFlag) {
-                                vm._pc += offset;
-                            }
-                        }
-                    ],
-                    [
-                        "jsr",
-                        0x04,
-                        [OperandType.address],
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            vm._stackFrameStack.push(
-                                new StackFrame(vm._pc)
-                            );
-                            
-                            //Do not delete this line.
-                            //Some side effects are needed.
-                            var offset = vm._readUint32();
-                            vm._pc = offset;
-                        }
-                    ],
-                    [
-                        "jmp",
-                        0x05,
-                        [OperandType.address],
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            //Do not delete this line.
-                            //Some side effects are needed.
-                            var offset = vm._readInt32();
-                            vm._pc = offset;
-                        }
-                    ],
-                    [
-                        "accept",
-                        0x06,
-                        [OperandType.integerLiteral],
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            vm._acceptedTokenKey = vm._readUint32();
-
-                            vm._stackFrameStack.length = 0;
-                        }
-                    ],
-                    [
-                        "rts",
-                        0x07,
-                        null,
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            vm._pc = vm._getCurrentStackFrame()._returnAddress;
-                            vm._stackFrameStack.pop();
-                        }
-                    ],
-                    [
-                        "skip",
-                        0x08,
-                        null,
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            vm._consumePtr = vm._getCursor();
-                        }
-                    ],
-                    [
-                        "consume",
-                        0x09,
-                        null,
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            for(var i = vm._consumePtr; i < vm._getCursor(); ++i) {
-                                vm._consumedValues.push(vm._getCharacterCodeAt(i));
-                            }
-                        }
-                    ],
-                    [
-                        "clear.z",
-                        0x0A,
-                        null,
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            vm._zFlag = false;
-                        }
-                    ],
-                    [
-                        "set.z",
-                        0x0B,
-                        null,
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            vm._zFlag = true;
-                        }
-                    ],
-                    [
-                        "teq.input.code",
-                        0xC,
-                        [OperandType.characterCode],
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            var charCode = vm._readUint32();
-                            var curCharCode = vm._getCurrentCharacterCode();
-                            
-                            vm._zFlag = (curCharCode === charCode);
-                        }
-                    ],
-                    [
-                        "tin.input.range",
-                        0x0D,
-                        [OperandType.index],
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            vm._zFlag = vm._getIntervalAt(vm._readUint32()).contains(vm._getCurrentCharacterCode());
-                        }
-                    ],
-                    [
-                        "teq.rep",
-                        0x0E,
-                        [OperandType.integerLiteral],
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            var intValue = vm._readUint32();
-                            var rep = vm._getRepetition();
-                            
-                            vm._zFlag = (rep === intValue);
-                        }
-                    ],
-                    [
-                        "ths.rep",
-                        0x0F,
-                        [OperandType.integerLiteral],
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            var intValue = vm._readUint32();
-                            var rep = vm._getRepetition();
-                            
-                            vm._zFlag = (rep >= intValue);
-                        }
-                    ],
-                    [
-                        "inc.rep",
-                        0x10,
-                        null,
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            vm._increaseRepetition();
-                        }
-                    ],
-                    [
-                        "inc.cur",
-                        0x11,
-                        null,
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            vm._increaseCursor();
-                        }
-                    ],
-                    [
-                        "begin.rep",
-                        0x12,
-                        null,
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            vm._pushRepetition();
-                        }
-                    ],
-                    [
-                        "push.cur",
-                        0x13,
-                        null,
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            vm._pushCursor();
-                        }
-                    ],
-                    [
-                        "end.rep",
-                        0x14,
-                        null,
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            vm._popReptition();
-                        }
-                    ],
-                    [
-                        "pop.cur",
-                        0x15,
-                        null,
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            vm._popCursor();
-                        }
-                    ],
-                    [
-                        "dec.cur",
-                        0x16,
-                        null,
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            vm._decreaseCursor();
-                        }
-                    ],
-                    [
-                        "collapse.cur",
-                        0x17,
-                        null,
-                        /**
-                         * @param {RegexVm} vm
-                         */
-                        function (vm) {
-                            vm._collapseCursor();
-                        }
-                    ],
-                    [
-                        "yield",
-                        0x18,
-                        [OperandType.offset],
-                        function (vm) {
-                            var offset = vm._readInt16();
-                            
-                            vm._pushYieldAddress(vm._pc);
-                            vm._pushReptition();
-                            
-                            vm._pc += offset;
-                        }
-                    ],
-                    [
-                        "rtyne",
-                        0x19,
-                        null,
-                        function (vm) {
-                            if(vm.zFlag) {
-                                vm._popReptition();
-                                vm._popYieldAddress();
-                            }
-                            else {
-                                vm._pc = vm._getCurrentYieldAddress();
-                            }
-                        }
-                    ]
-                ],
-                function (current) {
-                    return ([
-                        current[0].replace(
-                            /(\.[A-Za-z0-9]+)/g,
-                            function (text) {
-                                return text[1].toUpperCase() + text.substring(2);
-                            }
-                        ),
-                        current
-                    ]);
-                }
-            )
-        );
-        
-        RegexVm.Instruction = Instruction;
-        
-        /*////////////////////////////////*/
-        
-        /*////////////////////////////////*/
-        //RegexVm.Bytecode
-        
-        /**
-         * @memberof RegexVm
-         * @constructor
-         * @param {iterable} intervals
-         * @param {Boolean} littleEndian
-         * @param {karbonator.ByteArray} codeBlock
-         * @param {String} [sourceCodeForDebug]
-         */
-        var Bytecode = function (intervals, littleEndian, codeBlock) {
-            if(!karbonator.isEsIterable(intervals)) {
-                throw new TypeError("The parameter 'intervals' must have the property 'Symbol.iterator'.");
+        }
+        else {
+            throw new TypeError("An invalid argument.");
+        }
+    };
+    
+    /**
+     * @memberof RegexVm
+     * @private
+     * @constructor
+     * @param {RegexVm._Thread|RegexVm} arg0
+     * @param {Number|Number} pc
+     * @param {undefined|Number} cursor
+     */
+    RegexVm._Thread = function (arg0, pc, cursor) {
+        if(arg0 instanceof RegexVm._Thread) {
+            this._vm = arg0._vm;
+            this._pc = pc;
+            this._zFlag = arg0._zFlag;
+            this._cursor = arg0._cursor;
+            this._consumePtr = arg0._consumePtr;
+            this._consumeRanges = arg0._consumeRanges.slice();
+            this._frameStack = new Array(arg0._frameStack.length);
+            for(var i = 0; i < this._frameStack.length; ++i) {
+                this._frameStack[i] = new RegexVm._Frame(arg0._frameStack[i]);
             }
-            if(!(codeBlock instanceof ByteArray)) {
-                throw new TypeError("The parameter 'codeBlock' must be an instance of 'karbonator.ByteArray'.");
-            }
-            
-            this._intervals = Array.from(intervals);
-            this._littleEndian = !!littleEndian;
-            this._codeBlock = ByteArray.from(codeBlock);
-            this._sourceCodeForDebug = arguments[3];
-            if(karbonator.isUndefined(this._sourceCodeForDebug)) {
-                this._sourceCodeForDebug = "";
-            }
-        };
-        
-        RegexVm.Bytecode = Bytecode;
-        
-        /*////////////////////////////////*/
-        
-        /**
-         * @memberof RegexVm
-         * @private
-         * @readonly
-         */
-        RegexVm._opCodeInstMap = new karbonator.collection.TreeMap(
-            karbonator.numberComparator,
-            Array.from(
-                RegexVm.Instruction,
-                /**
-                 * @param {Array} enumPair
-                 * @returns {Array}
-                 */
-                function (enumPair) {
-                    var inst = enumPair[1];
-                    return [inst.getOpCode(), inst];
-                }
-            )
-        );
-        
-        /**
-         * @function
-         * @param {RegexVm.Bytecode} bytecode
-         */
-        RegexVm.prototype.setBytecode = function (bytecode) {
-            this._bytecode = bytecode;
-        };
-        
-        /**
-         * @function
-         * @param {String} str
-         * @param {Number} [startIndex=0]
-         * @return {Object}
-         */
-        RegexVm.prototype.test = function (str) {
-            if(karbonator.isUndefinedOrNull(this._bytecode)) {
-                throw new Error("Set the bytecode of the regex first.");
-            }
-            
-            if(!karbonator.isString(str)) {
-                throw new TypeError("'str' must be a string.");
-            }
-            this._inStr = Array.from(
-                str,
-                function (cur) {
-                    return cur.charCodeAt(0);
-                }
-            );
-            this._inStr.push(-1);
-            
-            var startIndex = arguments[1];
-            if(karbonator.isUndefined(startIndex)) {
-                startIndex = 0;
-            }
-            else if(!karbonator.isNonNegativeInteger(startIndex)) {
-                throw new TypeError("'startIndex' must be a non-negative integer.");
-            }
-            this._cursorStack.length = 0;
-            this._cursorStack.push(startIndex);
-            
-            this._pc = 0;
-            this._consumePtr = 0;
+            this._matchResult = null;
+        }
+        else if(arg0 instanceof RegexVm) {
+            this._vm = arg0;
+            this._pc = pc;
             this._zFlag = true;
-            this._acceptedTokenKey = -1;
-            this._stackFrameStack.length = 0;
-            this._stackFrameStack.push(new StackFrame(0));
-            this._consumedValues = [];
-            
-            while(this._stackFrameStack.length > 0) {
-                this._execute();
-            }
-            
-            return {
-                matched : this._zFlag,
-                text : this._consumedValues.reduce(
-                    function (acc, cur) {
-                        return acc + String.fromCharCode(cur);
-                    },
-                    ""
-                ),
-                range : [startIndex, startIndex + this._consumePtr]
+            this._cursor = cursor;
+            this._consumePtr = 0;
+            this._consumeRanges = [this._cursor];
+            this._frameStack = [new RegexVm._Frame(0)];
+            this._matchResult = null;
+        }
+        else {
+            throw new TypeError("'arg0' is an invalid argument.");
+        }
+    };
+    
+    /**
+     * @memberof RegexVm._Thread
+     * @readonly
+     */
+    RegexVm._Thread._skipDelimiter = 0;
+    
+    /**
+     * @function
+     * @return {RegexVm.MatchResult}
+     */
+    RegexVm._Thread.prototype.getMatchResult = function () {
+        return this._matchResult;
+    };
+    
+    /**
+     * @memberof RegexVm
+     * @private
+     * @constructor
+     */
+    RegexVm._IntegerType = karbonator.Enum.create(
+        /**
+         * @param {Object} proto
+         */
+        function (proto) {
+            proto.getByteCount = function () {
+                return this._byteCount;
             };
-        };
-        
-        /**
-         * @private
-         * @function
-         */
-        RegexVm.prototype._execute = function () {
-            var opCode = this._bytecode._codeBlock.get(this._pc);
-            ++this._pc;
             
-            var inst = RegexVm._opCodeInstMap.get(opCode);
-            if(karbonator.isUndefined(inst)) {
-                throw new Error("An invalid opcode has been found.");
+            proto.bytesToValue = function (bytes) {
+                return karbonator.bytesToInteger(
+                    bytes,
+                    this._byteCount, this._signed,
+                    arguments[1],
+                    arguments[2]
+                );
+            };
+            
+            proto.valueToBytes = function (v) {
+                return karbonator.integerToBytes(
+                    v, this._byteCount,
+                    arguments[1],
+                    arguments[2], arguments[3]
+                );
+            };
+        },
+        function (byteCount, signed) {
+            this._byteCount = byteCount;
+            this._signed = signed;
+        },
+        [
+            ["int16", [2, true]],
+            ["uint16", [2, false]],
+            ["int32", [4, true]],
+            ["uint32", [4, false]]
+        ]
+    );
+    
+    /**
+     * @memberof RegexVm
+     * @constructor
+     */
+    RegexVm.OperandType = karbonator.Enum.create(
+        /**
+         * @param {Object} proto
+         */
+        function (proto) {
+            proto.getByteCount = function () {
+                return this._typeMeta.getByteCount();
+            };
+            
+            proto.valueToBytes = function (v) {
+                return this._typeMeta.valueToBytes(
+                    v,
+                    arguments[1],
+                    arguments[2], arguments[3]
+                );
+            };
+            
+            proto.toString = function () {
+                var str = '{';
+                
+                str += "name";
+                str += " : ";
+                str += this[karbonator.Enum.getKey]();
+                
+                str += '}';
+                
+                return str;
+            };
+        },
+        function (typeMeta) {
+            this._typeMeta = typeMeta;
+        },
+        [
+            ["offset", [RegexVm._IntegerType.int16]],
+            ["address", [RegexVm._IntegerType.uint32]],
+            ["index", [RegexVm._IntegerType.uint32]],
+            ["characterCode", [RegexVm._IntegerType.uint32]],
+            ["integerLiteral", [RegexVm._IntegerType.uint32]]
+        ]
+    );
+    
+    /**
+     * @memberof RegexVm
+     * @constructor
+     */
+    RegexVm.Instruction = karbonator.Enum.create(
+        /**
+         * @param {Object} proto
+         */
+        function (proto) {
+            /**
+             * @function
+             * @return {Number}
+             */
+            proto.getOpCode = function () {
+                return this._opCode;
+            };
+            
+            /**
+             * @function
+             * @return {Number}
+             */
+            proto.getOperandCount = function () {
+                return this._operandTypes.length;
+            };
+            
+            /**
+             * @function
+             * @param {Number} index
+             * @return {RegexVm.OperandType}
+             */
+            proto.getOperandTypeAt = function (index) {
+                if(
+                    !karbonator.isNonNegativeSafeInteger(index)
+                    || index >= this._operandTypes.length
+                ) {
+                    throw new RangeError("Index out of range.");
+                }
+
+                return this._operandTypes[index];
+            };
+            
+            /**
+             * @function
+             * @param {Number} index
+             * @return {Number}
+             */
+            proto.getOperandSizeAt = function (index) {
+                return this.getOperandTypeAt(index).getByteCount();
+            };
+            
+            /**
+             * @function
+             * @return {Number}
+             */
+            proto.getSize = function () {
+                return 1 + this._operandTypes.reduce(
+                    function (acc, current) {
+                        return acc + current.getByteCount();
+                    },
+                    0
+                );
+            };
+            
+            /**
+             * @function
+             * @return {String}
+             */
+            proto.getMnemonic = function () {
+                return this._mnemonic;
+            };
+            
+            /**
+             * @function
+             * @param {RegexVm} vm
+             */
+            proto.doAction = function (vm) {
+                this._action(vm);
+            };
+            
+            /**
+             * @function
+             * @return {String}
+             */
+            proto.toString = function () {
+                var str = '{';
+
+                str += "opCode";
+                str += " : ";
+                str += this._opCode.toString(16);
+
+                str += ", ";
+                str += "operandTypes";
+                str += " : ";
+                str += '[' + this._operandTypes + ']';
+
+                str += ", ";
+                str += "mnemonic";
+                str += " : ";
+                str += '\"' + this._mnemonic + '\"';
+
+                str += '}';
+
+                return str;
+            };
+        },
+        function (mnemonic, opCode, operandTypes, action) {
+            if(!karbonator.isString(mnemonic)) {
+                throw new TypeError("The parameter 'mnemonic' must be a string.");
+            }
+            if(!karbonator.isNonNegativeSafeInteger(opCode)) {
+                throw new TypeError("The parameter 'opCode' must be a non-negative integer.");
+            }
+            if(null !== operandTypes && !karbonator.isArray(operandTypes)) {
+                throw new TypeError("The parameter 'operandTypes' must be an array of type meta objects.");
+            }
+            if(!karbonator.isFunction(action)) {
+                throw new TypeError("The parameter 'action' must be a function.");
             }
             
-            console.log(inst.getMnemonic());
-            debugger;
-            
-            inst.doAction(this);
-        };
-        
-        /**
-         * @private
-         * @function
-         * @return {Number}
-         */
-        RegexVm.prototype._readInt16 = function () {
-            var value = karbonator.bytesToInteger(
-                this._bytecode._codeBlock,
-                2, true,
-                this._bytecode._littleEndian,
-                this._pc
-            );
-            this._pc += 2;
-            
-            return value;
-        };
-        
-        /**
-         * @private
-         * @function
-         * @return {Number}
-         */
-        RegexVm.prototype._readInt32 = function () {
-            var value = karbonator.bytesToInteger(
-                this._bytecode._codeBlock,
-                4, true,
-                this._bytecode._littleEndian,
-                this._pc
-            );
-            this._pc += 4;
-            
-            return value;
-        };
-        
-        /**
-         * @private
-         * @function
-         * @return {Number}
-         */
-        RegexVm.prototype._readUint32 = function () {
-            var value = karbonator.bytesToInteger(
-                this._bytecode._codeBlock,
-                4, false,
-                this._bytecode._littleEndian,
-                this._pc
-            );
-            this._pc += 4;
-            
-            return value;
-        };
-        
-        /**
-         * @private
-         * @function
-         * @returns {Number}
-         */
-        RegexVm.prototype._getCurrentCharacterCode = function () {
-            return this._inStr[this._getCursor()];
-        };
-        
-        /**
-         * @private
-         * @function
-         * @param {Number} index
-         * @returns {Number}
-         */
-        RegexVm.prototype._getCharacterCodeAt = function (index) {
-            return this._inStr[index];
-        };
-        
-        /**
-         * @private
-         * @function
-         * @param {Number} index
-         * @return {karbonator.math.Interval}
-         */
-        RegexVm.prototype._getIntervalAt = function (index) {
-            return this._bytecode._intervals[index];
-        };
-        
-        /**
-         * @private
-         * @function
-         * @return {StackFrame}
-         */
-        RegexVm.prototype._getCurrentStackFrame = function () {
-            return this._stackFrameStack[this._stackFrameStack.length - 1];
-        };
-        
-        /**
-         * @private
-         * @function
-         * @param {Number} addr
-         */
-        RegexVm.prototype._pushYieldAddress = function (addr) {
-            this._getCurrentStackFrame()._yieldStack.push(addr);
-        };
-        
-        /**
-         * @private
-         * @function
-         */
-        RegexVm.prototype._popYieldAddress = function () {
-            var yieldStack = this._getCurrentStackFrame()._yieldStack;
-            if(yieldStack.length < 1) {
-                throw new Error("Yield stack underflow.");
+            this._opCode = opCode;
+            this._operandTypes = (null === operandTypes ? [] : operandTypes);
+            this._mnemonic = mnemonic;
+            this._action = action;
+        },
+        Array.from(
+            [
+                [
+                    "nop",
+                    0x00,
+                    null,
+                    function () {}
+                ],
+                [
+                    "bra",
+                    0x01,
+                    [RegexVm.OperandType.offset],
+                    function () {}
+                ],
+                [
+                    "bne",
+                    0x02,
+                    [RegexVm.OperandType.offset],
+                    function () {}
+                ],
+                [
+                    "beq",
+                    0x03,
+                    [RegexVm.OperandType.offset],
+                    function () {}
+                ],
+                [
+                    "jmp",
+                    0x04,
+                    [RegexVm.OperandType.address],
+                    function () {}
+                ],
+                [
+                    "jsr",
+                    0x05,
+                    [RegexVm.OperandType.address],
+                    function () {}
+                ],
+                [
+                    "rts",
+                    0x06,
+                    null,
+                    function () {}
+                ],
+                [
+                    "accept",
+                    0x07,
+                    [RegexVm.OperandType.integerLiteral],
+                    function () {}
+                ],
+                [
+                    "fork",
+                    0x08,
+                    [
+                        RegexVm.OperandType.offset,
+                        RegexVm.OperandType.offset
+                    ],
+                    function () {}
+                ],
+                [
+                    "queue",
+                    0x09,
+                    [
+                        RegexVm.OperandType.offset,
+                        RegexVm.OperandType.offset
+                    ],
+                    function () {}
+                ],
+                [
+                    "clear.z",
+                    0x0A,
+                    null,
+                    function () {}
+                ],
+                [
+                    "set.z",
+                    0x0B,
+                    null,
+                    function () {}
+                ],
+                [
+                    "skip",
+                    0x0C,
+                    null,
+                    function () {}
+                ],
+                [
+                    "consume",
+                    0x0D,
+                    null,
+                    function () {}
+                ],
+                [
+                    "test.code",
+                    0x0E,
+                    [RegexVm.OperandType.characterCode],
+                    function () {}
+                ],
+                [
+                    "test.range",
+                    0x0F,
+                    [RegexVm.OperandType.index],
+                    function () {}
+                ]
+            ],
+            function (current) {
+                return ([
+                    current[0].replace(
+                        /(\.[A-Za-z0-9]+)/g,
+                        function (text) {
+                            return text[1].toUpperCase() + text.substring(2);
+                        }
+                    ),
+                    current
+                ]);
             }
-            
-            yieldStack.pop();
-        };
-        
-        /**
-         * @private
-         * @function
-         * @return {Number} addr
-         */
-        RegexVm.prototype._getCurrentYieldAddress = function () {
-            var yieldStack = this._getCurrentStackFrame()._yieldStack;
-            if(yieldStack.length < 1) {
-                throw new Error("Yield stack underflow.");
+        )
+    );
+    
+    /**
+     * @memberof RegexVm
+     * @private
+     * @readonly
+     */
+    RegexVm._opCodeInstMap = new karbonator.collection.TreeMap(
+        karbonator.numberComparator,
+        Array.from(
+            RegexVm.Instruction,
+            /**
+             * @param {Array} enumPair
+             * @returns {Array}
+             */
+            function (enumPair) {
+                var inst = enumPair[1];
+                return [inst.getOpCode(), inst];
             }
-            
-            return yieldStack[yieldStack.length - 1];
-        };
+        )
+    );
+    
+    /**
+     * @memberof RegexVm
+     * @function
+     * @param {Number} opCode
+     * @return {RegexVm.Instruction}
+     */
+    RegexVm.findInstructionByOpCode = function (opCode) {
+        if(!karbonator.isNonNegativeSafeInteger(opCode)) {
+            throw new TypeError("'opCode' must be a non-negative safe integer.");
+        }
         
-        /**
-         * @private
-         * @function
-         * @return {Array.<Number>}
-         */
-        RegexVm.prototype._getRepetitionStack = function () {
-            return this._getCurrentStackFrame()._repStack;
-        };
+        var inst = RegexVm._opCodeInstMap.get(opCode);
+        if(karbonator.isUndefined(inst)) {
+            throw new Error("The opcode '" + opCode.toString(16) + "' doesn't exist.");
+        }
         
-        /**
-         * @private
-         * @function
-         * @return {Number}
-         */
-        RegexVm.prototype._getRepetition = function () {
-            var repStack = this._getRepetitionStack();
-            
-            return repStack[repStack.length - 1];
-        };
+        return inst;
+    };
+    
+    /**
+     * @memberof RegexVm
+     * @constructor
+     * @param {iterable} intervals
+     * @param {Boolean} littleEndian
+     * @param {karbonator.ByteArray} codeBlock
+     * @param {String} [sourceCodeForDebug]
+     */
+    RegexVm.Bytecode = function (intervals, littleEndian, codeBlock) {
+        if(!karbonator.isEsIterable(intervals)) {
+            throw new TypeError("The parameter 'intervals' must have the property 'Symbol.iterator'.");
+        }
+        if(!(codeBlock instanceof ByteArray)) {
+            throw new TypeError("The parameter 'codeBlock' must be an instance of 'karbonator.ByteArray'.");
+        }
         
-        /**
-         * @private
-         * @function
-         */
-        RegexVm.prototype._increaseRepetition = function () {
-            var repStack = this._getRepetitionStack();
-            
-            ++repStack[repStack.length - 1];
-        };
+        this._intervals = Array.from(intervals);
+        this._littleEndian = !!littleEndian;
+        this._codeBlock = ByteArray.from(codeBlock);
+        this._sourceCodeForDebug = arguments[3];
+        if(karbonator.isUndefined(this._sourceCodeForDebug)) {
+            this._sourceCodeForDebug = "";
+        }
+    };
+    
+    /**
+     * @memberof RegexVm
+     * @constructor
+     * @param {Number} tokenKey
+     * @param {String} text
+     * @param {karbonator.math.Interval} range
+     */
+    RegexVm.MatchResult = function (tokenKey, text, range) {
+        this.tokenKey = tokenKey;
+        this.text = text;
+        this.range = range;
+    };
+    
+    /**
+     * @function
+     * @returns {String}
+     */
+    RegexVm.MatchResult.prototype.toString = function () {
+        var str = '{';
         
-        /**
-         * @private
-         * @function
-         */
-        RegexVm.prototype._pushRepetition = function () {
-            this._getRepetitionStack().push(0);
-        };
+        str += "tokenKey";
+        str += " : ";
+        str += this.tokenKey;
         
-        /**
-         * @private
-         * @function
-         */
-        RegexVm.prototype._popReptition = function () {
-            this._getRepetitionStack().pop();
-        };
+        str += ", ";
+        str += "text";
+        str += " : ";
+        str += this.text;
         
-        /**
-         * @private
-         * @function
-         * @return {Number}
-         */
-        RegexVm.prototype._getCursor = function () {
-            return this._cursorStack[this._cursorStack.length - 1];
-        };
+        str += ", ";
+        str += "range";
+        str += " : ";
+        str += this.range;
         
-        /**
-         * @private
-         * @function
-         */
-        RegexVm.prototype._increaseCursor = function () {
-            ++this._cursorStack[this._cursorStack.length - 1];
-        };
+        str += '}';
         
-        /**
-         * @private
-         * @function
-         */
-        RegexVm.prototype._decreaseCursor = function () {
-            --this._cursorStack[this._cursorStack.length - 1];
-        };
+        return str;
+    };
+    
+    /**
+     * @function
+     * @param {RegexVm.Bytecode} bytecode
+     */
+    RegexVm.prototype.setBytecode = function (bytecode) {
+        this._bytecode = bytecode;
+    };
+    
+    /**
+     * @function
+     * @param {String} str
+     * @param {Number} [startIndex=0]
+     * @return {Array<RegexVm.MatchResult>}
+     */
+    RegexVm.prototype.findAll = function (str) {
+        if(karbonator.isUndefinedOrNull(this._bytecode)) {
+            throw new Error("Set the bytecode of the regex first.");
+        }
         
-        /**
-         * @private
-         * @function
-         */
-        RegexVm.prototype._pushCursor = function () {
-            this._cursorStack.push(this._getCursor());
-        };
+        if(!karbonator.isString(str)) {
+            throw new TypeError("'str' must be a string.");
+        }
+        this._inStr = str;
         
-        /**
-         * @private
-         * @function
-         */
-        RegexVm.prototype._popCursor = function () {
-            this._cursorStack.pop();
-        };
+        var startIndex = arguments[1];
+        if(karbonator.isUndefined(startIndex)) {
+            startIndex = 0;
+        }
+        else if(!karbonator.isNonNegativeInteger(startIndex)) {
+            throw new TypeError("'startIndex' must be a non-negative integer.");
+        }
         
-        /**
-         * @private
-         * @function
-         */
-        RegexVm.prototype._collapseCursor = function () {
-            var current = this._cursorStack.pop();
-            this._cursorStack[this._cursorStack.length - 1] = current;
-        };
+        var results = [];
+        for(var i = startIndex; i < this._inStr.length; ) {
+            var result = this._run(i);
+            if(null !== result) {
+                results.push(result);
+                i = result.range.getMaximum();
+            }
+            else {
+                ++i;
+            }
+        }
         
-        return RegexVm;
-    }());
+        return results;
+    };
+    
+    /**
+     * @private
+     * @function
+     * @param {Number} startIndex
+     * @return {RegexVm.MatchResult}
+     */
+    RegexVm.prototype._run = function (startIndex) {
+        this._suspendedCtxts.length = 0;
+        this._ctxts.length = 0;
+        
+        this._ctxts.push(new RegexVm._Thread(this, 0, startIndex));
+        
+        var matchResult = null;
+        
+        //쓰레드를 동시에 굴리는 버전.
+        //주로 non-greedy가 되며, 특정 조건 하에서 greedy가 랜덤하게 선택되는 문제가 있음.
+        while(this._ctxts.length > 0 && null === matchResult) {
+            for(
+                this._thNdx = this._ctxts.length;
+                this._thNdx > 0 && null === matchResult;
+            ) {
+                --this._thNdx;
+                
+                var th = this._ctxts[this._thNdx];
+                while(!th.isDead()) {
+                    var opCode = th.execute();
+                    if(opCode === 0x0E || opCode === 0x0F) {
+                        break;
+                    }
+                }
+                
+                console.log("------------------------------");
+                
+                if(th.isDead()) {
+                    matchResult = th.getMatchResult();
+                    this._ctxts.splice(this._thNdx, 1);
+                }
+            }
+        }
+        
+        //쓰레드가 끝날 때까지 기다리는 버전.
+        //전형적인 backtracking 방식.
+//        while(this._ctxts.length > 0 && null === matchResult) {
+//            this._thNdx = this._ctxts.length - 1;
+//            
+//            var th = this._ctxts[this._thNdx];
+//            while(!th.isDead()) {
+//                 th.execute();
+//            }
+//            
+//            matchResult = th.getMatchResult();
+//            this._ctxts.splice(this._thNdx, 1);
+//        }
+        
+        console.log("==============================");
+        
+        return matchResult;
+    };
+    
+    /**
+     * @function
+     * @param {Number} index
+     * @return {Number}
+     */
+    RegexVm.prototype.getCurrentCharacterCode = function (index) {
+        return (
+            index < this._inStr.length
+            ? this._inStr.charCodeAt(index)
+            : -1
+        );
+    };
+    
+    /**
+     * @function
+     * @param {Number} index
+     * @return {karbonator.math.Interval}
+     */
+    RegexVm.prototype.getIntervalAt = function (index) {
+        return this._bytecode._intervals[index];
+    };
+    
+    /**
+     * @function
+     * @return {Number}
+     */
+    RegexVm._Thread.prototype.execute = function () {
+        var opCode = this._vm._bytecode._codeBlock.get(this._pc);
+        ++this._pc;
+        
+        var inst = RegexVm.findInstructionByOpCode(opCode);
+        if(karbonator.isUndefined(inst)) {
+            throw new Error("An invalid opcode has been found.");
+        }
+        var threadIndex = this._vm._ctxts.indexOf(this);
+        var debugStr = "T" + (threadIndex) + ".";
+        var opCodeLen = 1;
+        debugStr += (this._pc - opCodeLen) + ":";
+        debugStr += "\t" + inst.getMnemonic();
+        if(inst.getMnemonic().startsWith("test")) {
+            debugStr += "\t" + "at " + this._cursor;
+        }
+        console.log(debugStr);
+        
+        switch(opCode) {
+        case 0x00:
+        break;
+        case 0x01:
+            this.branch();
+        break;
+        case 0x02:
+        case 0x03:
+            this.branchIfZeroIs((opCode & 0x01) !== 0);
+        break;
+        case 0x04:
+            throw new Error("An invalid opcode.");
+        break;
+        case 0x05:
+            this.jumpToSubroutine();
+        break;
+        case 0x06:
+            this.returnFromSubroutine();
+        break;
+        case 0x07:
+            this.accept();
+        break;
+        case 0x08:
+            this.fork((opCode & 0x01) !== 0);
+        break;
+        case 0x09:
+            throw new Error("An invalid opcode.");
+        break;
+        case 0x0A:
+        case 0x0B:
+            this.setZFlag((opCode & 0x01) !== 0);
+        break;
+        case 0x0C:
+        case 0x0D:
+            this.moveConsumePointer((opCode & 0x01) !== 0);
+        break;
+        case 0x0E:
+            this.testCode(false);
+        break;
+        case 0x0F:
+            this.testRange(false);
+        break;
+        default:
+            throw new Error("An invalid opcode has been found.");
+        }
+        
+        return opCode;
+    };
+    
+    /**
+     * @function
+     * @return {Number}
+     */
+    RegexVm._Thread.prototype.readInt16 = function () {
+        var value = karbonator.bytesToInteger(
+            this._vm._bytecode._codeBlock,
+            2, true,
+            this._vm._bytecode._littleEndian,
+            this._pc
+        );
+        this._pc += 2;
+        
+        return value;
+    };
+    
+    /**
+     * @function
+     * @return {Number}
+     */
+    RegexVm._Thread.prototype.readInt32 = function () {
+        var value = karbonator.bytesToInteger(
+            this._vm._bytecode._codeBlock,
+            4, true,
+            this._vm._bytecode._littleEndian,
+            this._pc
+        );
+        this._pc += 4;
+        
+        return value;
+    };
+    
+    /**
+     * @function
+     * @return {Number}
+     */
+    RegexVm._Thread.prototype.readUint32 = function () {
+        var value = karbonator.bytesToInteger(
+            this._vm._bytecode._codeBlock,
+            4, false,
+            this._vm._bytecode._littleEndian,
+            this._pc
+        );
+        this._pc += 4;
+        
+        return value;
+    };
+    
+    /**
+     * @function
+     * @return {Boolean}
+     */
+    RegexVm._Thread.prototype.isDead = function () {
+        return this._frameStack.length < 1;
+    };
+    
+    /**
+     * @function
+     */
+    RegexVm._Thread.prototype.branch = function () {
+        var offset = this.readInt16();
+        
+        this._pc += offset;
+    };
+    
+    /**
+     * @function
+     * @param {Boolean} flag
+     */
+    RegexVm._Thread.prototype.branchIfZeroIs = function (flag) {
+        var offset = this.readInt16();
+        
+        if(this._zFlag === !!flag) {
+            this._pc += offset;
+        }
+    };
+    
+    /**
+     * @function
+     */
+    RegexVm._Thread.prototype.jumpToSubroutine = function () {
+        var addr = this.readUint32();
+        
+        this._frameStack.push(new RegexVm._Frame(this._pc));
+        this._pc = addr;
+    };
+    
+    /**
+     * @function
+     */
+    RegexVm._Thread.prototype.returnFromSubroutine = function () {
+        this._pc = this.getCurrentFrame()._returnAddress;
+        this._frameStack.pop();
+    };
+    
+    /**
+     * @function
+     * @param {Boolean} lock
+     */
+    RegexVm._Thread.prototype.fork = function (lock) {
+        var goToOffset = this.readInt16();
+        var newThreadPcOffset = this.readInt16();
+        
+        var newThread = new RegexVm._Thread(
+            this,
+            this._pc + newThreadPcOffset
+        );
+        
+        this._vm._ctxts.push(newThread);
+        
+        this._pc += goToOffset;
+    };
+    
+    /**
+     * @function
+     */
+    RegexVm._Thread.prototype.accept = function () {
+        var tokenIndex = this.readUint32();
+        
+        this._matchResult = new RegexVm.MatchResult(
+            tokenIndex,
+            "",
+            null
+        );
+        
+        var cursorStart = this._consumeRanges[0];
+        var start = cursorStart;
+        for(var i = 1; i < this._consumeRanges.length; ++i) {
+            var end = this._consumeRanges[i];
+            if(RegexVm._Thread._skipDelimiter === end) {
+                ++i;
+                if(i >= this._consumeRanges.length) {
+                    break;
+                }
+                
+                start = this._consumeRanges[i];
+            }
+            else {
+                this._matchResult.text += this._vm._inStr.substring(start, end);
+                
+                start = end;
+            }
+        }
+        
+        this._matchResult.range = new karbonator.math.Interval(
+            cursorStart,
+            this._cursor
+        );
+        
+        this._frameStack.length = 0;
+    };
+    
+    /**
+     * @function
+     * @param {Boolean} flag
+     */
+    RegexVm._Thread.prototype.setZFlag = function (flag) {
+        this._zFlag = !!flag;
+    };
+    
+    /**
+     * @function
+     * @param {Boolean} consume
+     */
+    RegexVm._Thread.prototype.moveConsumePointer = function (consume) {
+        this._consumePtr = this._cursor;
+        if(!consume) {
+            this._consumeRanges.push(RegexVm._Thread._skipDelimiter);
+        }
+        this._consumeRanges.push(this._cursor);
+    };
+    
+    /**
+     * @function
+     */
+    RegexVm._Thread.prototype.testCode = function () {
+        var charCode = this.readUint32();
+        
+        this._zFlag = (charCode === this._vm.getCurrentCharacterCode(this._cursor));
+        if(this._zFlag) {
+            ++this._cursor;
+        }
+    };
+    
+    /**
+     * @function
+     */
+    RegexVm._Thread.prototype.testRange = function () {
+        var intervalIndex = this.readUint32();
+        
+        this._zFlag = this._vm.getIntervalAt(intervalIndex).contains(this._vm.getCurrentCharacterCode(this._cursor));
+        if(this._zFlag) {
+            ++this._cursor;
+        }
+    };
+    
+    /**
+     * @function
+     * @return {RegexVm._Frame}
+     */
+    RegexVm._Thread.prototype.getCurrentFrame = function () {
+        if(this.isDead()) {
+            throw new Error("The thread is already dead.");
+        }
+        
+        return this._frameStack[this._frameStack.length - 1];
+    };
+    
+    /*////////////////////////////////*/
     
     string.Lexer = (function () {
         var Token = (function () {
@@ -1235,7 +1214,6 @@
         Lexer.prototype.rewind = function () {
             
         };
-        
         
         return Lexer;
     }());
@@ -3123,19 +3101,19 @@
             for(var i = 0; i < lineLen; ++i) {
                 var line = this._lines[i];
                 
-                var inst = RegexVm._opCodeInstMap.get(line[0]);
-                if(inst.getOperandCount() > 0) {
-                    if(inst.getOperandTypeAt(0) === RegexVm.OperandType.offset) {
-                        var offset = line[1];
+                var inst = RegexVm.findInstructionByOpCode(line[0]);
+                for(var j = 0; j < inst.getOperandCount(); ++j) {
+                    if(inst.getOperandTypeAt(j) === RegexVm.OperandType.offset) {
+                        var offset = line[j + 1];
                         
-                        line[1] = (
+                        line[j + 1] = (
                             offset < 0
                             ? -this._calculateByteCount(i + offset + 1, i + 1)
                             : this._calculateByteCount(i + 1, i + offset + 1)
                         );
                     }
-                    else if(inst.getOperandTypeAt(0) === RegexVm.OperandType.address) {
-                        line[1] = this._calculateByteCount(0, line[1]);
+                    else if(inst.getOperandTypeAt(j) === RegexVm.OperandType.address) {
+                        line[j + 1] = this._calculateByteCount(0, line[j + 1]);
                     }
                 }
             }
@@ -3147,7 +3125,7 @@
                 var opCode = line[0] & 0xFF;
                 codeBlock.pushBack(opCode);
                 
-                var inst = RegexVm._opCodeInstMap.get(opCode);
+                var inst = RegexVm.findInstructionByOpCode(opCode);
                 for(var j = 0; j < inst.getOperandCount(); ++j) {
                     var opType = inst.getOperandTypeAt(j);
                     opType.valueToBytes(
@@ -3171,7 +3149,7 @@
             var offset = 0;
             for(var i = 0, len = this._lines.length; i < len; ++i) {
                 var line = this._lines[i];
-                var inst = RegexVm._opCodeInstMap.get(line[0]);
+                var inst = RegexVm.findInstructionByOpCode(line[0]);
                 
                 str += offset + '\t';
                 
@@ -3209,7 +3187,7 @@
                 .slice(startLineIndex, endLineIndex)
                 .reduce(
                     function (acc, line) {
-                        return acc + RegexVm._opCodeInstMap.get(line[0]).getSize();
+                        return acc + RegexVm.findInstructionByOpCode(line[0]).getSize();
                     },
                     0
                 )
@@ -3330,19 +3308,17 @@
             var inputRange = node.getValue();
             if(inputRange.getMinimum() === inputRange.getMaximum()) {
                 buffer.put(
-                    RegexVm.Instruction.teqInputCode,
+                    RegexVm.Instruction.testCode,
                     inputRange.getMinimum()
                 );
             }
             else {
                 this._intervalListSet.add(inputRange);
                 buffer.put(
-                    RegexVm.Instruction.tinInputRange,
+                    RegexVm.Instruction.testRange,
                     this._intervalListSet.findIndex(inputRange)
                 );
             }
-            buffer.put(RegexVm.Instruction.bne, 1);
-            buffer.put(RegexVm.Instruction.incCur);
             
             return buffer;
         };
@@ -3363,7 +3339,6 @@
             buffer.put(RegexVm.Instruction.bne, 2);
             buffer.put(RegexVm.Instruction.consume);
             buffer.put(RegexVm.Instruction.accept, tokenKey);
-            
             buffer.put(RegexVm.Instruction.rts);
             
             return buffer;
@@ -3381,28 +3356,17 @@
             var offsetInfo = this._caculateSumOfChildCodeOffset(node);
             var offset = offsetInfo.sum;
             var childCount = node.getChildCount();
-            if(childCount > 0) {
-                offset -= offsetInfo.lengths[0];
-                
-                buffer.put(RegexVm.Instruction.pushCur);
-                this._mergeCode(buffer, node, 0);
-                buffer.put(RegexVm.Instruction.beq, (childCount - 1) * 3 + 2 + offset);
-            }
-            
-            for(var i = 1; i < childCount; ++i) {
+            var codeLen = 2;
+            for(var i = 0; i < childCount - 1; ++i) {
                 offset -= offsetInfo.lengths[i];
                 
-                buffer.put(RegexVm.Instruction.popCur);
-                
-                buffer.put(RegexVm.Instruction.pushCur);
+                buffer.put(RegexVm.Instruction.fork, 0, offsetInfo.lengths[i] + 1);
                 this._mergeCode(buffer, node, i);
-                buffer.put(RegexVm.Instruction.beq, (childCount - 1 - i) * 3 + 2 + offset);
+                buffer.put(RegexVm.Instruction.bra, (childCount - 2 - i) * codeLen + offset);
             }
-            
-            buffer.put(RegexVm.Instruction.popCur);
-            buffer.put(RegexVm.Instruction.bra, 0.1);
-            
-            buffer.put(RegexVm.Instruction.collapseCur);
+            if(i < childCount) {
+                this._mergeCode(buffer, node, i);
+            }
             
             return buffer;
         };
@@ -3417,26 +3381,13 @@
             var buffer = new InstructionBuffer(this._byteOrderReversed);
             
             var childCount = node.getChildCount();
-            for(var i = 0; i < childCount; ++i) {
+            for(var i = 0; i < childCount - 1; ++i) {
                 this._mergeCode(buffer, node, i);
-                
-                if(i > 0) {
-                    var prevChild = node.getChildAt(i - 1);
-                    if(
-                        prevChild.getType() === AstNodeType.operator
-                        && (
-                            prevChild.getValue().getType().getKey() === OperatorTypeKeys.repetition
-                            || prevChild.getValue().getType().getKey() === OperatorTypeKeys.nonGreedyRepetition
-                        )
-                    ) {
-                        buffer.put(RegexVm.Instruction.rtyne);
-                    }
-                }
-                
-                if(i < childCount - 1) {
-                    buffer.put(RegexVm.Instruction.beq, 1);
-                    buffer.put(RegexVm.Instruction.bra, 0.1);
-                }
+                buffer.put(RegexVm.Instruction.bne, 0.1);
+            }
+            
+            if(i < childCount) {
+                this._mergeCode(buffer, node, i);
             }
             
             return buffer;
@@ -3452,77 +3403,38 @@
         CodeEmitter.prototype._visitRepetition = function (node, repRange) {
             var buffer = new InstructionBuffer(this._byteOrderReversed);
             
-            buffer.put(RegexVm.Instruction.yield, 0);
-            
-            this._mergeCode(buffer, node, 0);
-            buffer.put(RegexVm.Instruction.beq, 3);
-            buffer.put(RegexVm.Instruction.thsRep, repRange.getMinimum());
-            buffer.put(RegexVm.Instruction.beq, 3);
-            buffer.put(RegexVm.Instruction.bra, 0.1);
-            buffer.put(RegexVm.Instruction.incRep);
-            
-            buffer.getLineAt(0)[1] = buffer.getCount() - 1;
-            
-//            var paramCodeLen = this._nodeCodeMap.get(node.getChildAt(0)).getCount();
-//            
-//            var yieldLineIndex = -1;
-//            if(node.getValue().getType().getKey() === OperatorTypeKeys.nonGreedyRepetition) {
-//                yieldLineIndex = buffer.getCount();
-//                buffer.put(RegexVm.Instruction.yield, 0);
-//            }
-//            
-//            if(repRange.getMinimum() === 0) {
-//                this._mergeCode(buffer, node, 0);
-//                
-//                if(repRange.getMaximum() === 1) {
-//                    buffer.put(RegexVm.Instruction.setZ);
-//                }
-//                else {
-//                    buffer.put(RegexVm.Instruction.bne, 1);
-//                    buffer.put(RegexVm.Instruction.bra, -(2 + paramCodeLen));
-//                    buffer.put(RegexVm.Instruction.setZ);
-//                }
-//            }
-//            else {
-//                buffer.put(RegexVm.Instruction.beginRep);
-//                
-//                //beginRep를 제외한 길이만큼 거슬러 올라가야 함.
-//                
-//                if(repRange.getMinimum() === repRange.getMaximum()) {
-//                    this._mergeCode(buffer, node, 0);
-//                    buffer.put(RegexVm.Instruction.beq, 1);
-//                    buffer.put(RegexVm.Instruction.bra, 0.1);
-//                    buffer.put(RegexVm.Instruction.incRep);
-//                    buffer.put(RegexVm.Instruction.teqRep, repRange.getMinimum());
-//                    buffer.put(RegexVm.Instruction.bne, -(5 + paramCodeLen));
-//                }
-//                else {
-//                    this._mergeCode(buffer, node, 0);
-//                    buffer.put(RegexVm.Instruction.beq, 3);
-//                    buffer.put(RegexVm.Instruction.thsRep, repRange.getMinimum());
-//                    
-//                    if(repRange.getMaximum() >= _maxInt) {
-//                        buffer.put(RegexVm.Instruction.beq, 3);
-//                        buffer.put(RegexVm.Instruction.bra, 0.1);
-//                        buffer.put(RegexVm.Instruction.incRep);
-//                        buffer.put(RegexVm.Instruction.bra, -(6 + paramCodeLen));
-//                    }
-//                    else {
-//                        //TODO : 코드 다시 짜기
-//                        buffer.put(RegexVm.Instruction.beq, 4);
-//                        buffer.put(RegexVm.Instruction.bra, 0.1);
-//                        buffer.put(RegexVm.Instruction.incRep);
-//                        buffer.put(RegexVm.Instruction.teqRep, repRange.getMaximum() + 1);
-//                        buffer.put(RegexVm.Instruction.bne, -(7 + paramCodeLen));
-//                    }
-//                }
-//                
-//                buffer.put(RegexVm.Instruction.endRep);
-//            }
-//            
-//            if(yieldLineIndex >= 0) {
-//                buffer.getLineAt(yieldLineIndex)[1] = buffer.getCount() - 1;
-//            }
+            if(repRange.getMinimum() === 0) {
+                if(repRange.getMaximum() === 1) {
+                    throw new Error("Not implemented yet.");
+                }
+                else {
+                    var childCodeLen = this._nodeCodeMap.get(node.getChildAt(0)).getCount();
+                    var offset = childCodeLen + 2;
+                    
+                    if(node.getValue().getType().getKey() !== OperatorTypeKeys.nonGreedyRepetition) {
+                        buffer.put(RegexVm.Instruction.fork, 0, offset);
+                        this._mergeCode(buffer, node, 0);
+                        buffer.put(RegexVm.Instruction.bne, 0.1);
+                        buffer.put(RegexVm.Instruction.bra, -(offset + 1));
+//                        
+//                        buffer.put(RegexVm.Instruction.lock);
+//                        buffer.put(RegexVm.Instruction.fork, 0, offset);
+//                        this._mergeCode(buffer, node, 0);
+//                        buffer.put(RegexVm.Instruction.bne, 0.1);
+//                        buffer.put(RegexVm.Instruction.bra, -(offset + 2));
+//                        buffer.put(RegexVm.Instruction.lock);
+                    }
+                    else {
+                        buffer.put(RegexVm.Instruction.fork, offset, 0);
+                        this._mergeCode(buffer, node, 0);
+                        buffer.put(RegexVm.Instruction.bne, 0.1);
+                        buffer.put(RegexVm.Instruction.bra, -(offset + 1));
+                    }
+                }
+            }
+            else {
+                throw new Error("Not implemented yet.");
+            }
             
             return buffer;
         };
@@ -3537,7 +3449,7 @@
          */
         CodeEmitter.prototype._mergeCode = function (destBuffer, parentNode, childIndex) {
             var childCode = this._nodeCodeMap.get(parentNode.getChildAt(childIndex));
-            this._setLabelAddress(childCode, childCode.getCount(), 0.1);
+            this._fillLabelAddress(childCode, childCode.getCount(), 0.1);
             destBuffer.consume(childCode);
             
             return destBuffer;
@@ -3552,7 +3464,7 @@
          * @param {Number} [epsilon]
          * @returns {InstructionBuffer}
          */
-        CodeEmitter.prototype._setLabelAddress = function (
+        CodeEmitter.prototype._fillLabelAddress = function (
             buffer,
             labelAddress,
             placeholderValue
@@ -3568,14 +3480,16 @@
                 var line = buffer.getLineAt(i);
                 
                 //함수 마지막 부분으로 점프하는 모든 레이블 조사
-                var inst = RegexVm._opCodeInstMap.get(line[0]);
-                if(
-                    inst.getOperandCount() > 0
-                    && inst.getOperandTypeAt(0) === RegexVm.OperandType.offset
-                    && !karbonator.isNonNegativeSafeInteger(line[1])
-                    && karbonator.math.numberEquals(line[1], placeholderValue, epsilon)
-                ) {
-                    line[1] = labelAddress;
+                var inst = RegexVm.findInstructionByOpCode(line[0]);
+                for(var j = 0; j < inst.getOperandCount(); ++j) {
+                    var param = line[j + 1];
+                    if(
+                        inst.getOperandTypeAt(j) === RegexVm.OperandType.offset
+                        && !karbonator.isNonNegativeSafeInteger(param)
+                        && karbonator.math.numberEquals(param, placeholderValue, epsilon)
+                    ) {
+                        line[j + 1] = labelAddress;
+                    }
                 }
             }
             

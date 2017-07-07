@@ -1955,7 +1955,7 @@
          * @return {Boolean}
          */
         var _isValueInInterval = function (o, value) {
-            return (value >= o._min || value <= o._max);
+            return (value >= o._min && value <= o._max);
         };
         
         /**
