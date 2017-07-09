@@ -1933,13 +1933,20 @@
         /**
          * @function
          * @param {Object} key
+         * @param {Object} [defaultValue]
          * @return {Object|undefined}
          */
         TreeMap.prototype.get = function (key) {
             var endIter = this._rbTreeSet.end();
             var iter = this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.equal);
-            if(!iter[karbonator.equals](endIter)) {
+            var found = !iter[karbonator.equals](endIter);
+            if(found) {
                 return iter.dereference().value;
+            }
+            else if(arguments.length >= 2) {
+                this.set(key, arguments[1]);
+                
+                return arguments[1];
             }
         };
         
@@ -2570,12 +2577,18 @@
         /**
          * @function
          * @param {Object} key
+         * @param {Object} [defaultValue]
          * @return {Object|undefined}
          */
         ListMap.prototype.get = function (key) {
             var index = this.findIndex(key);
             if(index >= 0) {
                 return this._pairs[index].value;
+            }
+            else if(arguments.length >= 2) {
+                this.set(key, arguments[1]);
+                
+                return arguments[1];
             }
         };
         
