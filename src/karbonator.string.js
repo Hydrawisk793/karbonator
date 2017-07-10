@@ -222,6 +222,7 @@
         this._inStr = "";
         this._bytecode = null;
         
+        this._cursor = 0;
         this._acceptedTokenKey = -1;
         this._acceptedText = "";
         this._thIdSeq = 0;
@@ -258,21 +259,35 @@
      * @param {RegexVm} vm
      * @param {Number} id
      * @param {Number} pc
-     * @param {Number} cursor
      * @param {RegexVm._Thread} [parent]
      * @param {Number} [forkKey]
      */
-    RegexVm._Thread = function (vm, id, pc, cursor) {
+    RegexVm._Thread = function (vm, id, pc) {
+        if(!(vm instanceof RegexVm)) {
+            throw new TypeError("");
+        }
+        if(!karbonator.isNonNegativeSafeInteger(id)) {
+            throw new TypeError("");
+        }
+        if(!karbonator.isNonNegativeSafeInteger(pc)) {
+            throw new TypeError("");
+        }
+        
         this._vm = vm;
         this._id = id;
         this._pc = pc;
-        this._cursor = cursor;
         this._zFlag = true;
-        this._child = null;
-        if(!karbonator.isUndefinedOrNull(arguments[4])) {
-            this._parent = arguments[4];
-            this._parent._child = this;
-            this._consumePtr = this._parent._consumePtr;
+        
+        this._parent = (
+            karbonator.isUndefined(arguments[3])
+            ? null
+            : arguments[3]
+        );
+        if(null !== this._parent) {
+            if(!(this._parent instanceof RegexVm._Thread)) {
+                throw new TypeError("");
+            }
+            
             this._consumeRanges = this._parent._consumeRanges.slice();
             this._frameStack = new Array(this._parent._frameStack.length);
             for(var i = 0; i < this._frameStack.length; ++i) {
@@ -281,28 +296,23 @@
                 );
             }
             
-            this._forkLevel = this._parent._forkLevel + 1;
-        }
-        else {
-            this._parent = null;
-            this._consumePtr = 0;
-            this._consumeRanges = [this._cursor];
-            this._frameStack = [new RegexVm._Frame(0)];
-            
-            this._forkLevel = 0;
-        }
-        this._matchResult = null;
-        
-        if(null !== this._parent) {
             this._forkScores = this._parent._forkScores[karbonator.shallowClone]();
         }
         else {
+            this._consumeRanges = [this._vm._cursor];
+            this._frameStack = [new RegexVm._Frame(0)];
+            
             this._forkScores = new TreeMap(karbonator.numberComparator);
         }
-        if(!karbonator.isUndefinedOrNull(arguments[5])) {
-            var forkKey = arguments[5];
-            var parentScore = this._parent._forkScores.get(forkKey, 0);
+        this._matchResult = null;
+        
+        var forkKey = arguments[4];
+        if(!karbonator.isUndefinedOrNull(forkKey)) {
+            if(!karbonator.isNonNegativeSafeInteger(forkKey)) {
+                throw new TypeError("");
+            }
             
+            var parentScore = this._parent._forkScores.get(forkKey, 0);
             this._forkScores.set(forkKey, parentScore);
             this._parent._forkScores.set(forkKey, parentScore + 1);
         }
@@ -612,12 +622,9 @@
                     ]
                 ],
                 [
-                    "pfork",
+                    "reserved",
                     0x09,
-                    [
-                        RegexVm.OperandType.offset,
-                        RegexVm.OperandType.offset
-                    ]
+                    null
                 ],
                 [
                     "clear.z",
@@ -709,24 +716,24 @@
      * @param {iterable} intervals
      * @param {Boolean} littleEndian
      * @param {karbonator.ByteArray} codeBlock
-     * @param {karbonator.collection.ListSet} pforkKeys
+     * @param {karbonator.collection.ListSet} forkKeys
      * @param {String} [sourceCodeForDebug]
      */
-    RegexVm.Bytecode = function (intervals, littleEndian, codeBlock, pforkKeys) {
+    RegexVm.Bytecode = function (intervals, littleEndian, codeBlock, forkKeys) {
         if(!karbonator.isEsIterable(intervals)) {
             throw new TypeError("The parameter 'intervals' must have the property 'Symbol.iterator'.");
         }
         if(!(codeBlock instanceof ByteArray)) {
             throw new TypeError("The parameter 'codeBlock' must be an instance of 'karbonator.ByteArray'.");
         }
-        if(!(pforkKeys instanceof ListSet) && !(pforkKeys instanceof TreeSet)) {
-            throw new TypeError("'pforkKeys' must be an instanceof 'karbonator.collection.ListSet' or 'karbonator.collection.TreeSet'.");
+        if(!(forkKeys instanceof ListSet) && !(forkKeys instanceof TreeSet)) {
+            throw new TypeError("'forkKeys' must be an instanceof 'karbonator.collection.ListSet' or 'karbonator.collection.TreeSet'.");
         }
         
         this._intervals = Array.from(intervals);
         this._littleEndian = !!littleEndian;
         this._codeBlock = ByteArray.from(codeBlock);
-        this._pforkKeys = pforkKeys;
+        this._forkKeys = forkKeys;
         this._sourceCodeForDebug = arguments[4];
         if(karbonator.isUndefined(this._sourceCodeForDebug)) {
             this._sourceCodeForDebug = "";
@@ -805,7 +812,7 @@
         
         if(!karbonator.isString(str)) {
             throw new TypeError("'str' must be a string.");
-        }
+        }        
         this._inStr = str;
         
         var startIndex = arguments[1];
@@ -874,57 +881,6 @@
         return results;
     };
     
-    RegexVm.prototype._isLhsPriorToRhs = function (forkKeys, lhsScores, rhsScores) {
-        var result = false;
-        
-        for(
-            var keyIter = forkKeys.keys(), iP = keyIter.next();
-            !iP.done;
-            iP = keyIter.next()
-        ) {
-            var forkKey = iP.value;
-            
-            var lhsScore = lhsScores.get(forkKey);
-            if(karbonator.isUndefined(lhsScore)) {
-                continue;
-            }
-            
-            var rhsScore = rhsScores.get(forkKey);
-            if(karbonator.isUndefined(rhsScore)) {
-                continue;
-            }
-            
-            if(lhsScore !== rhsScore) {
-                result = lhsScore > rhsScore;
-                
-                break;
-            }
-        }
-        
-        return result;
-        
-//        var result = false;
-//        
-//        for(
-//            var keyIter = forkKeys.keys(), iP = keyIter.next();
-//            !iP.done;
-//            iP = keyIter.next()
-//        ) {
-//            var forkKey = iP.value;
-//            
-//            var lhsScore = lhsScores.get(forkKey, 0);
-//            var rhsScore = rhsScores.get(forkKey, 0);
-//            if(lhsScore !== rhsScore) {
-//                if(lhsScore < rhsScore) {
-//                    result = true;
-//                }
-//                break;
-//            }
-//        }
-//        
-//        return result;
-    };
-    
     /**
      * @private
      * @function
@@ -932,6 +888,8 @@
      * @return {RegexVm.MatchResult}
      */
     RegexVm.prototype._run = function (startIndex) {
+        this._cursor = startIndex;
+        
         this._thIdMap.clear();
         this._forkMap.clear();
         
@@ -939,18 +897,20 @@
         this._suspendedCtxts.length = 0;
         this._ctxts.length = 0;
         
-        var pforkKeys = this._bytecode._pforkKeys;
         var found = false;
         var matchThread = null;
-        var matchThreads = [];
+        var debugMatchThreads = [];
         var debugStr = "";
         
-        this.createThread(0, startIndex);
+        this.createThread(0);
         
-        //쓰레드를 동시에 굴리는 버전.
         var aliveThreads = [];
         var deadThreads = [];
-        while(this._ctxts.length > 0 && !found) {
+        for(
+            ;
+            this._ctxts.length > 0 && !found;
+            ++this._cursor
+        ) {
             aliveThreads.length = 0;
             
             for(var i = 0; !found && i < this._ctxts.length; ++i) {
@@ -995,7 +955,7 @@
                  + "\r\n"
             ;
             
-            debugStr += "pforkKeys === " + pforkKeys.toString() + "\r\n";
+            debugStr += "forkKeys === " + this._bytecode._forkKeys.toString() + "\r\n";
             
             for(var i = 0; i < deadThreads.length; ++i) {
                 var th = deadThreads[i];
@@ -1007,17 +967,14 @@
                     + "\r\n"
                 ;
                 
-                matchThreads.push(th);
+                debugMatchThreads.push(th);
                 
                 if(null === matchThread) {
                     matchThread = th;
                     
                     var noMore = true;
                     for(var j = 0; noMore && j < this._ctxts.length; ++j) {
-                        noMore = !this._isLhsPriorToRhs(
-                            pforkKeys,
-                            this._ctxts[j]._forkScores, th._forkScores
-                        );
+                        noMore = !this._ctxts[j].isPriorTo(th);
                     }
                     
                     if(noMore) {
@@ -1025,10 +982,7 @@
                     }
                 }
                 else {
-                    var priorToSelected = this._isLhsPriorToRhs(
-                        pforkKeys,
-                        th._forkScores, matchThread._forkScores
-                    );
+                    var priorToSelected = th.isPriorTo(matchThread);
                     
                     if(priorToSelected) {
                         debugStr += 'T' + th._id + " is prior to the selected thread." + "\r\n";
@@ -1036,10 +990,7 @@
                     
                     var priorToAlivingThs = true;
                     for(var j = 0; priorToAlivingThs && j < this._ctxts.length; ++j) {
-                        priorToAlivingThs = this._isLhsPriorToRhs(
-                            pforkKeys,
-                            th._forkScores, this._ctxts[j]._forkScores
-                        );
+                        priorToAlivingThs = th.isPriorTo(this._ctxts[j]);
                     }
                     
                     if(priorToAlivingThs) {
@@ -1067,8 +1018,8 @@
             }
             
             debugStr += "matchThreads === ";
-            for(var t = 0; t < matchThreads.length; ++t) {
-                debugStr += this.createMatchResultDebugMessage(matchThreads[t])
+            for(var t = 0; t < debugMatchThreads.length; ++t) {
+                debugStr += this.createMatchResultDebugMessage(debugMatchThreads[t])
                     + "\r\n"
                 ;
             }
@@ -1078,29 +1029,7 @@
         }
         
         debugStr += (null === matchThread ? "Failed..." : "Found!!!") + "\r\n";
-        
-        //쓰레드가 끝날 때까지 기다리는 버전.
-        //전형적인 backtracking 방식.
-        //버그 있음???
-//        while(this._ctxts.length > 0 && null === matchThread) {
-//            var thNdx = this._ctxts.length - 1;
-//            
-//            var th = this._ctxts[thNdx];
-//            while(!th.isDead()) {
-//                 th.execute();
-//            }
-//            
-//            //debugStr += ("------------------------------");
-//            
-//            if(null === matchThread) {
-//                matchThread = th;
-//                break;
-//                //debugStr += ("T" + th._id + '(' + th._forkScores.toString() + ").result === " + th._matchResult);
-//            }
-//            this._ctxts.splice(thNdx, 1);
-//        }
-        
-        //debugStr += "==============================" + "\r\n";
+        debugStr += "==============================" + "\r\n";
         
         //console.log(debugStr);
         
@@ -1110,55 +1039,37 @@
     /**
      * @function
      * @param {Number} pc
-     * @param {Number} cursor
      * @param {RegexVm._Thread} [parent]
-     * @param {Boolean} [prioritize=false]
      * @return {RegexVm._Thread}
      */
-    RegexVm.prototype.createThread = function (pc, cursor) {
-        var parent = arguments[2];
+    RegexVm.prototype.createThread = function (pc) {
+        var parent = arguments[1];
         
-        var parentId = -1;
         var forkKey = -RegexVm.Instruction.fork.getSize();
         if(!karbonator.isUndefinedOrNull(parent)) {
-            parentId = parent._id;
             forkKey += parent._pc;
         }
         
         var newThreadId = this._thIdSeq;
         var newThread = new RegexVm._Thread(
-            this, newThreadId,
-            pc, cursor,
-            parent, (!!arguments[3] && forkKey >= 0 ? forkKey : null)
+            this, newThreadId, pc,
+            parent,
+            (!karbonator.isUndefinedOrNull(parent) && forkKey >= 0 ? forkKey : null)
         );
         this._ctxts.push(newThread);
         ++this._thIdSeq;
-        
-        if(!!arguments[3] && forkKey >= 0) {
-            if(!this._forkMap.has(forkKey)) {
-                this._forkMap.set(
-                    forkKey,
-                    new ListSet(
-                        karbonator.numberComparator
-                    )
-                );
-            }
-            var set = this._forkMap.get(forkKey);
-            set.add(parentId);
-        }
         
         return newThread;
     };
     
     /**
      * @function
-     * @param {Number} index
      * @return {Number}
      */
-    RegexVm.prototype.getCurrentCharacterCode = function (index) {
+    RegexVm.prototype.getCurrentCharacterCode = function () {
         var code = (
-            index < this._inStr.length
-            ? this._inStr.charCodeAt(index)
+            this._cursor < this._inStr.length
+            ? this._inStr.charCodeAt(this._cursor)
             : -1
         );
         
@@ -1172,6 +1083,42 @@
      */
     RegexVm.prototype.getIntervalAt = function (index) {
         return this._bytecode._intervals[index];
+    };
+    
+    /**
+     * @function
+     * @param {RegexVm._Thread} rhs
+     * @return {Boolean}
+     */
+    RegexVm._Thread.prototype.isPriorTo = function (rhs) {
+        var result = false;
+        
+        for(
+            var keyIter = this._vm._bytecode._forkKeys.keys(),
+            iP = keyIter.next();
+            !iP.done;
+            iP = keyIter.next()
+        ) {
+            var forkKey = iP.value;
+            
+            var lhsScore = this._forkScores.get(forkKey);
+            if(karbonator.isUndefined(lhsScore)) {
+                continue;
+            }
+            
+            var rhsScore = rhs._forkScores.get(forkKey);
+            if(karbonator.isUndefined(rhsScore)) {
+                continue;
+            }
+            
+            if(lhsScore !== rhsScore) {
+                result = lhsScore > rhsScore;
+                
+                break;
+            }
+        }
+        
+        return result;
     };
     
     /**
@@ -1196,14 +1143,14 @@
             this.branch();
         break;
         case 0x01:
-            throw new Error("A not implemented opcode.");
+            throw new Error("A not implemented opcode has been found.");
         break;
         case 0x02:
         case 0x03:
             this.branchIfZeroIs((opCode & 0x01) !== 0);
         break;
         case 0x04:
-            throw new Error("An invalid opcode.");
+            throw new Error("A not implemented opcode has been found.");
         break;
         case 0x05:
             this.jumpToSubroutine();
@@ -1215,8 +1162,10 @@
             this.accept();
         break;
         case 0x08:
-        case 0x09:
             this.fork((opCode & 0x01) !== 0);
+        break;
+        case 0x09:
+            throw new Error("A not implemented opcode has been found.");
         break;
         case 0x0A:
         case 0x0B:
@@ -1297,7 +1246,7 @@
             debugStr += '(' + childTh._pc + ')';
         }
         else if(mnemonic.startsWith("test")) {
-            var cursor = th._cursor - (th._zFlag ? 1 : 0);
+            var cursor = th._vm._cursor - (th._zFlag ? 1 : 0);
             debugStr += "\t" + "at " + cursor + " " + th._vm._inStr.charAt(cursor);
         }
         
@@ -1401,17 +1350,14 @@
     
     /**
      * @function
-     * @param {Boolean} prioritize
      */
-    RegexVm._Thread.prototype.fork = function (prioritize) {        
+    RegexVm._Thread.prototype.fork = function () {        
         var goToOffset = this.readInt16();
         var newThreadPcOffset = this.readInt16();
         
         this._vm.createThread(
             this._pc + newThreadPcOffset,
-            this._cursor,
-            this,
-            prioritize
+            this
         );
         
         this._pc += goToOffset;
@@ -1450,7 +1396,7 @@
         
         this._matchResult.range = new karbonator.math.Interval(
             cursorStart,
-            this._cursor
+            this._vm._cursor
         );
         
         this._frameStack.length = 0;
@@ -1469,11 +1415,10 @@
      * @param {Boolean} consume
      */
     RegexVm._Thread.prototype.moveConsumePointer = function (consume) {
-        this._consumePtr = this._cursor;
         if(!consume) {
             this._consumeRanges.push(RegexVm._Thread._skipDelimiter);
         }
-        this._consumeRanges.push(this._cursor);
+        this._consumeRanges.push(this._vm._cursor);
     };
     
     /**
@@ -1482,12 +1427,9 @@
     RegexVm._Thread.prototype.testCode = function () {
         var charCode = this.readUint32();
         
-        var currentCharCode = this._vm.getCurrentCharacterCode(this._cursor);
+        var currentCharCode = this._vm.getCurrentCharacterCode();
         this._zFlag = (charCode === currentCharCode);
-        if(this._zFlag) {
-            ++this._cursor;
-        }
-        else {
+        if(!this._zFlag) {
             this._frameStack.length = 0;
         }
     };
@@ -1500,12 +1442,9 @@
         var vm = this._vm;
         
         this._zFlag = vm.getIntervalAt(intervalIndex)
-            .contains(vm.getCurrentCharacterCode(this._cursor))
+            .contains(vm.getCurrentCharacterCode())
         ;
-        if(this._zFlag) {
-            ++this._cursor;
-        }
-        else {
+        if(!this._zFlag) {
             this._frameStack.length = 0;
         }
     };
@@ -3524,7 +3463,7 @@
                 var line = this._lines[i];
                 
                 var inst = RegexVm.findInstructionByOpCode(line[0]);
-                if(inst.getMnemonic() === "pfork") {
+                if(inst.getMnemonic() === "fork") {
                     forkLineNdxes.push(i);
                 }
                 
@@ -3803,7 +3742,7 @@
             for(var i = 0; i < childCount - 1; ++i) {
                 offset -= offsetInfo.lengths[i];
                 
-                buffer.put(RegexVm.Instruction.pfork, 0, offsetInfo.lengths[i] + 1);
+                buffer.put(RegexVm.Instruction.fork, 0, offsetInfo.lengths[i] + 1);
                 this._consumeCode(buffer, node, i);
                 buffer.put(RegexVm.Instruction.bra, (childCount - 2 - i) * codeLen + offset);
             }
@@ -3855,32 +3794,58 @@
                 buffer.put(RegexVm.Instruction.bne, 0.1);
             break;
             default:
-                //TODO : A stub. Must be optimized by using repetition bytecodes.
+                //TODO : A stub. Should be optimized
+                //by using repetition bytecodes if possible.
                 for(var i = 0; i < minRep; ++i) {
                     this._addCode(buffer, node, 0);
                     buffer.put(RegexVm.Instruction.bne, 0.1);
                 }
             }
             
+            var isGreedy = node.getValue().getType().getKey() !== OperatorTypeKeys.nonGreedyRepetition;
+            var childCodeLen = this._nodeCodeMap.get(node.getChildAt(0)).getCount();
             var maxRep = repRange.getMaximum();
             if(maxRep >= _maxInt) {
-                var offset = this._nodeCodeMap.get(node.getChildAt(0)).getCount();
-                
-                if(node.getValue().getType().getKey() !== OperatorTypeKeys.nonGreedyRepetition) {
-                    buffer.put(RegexVm.Instruction.pfork, 0, offset + 2);
+                if(isGreedy) {
+                    buffer.put(RegexVm.Instruction.fork, 0, childCodeLen + 2);
                 }
                 else {
-                    buffer.put(RegexVm.Instruction.pfork, offset + 2, 0);
+                    buffer.put(RegexVm.Instruction.fork, childCodeLen + 2, 0);
                 }
                 
                 this._consumeCode(buffer, node, 0);
                 buffer.put(RegexVm.Instruction.bne, 0.1);
-                buffer.put(RegexVm.Instruction.bra, -(offset + 3));
+                buffer.put(RegexVm.Instruction.bra, -(childCodeLen + 3));
             }
             else if(minRep !== maxRep) {
-                //var optRepCount = repRange.getMaximum() - repRange.getMinimum();
+                var optRepCount = repRange.getMaximum() - repRange.getMinimum();
                 
-                throw new Error("Not implemented yet...");
+                //TODO : A stub. Should be optimized
+                //by using repetition bytecodes if possible.
+                var i = 0;
+                for(var iMax = optRepCount - 1; i < iMax; ++i) {
+                    if(isGreedy) {
+                        buffer.put(RegexVm.Instruction.fork, 0, childCodeLen + 1);
+                    }
+                    else {
+                        buffer.put(RegexVm.Instruction.fork, childCodeLen + 1, 0);
+                    }
+
+                    this._addCode(buffer, node, 0);
+                    buffer.put(RegexVm.Instruction.bne, 0.1);
+                }
+                
+                if(i < optRepCount) {
+                    if(isGreedy) {
+                        buffer.put(RegexVm.Instruction.fork, 0, childCodeLen + 1);
+                    }
+                    else {
+                        buffer.put(RegexVm.Instruction.fork, childCodeLen + 1, 0);
+                    }
+
+                    this._consumeCode(buffer, node, 0);
+                    buffer.put(RegexVm.Instruction.bne, 0.1);
+                }
             }
             
             return buffer;
