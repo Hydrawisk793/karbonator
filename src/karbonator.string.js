@@ -223,13 +223,8 @@
         this._bytecode = null;
         
         this._cursor = 0;
-        this._acceptedTokenKey = -1;
-        this._acceptedText = "";
         this._thIdSeq = 0;
         this._ctxts = [];
-        this._suspendedCtxts = [];
-        this._thIdMap = new TreeMap(karbonator.numberComparator);
-        this._forkMap =  new TreeMap(karbonator.numberComparator);
     };
     
     /**
@@ -296,13 +291,18 @@
                 );
             }
             
-            this._forkScores = this._parent._forkScores[karbonator.shallowClone]();
+            //this._forkScores = this._parent._forkScores[karbonator.shallowClone]();
+            this._path = new Array(this._parent._path.length);
+            for(var i = 0; i < this._parent._path.length; ++i) {
+                this._path[i] = this._parent._path[i].slice();
+            }
         }
         else {
             this._consumeRanges = [this._vm._cursor];
             this._frameStack = [new RegexVm._Frame(0)];
             
-            this._forkScores = new TreeMap(karbonator.numberComparator);
+            //this._forkScores = new TreeMap(karbonator.numberComparator);
+            this._path = [];
         }
         this._matchResult = null;
         
@@ -312,9 +312,12 @@
                 throw new TypeError("");
             }
             
-            var parentScore = this._parent._forkScores.get(forkKey, 0);
-            this._forkScores.set(forkKey, parentScore);
-            this._parent._forkScores.set(forkKey, parentScore + 1);
+//            var parentScore = this._parent._forkScores.get(forkKey, 0);
+//            this._forkScores.set(forkKey, parentScore);
+//            this._parent._forkScores.set(forkKey, parentScore + 1);
+            
+            this._parent._path.push([forkKey, 1]);
+            this._path.push([forkKey, 0]);
         }
     };
     
@@ -890,11 +893,7 @@
     RegexVm.prototype._run = function (startIndex) {
         this._cursor = startIndex;
         
-        this._thIdMap.clear();
-        this._forkMap.clear();
-        
         this._thIdSeq = 0;
-        this._suspendedCtxts.length = 0;
         this._ctxts.length = 0;
         
         var found = false;
@@ -949,7 +948,7 @@
                 + Array.from(
                     this._ctxts,
                     function (current) {
-                        return 'T' + current._id + '(' + current._forkScores.toString() + ')';
+                        return 'T' + current._id + '(' + '[' + current._path + ']' + ')';
                     }
                 ).toString()
                  + "\r\n"
@@ -982,9 +981,9 @@
                     }
                 }
                 else {
-                    var priorToSelected = th.isPriorTo(matchThread);
-                    
-                    if(priorToSelected) {
+                    if(th.isPriorTo(matchThread)) {
+                        matchThread = th;
+                        
                         debugStr += 'T' + th._id + " is prior to the selected thread." + "\r\n";
                     }
                     
@@ -992,19 +991,10 @@
                     for(var j = 0; priorToAlivingThs && j < this._ctxts.length; ++j) {
                         priorToAlivingThs = th.isPriorTo(this._ctxts[j]);
                     }
-                    
-                    if(priorToAlivingThs) {
-                        debugStr += 'T' + th._id + " is prior to aliving threads." + "\r\n";
-                    }
-                    
-                    
-                    
                     if(priorToAlivingThs) {
                         found = true;
-                    }
-                    
-                    if(priorToSelected) {
-                        matchThread = th;
+                        
+                        debugStr += 'T' + th._id + " is prior to aliving threads." + "\r\n";
                     }
                 }
             }
@@ -1093,32 +1083,57 @@
     RegexVm._Thread.prototype.isPriorTo = function (rhs) {
         var result = false;
         
-        for(
-            var keyIter = this._vm._bytecode._forkKeys.keys(),
-            iP = keyIter.next();
-            !iP.done;
-            iP = keyIter.next()
-        ) {
-            var forkKey = iP.value;
+        var minLen = (
+            this._path.length < rhs._path.length
+            ? this._path.length
+            : rhs._path.length
+        );
+        for(var i = 0; i < minLen; ++i) {
+            var lhsPoint = this._path[i];
+            var rhsPoint = rhs._path[i];
             
-            var lhsScore = this._forkScores.get(forkKey);
-            if(karbonator.isUndefined(lhsScore)) {
-                continue;
+            //TODO : Test if  this can be removed.
+            if(lhsPoint[0] !== rhsPoint[0]) {
+                debugger;
             }
             
-            var rhsScore = rhs._forkScores.get(forkKey);
-            if(karbonator.isUndefined(rhsScore)) {
-                continue;
-            }
-            
-            if(lhsScore !== rhsScore) {
-                result = lhsScore > rhsScore;
+            if(lhsPoint[1] !== rhsPoint[1]) {
+                result = lhsPoint[1] > rhsPoint[1];
                 
                 break;
             }
         }
         
         return result;
+        
+//        var result = false;
+//        
+//        for(
+//            var keyIter = this._vm._bytecode._forkKeys.keys(),
+//            iP = keyIter.next();
+//            !iP.done;
+//            iP = keyIter.next()
+//        ) {
+//            var forkKey = iP.value;
+//            
+//            var lhsScore = this._forkScores.get(forkKey);
+//            if(karbonator.isUndefined(lhsScore)) {
+//                continue;
+//            }
+//            
+//            var rhsScore = rhs._forkScores.get(forkKey);
+//            if(karbonator.isUndefined(rhsScore)) {
+//                continue;
+//            }
+//            
+//            if(lhsScore !== rhsScore) {
+//                result = lhsScore > rhsScore;
+//                
+//                break;
+//            }
+//        }
+//        
+//        return result;
     };
     
     /**
@@ -1205,7 +1220,7 @@
      */
     RegexVm.prototype.createMatchResultDebugMessage = function (matchThread) {
         return 'T' + matchThread._id
-            + '(' + matchThread._forkScores.toString() + ')'
+            + '(' + '[' + matchThread._path + ']' + ')'//matchThread._forkScores.toString() + ')'
             + "."
             + "result === "
             + matchThread._matchResult.toString()
@@ -1224,15 +1239,20 @@
             throw new Error("An invalid opcode has been found.");
         }
         
-        var debugStr = "";
-        for(
-            var current = th;
-            null !== current;
-            current = current._parent
-        ) {
-            debugStr += '.';
-            debugStr += 'T' + current._id;
-        }
+//        var debugStr = "";
+//        for(
+//            var current = th;
+//            null !== current;
+//            current = current._parent
+//        ) {
+//            debugStr += '.';
+//            debugStr += 'T' + current._id;
+//        }
+        
+        var debugStr = 'T' + th._id;
+        debugStr += '(';
+        debugStr += '[' + th._path + ']';
+        debugStr += ')';
         
         var mnemonic = inst.getMnemonic();
         debugStr += " " + (execInfo.instructionAddress) + ":";
@@ -1246,7 +1266,7 @@
             debugStr += '(' + childTh._pc + ')';
         }
         else if(mnemonic.startsWith("test")) {
-            var cursor = th._vm._cursor - (th._zFlag ? 1 : 0);
+            var cursor = th._vm._cursor;
             debugStr += "\t" + "at " + cursor + " " + th._vm._inStr.charAt(cursor);
         }
         
