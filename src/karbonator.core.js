@@ -935,14 +935,12 @@
                     + "'Symbol.iterator'."
                 );
             }
-            
-            var proto = Object.create(Enum.prototype);
-            protoHandler(proto);
-            
+                        
             var EnumType = ctor;
+            var proto = Object.create(Enum.prototype);
+            protoHandler(proto, ctor);
             EnumType.prototype = proto;
             
-            var temp = {};
             var keys = [];
             for(
                 var i = pairs[Symbol.iterator](), iP = i.next(), ndx = 0;
@@ -953,7 +951,7 @@
                 if(!karbonator.isString(key) && !karbonator.isSymbol(key)) {
                     throw new TypeError("Keys of enum members must be strings or symbols.");
                 }
-                if(temp.hasOwnProperty(key)) {
+                if(EnumType.hasOwnProperty(key)) {
                     throw new Error(
                         "The key '"
                         + key
@@ -962,22 +960,11 @@
                 }
                 keys.push(key);
                 
-                temp[key] = Reflect.construct(EnumType, iP.value[1]);
-                temp[key][_pSymMemberIndex] = ndx;
-                temp[key][_pSymMemberKey] = key;
+                EnumType[key] = Reflect.construct(EnumType, iP.value[1]);
+                EnumType[key][_pSymMemberIndex] = ndx;
+                EnumType[key][_pSymMemberKey] = key;
             }
-            
-            EnumType = function () {
-                throw new Error("Cannot instantiate the enum type directly.");
-            };
-            EnumType.prototype = proto;
-            proto.constructor = EnumType;
-            
             EnumType[_pSymStaticKeys] = keys;
-            for(var i = 0; i < keys.length; ++i) {
-                var key = keys[i];
-                EnumType[key] = temp[key];
-            }
             
             EnumType[Symbol.iterator] = function () {
                 return ({
@@ -1594,7 +1581,7 @@
     /*////////////////////////////////*/
     
     /*////////////////////////////////*/
-    //karbonator namespace bit conversion functions.
+    //Bit conversion functions.
     
     /**
      * @memberof karbonator.detail
@@ -2156,6 +2143,67 @@
             }
             
             return disjoinedIntervals;
+        };
+        
+        /**
+         * @memberof karbonator.math.Interval
+         * @function
+         * @param {Array.<karbonator.math.Interval>} intervals
+         * @param {Number} [minimumValue=Number.MIN_VALUE]
+         * @param {Number} [maximumValue=Number.MAX_VALUE]
+         * @param {Number} [epsilon=karbonator.math.epsilon]
+         * @return {Array.<karbonator.math.Interval>}
+         */
+        Interval.merge = function (intervals) {
+            var min = arguments[1];
+            if(karbonator.isUndefined(min)) {
+                min = Number.MIN_VALUE;
+            }
+            else if(!karbonator.isNumber(min)) {
+                throw new TypeError("'minimumValue' must be a number.");
+            }
+                
+            var max = arguments[2];
+            if(karbonator.isUndefined(max)) {
+                max = Number.MIN_VALUE;
+            }
+            else if(!karbonator.isNumber(max)) {
+                throw new TypeError("'maximumValue' must be a number.");
+            }
+            else if(max < min) {
+                throw new RangeError(
+                    "'maximumValue'"
+                    + " cannot be less than "
+                    + "'minimumValue'."
+                );
+            }
+            
+            var epsilon = arguments[3];
+            if(karbonator.isUndefined(epsilon)) {
+                epsilon = _epsilon;
+            }
+            else if(!karbonator.isNumber(epsilon)) {
+                throw new TypeError("'epsilon' must be a number.");
+            }
+            
+            //TODO : 맞는지 확인
+            var disjoined = Interval.disjoin(intervals, epsilon, true);
+            for(var i = 0, j = 1; j < disjoined.length; ++i, ++j) {
+                if(
+                    karbonator.math.numberEquals(
+                        disjoined[i]._max,
+                        disjoined[j]._min
+                    )
+                ) {
+                    console.warn(
+                        "'karbonator.math.Interval.merge' method"
+                        + " does wrong behaviour."
+                        + " It doesn't merge intervals well."
+                    );
+                }
+            }
+            
+            return disjoined;
         };
         
         /**
