@@ -697,7 +697,7 @@
     /**
      * @function
      * @param {String} str
-     * @param {Number} [startIndex=0]
+     * @param {Number} [start=0]
      * @return {RegexVm.MatchResult|null}
      */
     RegexVm.prototype.find = function (str) {
@@ -710,21 +710,22 @@
         }        
         this._inStr = str;
         
-        var startIndex = arguments[1];
-        if(karbonator.isUndefined(startIndex)) {
-            startIndex = 0;
+        var start = arguments[1];
+        if(karbonator.isUndefined(start)) {
+            start = 0;
         }
-        else if(!karbonator.isNonNegativeSafeInteger(startIndex)) {
-            throw new TypeError("'startIndex' must be a non-negative safe integer.");
+        else if(!karbonator.isNonNegativeSafeInteger(start)) {
+            throw new TypeError("'start' must be a non-negative safe integer.");
         }
         
-        return this._run(startIndex);
+        return this._run(start);
     };
     
     /**
      * @function
      * @param {String} str
-     * @param {Number} [startIndex=0]
+     * @param {Number} [start=0]
+     * @param {Number} [end]
      * @return {Array<RegexVm.MatchResult>}
      */
     RegexVm.prototype.findAll = function (str) {
@@ -737,12 +738,20 @@
         }
         this._inStr = str;
         
-        var startIndex = arguments[1];
-        if(karbonator.isUndefined(startIndex)) {
-            startIndex = 0;
+        var start = arguments[1];
+        if(karbonator.isUndefined(start)) {
+            start = 0;
         }
-        else if(!karbonator.isNonNegativeSafeInteger(startIndex)) {
-            throw new TypeError("'startIndex' must be a non-negative safe integer.");
+        else if(!karbonator.isNonNegativeSafeInteger(start)) {
+            throw new TypeError("'start' must be a non-negative safe integer.");
+        }
+        
+        var end = arguments[2];
+        if(karbonator.isUndefined(end)) {
+            end = this._inStr.length;
+        }
+        else if(!karbonator.isNonNegativeSafeInteger(end)) {
+            throw new TypeError("'end' must be a non-negative safe integer.");
         }
         
         if(this._bytecode._regexStr === "((a*b*c*)|(a*c*b*))*") {
@@ -750,7 +759,7 @@
         }
         
         var results = [];
-        for(var i = startIndex; ; ) {
+        for(var i = start; ; ) {
             var result = this._run(i);
             if(null !== result) {
                 if(
@@ -767,7 +776,7 @@
             else {
                 ++i;
                 
-                if(i >= this._inStr.length) {
+                if(i >= end) {
                     break;
                 }
             }
@@ -828,6 +837,7 @@
             var temp = this._ctxts;
             this._ctxts = aliveThreads;
             aliveThreads = temp;
+            aliveThreads.length = 0;
             
             debugStr += "threads === "
                 + Array.from(
@@ -1266,10 +1276,10 @@
      * @function
      */
     RegexVm._Thread.prototype.accept = function () {
-        var tokenIndex = this.readUint32();
+        var tokenKey = this.readUint32();
         
         this._matchResult = new RegexVm.MatchResult(
-            tokenIndex,
+            tokenKey,
             "",
             null
         );
@@ -4308,6 +4318,8 @@
                 buffer = this._visitAccept(node, op.getStaticArguments()[0]);
             break;
             case OperatorTypeKeys.regexAlternation:
+                buffer = this._visitRegexAlternation(node);
+            break;
             case OperatorTypeKeys.alternation:
                 buffer = this._visitAlternation(node);
             break;
@@ -4405,7 +4417,30 @@
         
         return buffer;
     };
-
+    
+    /**
+     * @private
+     * @function
+     * @param {AstNode} node
+     * @return {InstructionBuffer}
+     */
+    CodeEmitter.prototype._visitRegexAlternation = function (node) {
+        var buffer = new InstructionBuffer(this._byteOrderReversed);
+        
+        var offsetInfo = this._caculateSumOfChildCodeOffset(node);
+        var childCount = node.getChildCount();
+        for(var i = 0; i < childCount - 1; ++i) {
+            buffer.put(RegexVm.Instruction.fork, 0, offsetInfo.lengths[i]);// + 1);
+            this._consumeCode(buffer, node, i);
+            //buffer.put(RegexVm.Instruction.rts);
+        }
+        if(i < childCount) {
+            this._consumeCode(buffer, node, i);
+        }
+        
+        return buffer;
+    };
+    
     /**
      * @private
      * @function
@@ -4618,12 +4653,10 @@
             /**
              * @constructor
              * @param {String} name
-             * @param {Nfa} fa
              * @param {String} regexStr
              */
             var Token = function (name, fa, regexStr) {
                 this._name = name;
-                this._fa = fa;
                 this._regexStr = regexStr;
             };
             
@@ -4637,9 +4670,6 @@
                 str += '"';
                 str += this._name;
                 str += '"';
-                
-                str += ", ";
-                str += this._fa.toString();
                 
                 str += ", ";
                 str += '/';
@@ -4659,8 +4689,12 @@
          * @constructor
          */
         var Lexer = function () {
-            this._tokenMap = new Map(karbonator.stringComparator);
+            this._nameTokenMap = new ListMap(karbonator.stringComparator);
+            this._keyTokenMap = new TreeMap(karbonator.numberComparator);
             this._regexVm = new RegexVm();
+            this._inStr = "";
+            this._pos = 0;
+            this._scannedTokenCount = 0;
         };
         
         /**
@@ -4668,22 +4702,44 @@
          * @param {String} str
          */
         Lexer.prototype.inputString = function (str) {
-            this._input = str;
+            if(!karbonator.isString(str)) {
+                throw new TypeError("'str' must be a string.");
+            }
+            this._inStr = str;
+            this.rewind();
         };
         
         /**
          * @function
-         * @return {Object}
+         * @param {Function} callback
+         * @return {Boolean}
          */
-        Lexer.prototype.scanNextToken = function () {
+        Lexer.prototype.scanNextToken = function (callback) {
+            if(!karbonator.isFunction(callback)) {
+                throw new TypeError("'callback' must be a function.");
+            }
             
+            var result = this._regexVm.find(this._inStr, this._pos);
+            if(null !== result) {
+                this._pos = result.range.getMaximum();
+                
+                callback(this, result, this._scannedTokenCount);
+                
+                ++this._scannedTokenCount;
+            }
+            else {
+                ++this._pos
+            }
+            
+            return this._pos < this._inStr.length;
         };
         
         /**
          * @function
          */
         Lexer.prototype.rewind = function () {
-            
+            this._scannedTokenCount = 0;
+            this._pos = 0;
         };
         
         return Lexer;
@@ -4695,11 +4751,13 @@
         
         /**
          * @constructor
+         * @param {Number} key
          * @param {String} name
          * @param {String} regexStr
          * @param {AstNode} astRootNode
          */
-        var Token = function (name, regexStr, astRootNode) {
+        var Token = function (key, name, regexStr, astRootNode) {
+            this._key = key;
             this._name = name;
             this._regexStr = regexStr;
             this._astRootNode = astRootNode;
@@ -4736,7 +4794,9 @@
          * @constructor
          */
         var LexerGenerator = function () {
-            this._tokenMap = new Map(karbonator.stringComparator);
+            this._keySeq = 0;
+            this._nameTokenMap = new ListMap(karbonator.stringComparator);
+            this._keyTokenMap = new TreeMap(karbonator.numberComparator);
             this._regexParser = new RegexParser();
             this._bytecodeEmitter = new CodeEmitter();
         };
@@ -4746,7 +4806,7 @@
          * @return {Number}
          */
         LexerGenerator.prototype.getTokenCount = function () {
-            return this._tokenMap.getElementCount();
+            return this._nameTokenMap.getElementCount();
         };
         
         /**
@@ -4755,24 +4815,39 @@
          * @return {Token|undefined}
          */
         LexerGenerator.prototype.getToken = function (name) {
-            return this._tokenMap.get(name);
+            return this._nameTokenMap.get(name);
         };
         
         /**
          * @function
          * @param {String} name
          * @param {String} regexStr
+         * @return {Number}
          */
         LexerGenerator.prototype.defineToken = function (name, regexStr) {
-            //TODO : 토큰의 정수키 생성
-            var tokenKey = 0;
-            var astRootNode = this._regexParser.parse(regexStr, tokenKey);
+            var tokenKey = -1;
+            var isNewToken = karbonator.isUndefined(this._nameTokenMap.get(name));
+            if(isNewToken) {
+                tokenKey = this._keySeq;
+                ++this._keySeq;
+            }
             
+            var astRootNode = this._regexParser.parse(regexStr, tokenKey);
             if(null === astRootNode) {
+                if(isNewToken) {
+                    --this._keySeq;
+                }
+                
                 throw new Error(this._regexParser._error.message);
             }
             
-            this._tokenMap.set(name, new Token(name, regexStr, astRootNode));
+            var newToken = new Token(tokenKey, name, regexStr, astRootNode);
+            this._nameTokenMap.set(name, newToken);
+            if(isNewToken) {
+                this._keyTokenMap.set(tokenKey, newToken);
+            }
+            
+            return tokenKey;
         };
         
         /**
@@ -4780,7 +4855,7 @@
          * @param {String} name
          */
         LexerGenerator.prototype.undefineToken = function (name) {
-            this._tokenMap.remove(name);
+            this._nameTokenMap.remove(name);
         };
         
         /**
@@ -4793,7 +4868,7 @@
             var regexStr = "";
             
             var rootNode = null;
-            if(this._tokenMap.getElementCount() >= 2) {
+            if(this._nameTokenMap.getElementCount() >= 2) {
                 rootNode = new AstNode(
                     RegexParser.AstNodeType.operator,
                     new Operator(
@@ -4801,17 +4876,19 @@
                     )
                 );
                 for(
-                    var i = this._tokenMap.values(), iP = i.next();
+                    var i = this._nameTokenMap.values(), iP = i.next();
                     !iP.done;
                     iP = i.next()
                 ) {
-                    regexStr += (regexStr === "" ? "" : "||") + iP.value._regexStr;
+                    var token = iP.value;
+                    regexStr += (regexStr === "" ? "" : "||") + token._regexStr;
+                    regexStr += "(@accept{" + token._key + '})';
                     rootNode.addChild(iP.value._astRootNode);
                 }
             }
             else {
-                regexStr = this._tokenMap.values().next().value._regexStr;
-                rootNode = this._tokenMap.values().next().value._astRootNode;
+                regexStr = this._nameTokenMap.values().next().value._regexStr;
+                rootNode = this._nameTokenMap.values().next().value._astRootNode;
             }
             
             lexer._regexVm._bytecode = this._bytecodeEmitter.emitCode(rootNode);
