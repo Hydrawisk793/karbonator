@@ -449,16 +449,23 @@
             throw new TypeError("Both 'l' and 'r' must be strings.");
         }
         
-        var diff = 0;
         var minLen = (l.length < r.length ? l.length : r.length);
-        for(var i = 0; i < minLen; ++i) {
-            diff = l.charCodeAt(i) - r.charCodeAt(i);
+        var i = 0;
+        for(; i < minLen; ++i) {
+            var diff = l.charCodeAt(i) - r.charCodeAt(i);
             if(diff !== 0) {
-                break;
+                return diff;
             }
         }
         
-        return diff;
+        if(l.length > minLen) {
+            return l.charCodeAt(i);
+        }
+        else if(r.length > minLen) {
+            return r.charCodeAt(i);
+        }
+        
+        return 0;
     };
     
     /**
