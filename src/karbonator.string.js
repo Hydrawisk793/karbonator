@@ -361,7 +361,8 @@
             | (rhs._frameStack.length < 1 ? 0x01 : 0)
         ) {
         case 0x00:
-            return lenDiff;
+            //Select the shortest path.
+            return -lenDiff;
         //break;
         case 0x01:
             return 1;
@@ -386,7 +387,14 @@
                 return 1;
             //break;
             case 3:
-                return lhsResult.text.length - rhsResult.text.length;
+                //Select the longest matched one.
+                var matchedTextDiff = lhsResult.text.length - rhsResult.text.length;
+                if(matchedTextDiff !== 0) {
+                    return matchedTextDiff;
+                }
+                
+                //If that failed, then select the shortest path.
+                return -lenDiff;
             //break;
             }
         //break;
@@ -999,6 +1007,8 @@
                     if(addCurrent) {
                         aliveThreads.push(th);
                     }
+                    
+//                    aliveThreads.push(th);
                 }
                 
 //                debugStr += ".............................." + "\r\n";
@@ -1019,6 +1029,10 @@
 //            debugStr += ']';
 //            if(this._ctxts.length < 1) {
 //                debugStr += "\r\n";
+//            }
+            
+//            if(acceptedThreads.length > 0) {
+//                debugger;
 //            }
             
             for(var i = acceptedThreads.length; i > 0; ) {
