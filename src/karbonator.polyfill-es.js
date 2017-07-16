@@ -2,7 +2,8 @@
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
- * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
+ * disclaimer : The author is not responsible for any problems 
+ * that may arise by using this source code.
  */
 
 /**
@@ -49,7 +50,11 @@
 
     /*////////////////////////////////*/
 }(
-(typeof(global) !== "undefined" ? global : (typeof(window) !== "undefined" ? window : this)),
+(
+    typeof(global) !== "undefined"
+    ? global
+    : (typeof(window) !== "undefined" ? window : this)
+),
 (function (global) {
     "use strict";
     
@@ -77,6 +82,59 @@
      */
     var detail = {};
     karbonator.detail = detail;
+
+    /**
+     * @memberof karbonator.detail
+     * @constructor
+     */
+    detail._Array = function () {
+        Array.apply(this, arguments);
+    };
+    detail._Array.prototype = Array.prototype;
+    
+    /**
+     * @memberof karbonator.detail
+     * @readonly
+     */
+    detail._polyfillPropNamePrefix = "_krbntr";
+    
+    /**
+     * @memberof karbonator.detail
+     * @function
+     * @param {Object} arrayLike
+     * @param {Number} index
+     * @return {*}
+     */
+    detail._arrayLikeGetAt = function (arrayLike, index) {
+        return (
+            karbonator.isString(arrayLike)
+            ? arrayLike.charAt(index)
+            : arrayLike[index]
+        );
+    };
+    
+    /**
+     * @function
+     * @param {Array} arr
+     * @param {*} initialValue
+     * @return {*}
+     */
+    detail._selectInitialValueForReduce = function (arr, initialValue) {
+        var selectedValue = initialValue;
+        if(karbonator.isUndefined(initialValue)) {
+            if(arr.length > 0) {
+                selectedValue = detail._arrayLikeGetAt(arr, 0);
+            }
+            else {
+                throw new Error(
+                    "On an empty array, "
+                    + "the 'initialValue' argument must be passed."
+                );
+            }
+        }
+        
+        return selectedValue;
+    };
     
     /**
      * @memberof karbonator
@@ -238,19 +296,6 @@
         return result;
     };
     
-    detail._Array = (function () {
-        /**
-         * @memberof karbonator.detail
-         * @constructor
-         */
-        var _Array = function () {
-            Array.apply(this, arguments);
-        };
-        _Array.prototype = Array.prototype;
-        
-        return _Array;
-    }());
-    
     /**
      * @memberof karbonator
      * @function
@@ -261,7 +306,8 @@
         Array.isArray
         ? Array.isArray
         : (function (o) {
-            //uses the 'snapshot' constructor function that has original 'Array.prototype'.
+            //Uses a 'snapshot' constructor function 
+            //that has the original 'Array.prototype'.
             return karbonator.isObject(o)
                 && o instanceof detail._Array
             ;
@@ -290,12 +336,6 @@
         
         return Math.sign(n) * Math.floor(Math.abs(n));
     };
-    
-    /**
-     * @memberof karbonator.detail
-     * @readonly
-     */
-    detail._polyfillPropNamePrefix = "_krbntr";
     
     /**
      * @memberof karbonator.detail
@@ -508,35 +548,6 @@
         };
     }
     
-    /**
-     * @function
-     * @param {*} arrayLike
-     * @param {Number} index
-     * @return {*}
-     */
-    var _arrayLikeGetAt = function (arrayLike, index) {
-        return (
-            karbonator.isString(arrayLike)
-            ? arrayLike.charAt(index)
-            : arrayLike[index]
-        );
-    };
-    
-    /**
-     * @function
-     * @param {Array} arr
-     * @param {*} initialValue
-     * @return {*}
-     */
-    var _selectInitialValueForReduce = function (arr, initialValue) {
-        var selectedValue = detail._selectNonUndefined(initialValue, (arr.length > 0 ? _arrayLikeGetAt(arr, 0) : undefined));
-        if(karbonator.isUndefined(selectedValue)) {
-            throw new Error("On an empty array, the 'initialValue' argument must be passed.");
-        }
-        
-        return selectedValue;
-    };
-    
     detail._ArrayKeyIterator = (function () {
         /**
          * @memberof karbonator.detial
@@ -742,7 +753,7 @@
             
             var arr = [];
             for(var i = 0, len = this.length; i < len; ++i) {
-                arr.push(callback.call(thisArg, _arrayLikeGetAt(this, i), i, this));
+                arr.push(callback.call(thisArg, detail._arrayLikeGetAt(this, i), i, this));
             }
             
             return arr;
@@ -751,9 +762,9 @@
     
     if(!Array.prototype.reduce) {
         Array.prototype.reduce = function (callback) {
-            var acc = _selectInitialValueForReduce(this, arguments[1]);
+            var acc = detail._selectInitialValueForReduce(this, arguments[1]);
             for(var i = 0, len = this.length; i < len ; ++i) {
-                acc = callback(acc, _arrayLikeGetAt(this, i), i, this);
+                acc = callback(acc, detail._arrayLikeGetAt(this, i), i, this);
             }
             
             return acc;
@@ -762,10 +773,10 @@
     
     if(!Array.prototype.reduceRight) {
         Array.prototype.reduceRight = function (callback) {
-            var acc = _selectInitialValueForReduce(this, arguments[1]);
+            var acc = detail._selectInitialValueForReduce(this, arguments[1]);
             for(var i = this.length; i > 0; ) {
                 --i;
-                acc = callback(acc, _arrayLikeGetAt(this, i), i, this);
+                acc = callback(acc, detail._arrayLikeGetAt(this, i), i, this);
             }
             
             return acc;

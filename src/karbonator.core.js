@@ -36,7 +36,6 @@
     "use strict";
     
     var detail = karbonator.detail;
-    var assertion = karbonator.assertion;
     
     var Number = global.Number;
     var Symbol = detail._selectSymbol();
@@ -46,7 +45,7 @@
      * @memberof karbonator.detail
      * @readonly
      */
-    detail._identifierRegEx = /^[a-zA-Z$_][0-9a-zA-Z$_]*$/;
+    detail._identifierRegEx = /[a-zA-Z_$][a-zA-Z_$0-9]*/;
     
     /**
      * @memberof karbonator.detail
@@ -55,18 +54,19 @@
      * @return {String}
      */
     detail._testEnvironmentType = function (global) {
+        var envType = "Other";
+        
         if((new Function("try{return this===window}catch(e){return false;}")).bind(global)()) {
-            return "WebBrowser";
+            envType = "WebBrowser";
         }
         else if(
             !karbonator.isUndefined(global.process)
             && global.process.release.name === "node"
         ) {
-            return "Node.js";
+            envType = "Node.js";
         }
-        else {
-            return "Other";
-        }
+        
+        return envType;
     };
     
     /**
@@ -97,6 +97,48 @@
             ? prefered
             : alternative
         );
+    };
+    
+    /**
+     * @memberof karbonator.detail
+     * @function
+     * @param {Array.<Number>} src
+     * @returns {Array.<Number>}
+     */
+    detail._copyIntArray = function (src) {
+        var i = src.length;
+        var cloneOfSrc = new Array(i);
+        while(i > 0) {
+            --i;
+            cloneOfSrc[i] = src[i];
+        }
+        
+        return cloneOfSrc;
+    };
+    
+    /**
+     * @memberof karbonator.detail
+     * @function
+     * @param {Array.<Array.<Number>>} src
+     * @returns {Array.<Array.<Number>>}
+     */
+    detail._copyTwoDimIntArray = function (src) {
+        var i = src.length;
+        var cloneOfSrc = new Array(i);
+        while(i > 0) {
+            --i;
+            
+            var srcElem = src[i];
+            var j = srcElem.length;
+            var clonedElem = new Array(j);
+            while(j > 0) {
+                --j;
+                clonedElem[j] = srcElem[j];
+            }
+            cloneOfSrc[i] = clonedElem;
+        }
+        
+        return cloneOfSrc;
     };
     
     /**
@@ -143,23 +185,22 @@
     
     (function (console) {
         if(
-            "undefined" !== typeof(console)
+            !karbonator.isUndefined(console)
             && !console.clear
             && console.log
         ) {
-            if(global.process) {
-                console.clear = function () {
+            console.clear = (
+                global.process
+                ? (function () {
                     var lines = global.process.stdout.getWindowSize()[1];
                     for(var i = 0; i < lines; i++) {
                         console.log('\x1BC');
                     }
-                };
-            }
-            else {
-                console.clear = function () {
+                })
+                : console.clear = (function () {
                     console.log('\x1B[EJ');
-                };
-            }
+                })
+            );
         }
     }(global.console));
     
@@ -175,10 +216,116 @@
     /*////////////////////////////////////////////////////////////////*/
     
     /*////////////////////////////////////////////////////////////////*/
+    //karbonator.assertion namespace.
+    
+    /**
+     * @memberof karbonator
+     * @namespace
+     */
+    var assertion = karbonator.assertion || {};
+    karbonator.assertion = assertion;
+    
+    /**
+     * @memberof karbonator.assertion
+     * @function
+     * @param {Boolean} boolExpr
+     * @param {String} [message]
+     * @param {Function} [errorClass]
+     */
+    assertion.isTrue = function (boolExpr) {
+        if(!boolExpr) {
+            var errorClass = (
+                karbonator.isFunction(arguments[2])
+                ? arguments[2] :
+                Error
+            );
+            
+            throw new errorClass((
+                karbonator.isUndefinedOrNull(arguments[1])
+                ? "Assertion Failed" :
+                arguments[1].toString()
+            ));
+        }
+    };
+    
+    /**
+     * @memberof karbonator.assertion
+     * @function
+     * @param {Boolean} boolExpr
+     * @param {String} [message]
+     * @param {Function} [errorClass]
+     */
+    assertion.isFalse = function (boolExpr) {
+        return assertion.isTrue(
+            !boolExpr,
+            arguments[1],
+            arguments[2]
+        );
+    };
+    
+    /**
+     * @memberof karbonator.assertion
+     * @function
+     * @param {Object} o
+     * @param {String} [message]
+     * @return {Object}
+     */
+    assertion.isNotUndefined = function (o) {
+        if(karbonator.isUndefined(o)) {
+            throw new TypeError(arguments[1]);
+        }
+        
+        return o;
+    };
+    
+    /**
+     * @memberof karbonator.assertion
+     * @function
+     * @param {Object} o
+     * @param {Function} klass
+     * @param {String} [message]
+     * @return {Object}
+     */
+    assertion.isInstanceOf = function (o, klass) {
+        if(!(o instanceof klass)) {
+            throw new TypeError(arguments[2]);
+        }
+        
+        return o;
+    };
+    
+    /**
+     * @memberof karbonator.assertion
+     * @function
+     * @param {Number} n
+     * @param {String} [message]
+     * @return {Number}
+     */
+    assertion.isNonNegativeSafeInteger = function (n) {
+        var message = arguments[1];
+        
+        if(karbonator.isSafeInteger(n)) {
+            throw new TypeError(message);
+        }
+        else if(n < 0) {
+            throw new RangeError(message);
+        }
+        
+        return n;
+    };
+    
+    /*////////////////////////////////////////////////////////////////*/
+    
+    /*////////////////////////////////////////////////////////////////*/
     //karbonator namespace.
     
     /*////////////////////////////////*/
     //Trait test functions.
+    
+    /**
+     * @readonly
+     */
+    detail._twoPower7 = 128;
     
     /**
      * @readonly
@@ -188,7 +335,17 @@
     /**
      * @readonly
      */
+    detail._twoPower15 = 32768;
+    
+    /**
+     * @readonly
+     */
     detail._twoPower16 = 65536;
+    
+    /**
+     * @readonly
+     */
+    detail._twoPower31 = 2147483648;
     
     /**
      * @readonly
@@ -236,7 +393,7 @@
      * @return {Boolean}
      */
     karbonator.isNonNegativeSafeInteger = function (o) {
-        return karbonator.isSafeInteger(o) && o >= 0;
+        return o >= 0 && karbonator.isSafeInteger(o);
     };
     
     /**
@@ -247,7 +404,7 @@
      */
     karbonator.isInt8 = function (o) {
         return karbonator.isSafeInteger(o)
-            && (o >= -128 && o < 128)
+            && (o >= -detail._twoPower7 && o < detail._twoPower7)
         ;
     };
     
@@ -271,7 +428,7 @@
      */
     karbonator.isInt16 = function (o) {
         return karbonator.isSafeInteger(o)
-            && (o >= -32768 && o < 32768)
+            && (o >= -detail._twoPower15 && o < detail._twoPower15)
         ;
     };
     
@@ -295,7 +452,7 @@
      */
     karbonator.isInt32 = function (o) {
         return karbonator.isSafeInteger(o)
-            && (o >= -2147483648 && o < 2147483648)
+            && (o >= -detail._twoPower31 && o < detail._twoPower31)
         ;
     };
     
@@ -334,55 +491,62 @@
     karbonator.equals = Symbol("karbonator.equals");
     
     /**
+     * @memberof karbonator.detail
+     * @function
+     * @param {*} lhs
+     * @param {*} rhs
+     * @return {Boolean}
+     */
+    detail._areEqual = function (lhs, rhs) {
+        if(lhs === rhs) {
+            return true;
+        }
+        
+        if(
+            karbonator.isArray(lhs)
+            && karbonator.isArray(rhs)
+        ) {
+            if(lhs.length !== rhs.length) {
+                return false;
+            }
+            
+            var count = lhs.length;
+            for(var i = 0; i < count; ++i) {
+                if(!detail._areEqual(lhs[i], rhs[i])) {
+                    return false;
+                }
+            }
+            
+            return true;
+        }
+        
+        if(
+            karbonator.isObjectOrFunction(lhs)
+            && lhs[karbonator.equals]
+        ) {
+            return lhs[karbonator.equals](rhs);
+        }
+        
+        if(
+            karbonator.isObjectOrFunction(rhs)
+            && rhs[karbonator.equals]
+        ) {
+            return rhs[karbonator.equals](lhs);
+        }
+        
+        return false;
+    };
+    
+    /**
      * @memberof karbonator
      * @function
      * @param {*} lhs
      * @param {*} rhs
      * @return {Boolean}
      */
-    karbonator.areEqual = (function () {
-        var areEqual = function (lhs, rhs) {
-            if(lhs === rhs) {
-                return true;
-            }
-            
-            if(
-                karbonator.isArray(lhs)
-                && karbonator.isArray(rhs)
-            ) {
-                if(lhs.length !== rhs.length) {
-                    return false;
-                }
-                
-                var count = lhs.length;
-                for(var i = 0; i < count; ++i) {
-                    if(!areEqual(lhs[i], rhs[i])) {
-                        return false;
-                    }
-                }
-                
-                return true;
-            }
-            
-            if(
-                karbonator.isObjectOrFunction(lhs)
-                && lhs[karbonator.equals]
-            ) {
-                return lhs[karbonator.equals](rhs);
-            }
-            
-            if(
-                karbonator.isObjectOrFunction(rhs)
-                && rhs[karbonator.equals]
-            ) {
-                return rhs[karbonator.equals](lhs);
-            }
-            
-            return false;
-        };
-        
-        return areEqual;
-    }());
+    karbonator.areEqual = function (lhs, rhs) {
+        return detail._areEqual(lhs, rhs);
+    };
     
     /**
      * 비교 함수<br/>
@@ -515,82 +679,54 @@
     karbonator.deepClone = Symbol("karbonator.deepClone");
     
     /**
+     * @memberof karbonator._detail
      * @function
      * @param {*} o
      * @return {Boolean}
      */
-    var _isImmutablePrimitive = function (o) {
-        return karbonator.isUndefinedOrNull(o)
-            || karbonator.isNumber(o)
-            || karbonator.isBoolean(o)
-            || karbonator.isSymbol(o)
-            || karbonator.isString(o)
-            //|| karbonator.isFunction(o)
+    detail._isImmutablePrimitive = function (o) {
+        return !karbonator.isObjectOrFunction(o)
+            && !karbonator.isArray(o)
         ;
     };
     
     /**
+     * @memberof karbonator.detail
      * @function
      * @param {*} o
      * @return {*}
      */
-    karbonator.shallowCloneObject = (function () {
-        var shallowCloneObject = function (o) {
-            if(_isImmutablePrimitive(o)) {
-                return o;
-            }
-            
-            if(karbonator.isArray(o)) {
-                var clonedArray = new Array(o.length);
-                
-                for(var i = 0; i < o.length; ++i) {
-                    clonedArray[i] = shallowCloneObject(o[i]);
-                }
-                
-                return clonedArray;
-            }
-            
-            if(o[karbonator.shallowClone]) {
-                return o[karbonator.shallowClone]();
-            }
-            
+    detail._shallowCloneObject = function (o) {
+        if(detail._isImmutablePrimitive(o)) {
             return o;
-        };
-        
-        return shallowCloneObject;
-    }());
+        }
+
+        if(karbonator.isArray(o)) {
+            var clonedArray = new Array(o.length);
+
+            for(var i = 0; i < o.length; ++i) {
+                clonedArray[i] = detail._shallowCloneObject(o[i]);
+            }
+
+            return clonedArray;
+        }
+
+        if(o[karbonator.shallowClone]) {
+            return o[karbonator.shallowClone]();
+        }
+
+        return o;
+    };
     
-    //TODO : Find a way to handle cyclic reference problems.
-//    /**
-//     * @function
-//     * @param {*} o
-//     * @return {*}
-//     */
-//    karbonator.deepCloneObject = (function () {
-//        var deepCloneObject = function (o) {
-//            if(_isImmutablePrimitive(o)) {
-//                return o;
-//            }
-//            
-//            if(karbonator.isArray(o)) {
-//                var clonedArray = new Array(o.length);
-//                
-//                for(var i = 0; i < o.length; ++i) {
-//                    clonedArray[i] = deepCloneObject(o[i]);
-//                }
-//                
-//                return clonedArray;
-//            }
-//            
-//            if(o[karbonator.deepClone]) {
-//                return o[karbonator.deepClone]();
-//            }
-//            
-//            return o;
-//        };
-//        
-//        return deepCloneObject;
-//    }());
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {*}
+     */
+    karbonator.shallowCloneObject = function (o) {
+        return detail._shallowCloneObject(o);
+    };
     
     /*////////////////////////////////*/
     
@@ -1091,504 +1227,508 @@
     /*////////////////////////////////*/
     //karbonator.ByteArray
     
-    karbonator.ByteArray = (function () {
-        /**
-         * @function
-         * @param {Number} v
-         * @return {Number}
-         */
-        var _assertIsNonNegativeSafeInteger = function (v) {
-            if(!karbonator.isNonNegativeSafeInteger(v)) {
-                throw new TypeError("The value must be a non-negative safe integer.");
-            }
-            
-            return v;
-        };
+    /**
+     * @function
+     * @param {Number} v
+     * @return {Number}
+     */
+    var _assertIsNonNegativeSafeInteger = function (v) {
+        if(!karbonator.isNonNegativeSafeInteger(v)) {
+            throw new TypeError("The value must be a non-negative safe integer.");
+        }
         
-        /**
-         * @function
-         * @param {Number} v
-         * @return {Number}
-         */
-        var _assertIsUint8 = function (v) {
-            if(!karbonator.isUint8(v)) {
-                throw new TypeError("The value must be in range [0, 255].");
-            }
-            
-            return v;
-        };
+        return v;
+    };
+    
+    /**
+     * @function
+     * @param {Number} v
+     * @return {Number}
+     */
+    var _assertIsUint8 = function (v) {
+        if(!karbonator.isUint8(v)) {
+            throw new TypeError("The value must be in range [0, 255].");
+        }
         
-        var _bitsPerByteEep = 3;
-        
-        var _bitsPerByte = 1 << _bitsPerByteEep;
-        
-        var _byteBm = (1 << _bitsPerByte) - 1;
-        
-        var _bufNdxExp = 2;
-        
-        var _subNdxBm = (1 << _bufNdxExp) - 1;
-        
-        var _bytesPerInt = 1 << _bufNdxExp;
-        
-        /**
-         * @function
-         * @param {Number} subIndex
-         * @return {Number}
-         */
-        var _calculateShiftCount = function (subIndex) {
-            return ((_bytesPerInt - 1) - subIndex) << _bitsPerByteEep;
-        };
-        
-        /**
-         * @memberof karbonator
-         * @constructor
-         * @param {Number} [elementCount=0]
-         * @param {Number} [initialValue=0]
-         */
-        var ByteArray = function () {
-            var elementCount = (
-                karbonator.isUndefined(arguments[0])
-                ? 0
-                : _assertIsNonNegativeSafeInteger(arguments[0])
-            );
-            
-            if(elementCount < 1) {
-                this._buffer = [0];
-                this._subIndex = 0;
-                
-                if(!karbonator.isUndefined(arguments[1])) {
-                    this.fill(arguments[1]);
-                }
-            }
-            else {
-                this._buffer = new Array(((elementCount - 1) >>> _bufNdxExp) + 1);
-                this._subIndex = ((elementCount - 1) & _subNdxBm) + 1;
-                this.fill((karbonator.isUndefined(arguments[1]) ? 0 : arguments[1]));
-            }
-        };
-        
-        /**
-         * @function
-         * @param {ByteArray} oThis
-         * @param {Number} index
-         * @param {Number} [maxBound]
-         * @return {Number}
-         */
-        var _assertIsValidIndex = function (oThis, index) {
-            _assertIsNonNegativeSafeInteger(index);
-            
-            var maxBound = (karbonator.isUndefined(arguments[2]) ? oThis.getElementCount() : arguments[2]);
-            if(index >= maxBound) {
-                throw new RangeError("Index out of range.");
-            }
-            
-            return index;
-        };
-        
-        /**
-         * @function
-         * @param {Array.<Number>} buffer
-         * @param {Number} bufferIndex
-         * @param {Number} subIndex
-         * @return {Number}
-         */
-        var _get = function (buffer, bufferIndex, subIndex) {
-            var shiftCount = _calculateShiftCount(subIndex);
-            
-            return (buffer[bufferIndex] & (_byteBm << shiftCount)) >>> shiftCount;
-        };
-        
-        /**
-         * @function
-         * @param {Array.<Number>} buffer
-         * @param {Number} bufferIndex
-         * @param {Number} subIndex
-         * @param {Number} v
-         */
-        var _set = function (buffer, bufferIndex, subIndex, v) {
-            var shiftCount = _calculateShiftCount(subIndex);
-            
-            buffer[bufferIndex] &= ~(_byteBm << shiftCount);
-            buffer[bufferIndex] |= (v << shiftCount);
-        };
-        
-        /**
-         * @memberof karbonator.ByteArray
-         * @param {Object} numberArrayLike
-         * @param {Function} [mapFunction]
-         * @param {Object} [thisArg]
-         * @return {karbonator.ByteArray}
-         */
-        ByteArray.from = function (numberArrayLike) {
-            return detail._arrayFromFunctionBody(
-                new ByteArray(), _assertIsUint8,
-                "pushBack", numberArrayLike,
-                arguments[1], arguments[2]
-            );
-        };
-        
-        /**
-         * @function
-         * @return {karbonator.ByteArray}
-         */
-        ByteArray.prototype[karbonator.shallowClone] = function () {
-            return ByteArray.from(this);
-        };
-        
-        /**
-         * @function
-         * @return {karbonator.ByteArray}
-         */
-        ByteArray.prototype[karbonator.deepClone] = function () {
-            return ByteArray.from(this);
-        };
-        
-        /**
-         * @function
-         * @return {Boolean}
-         */
-        ByteArray.prototype.isEmpty = function () {
-            return this._buffer.length < 2 && this._subIndex < 1;
-        };
-        
-        /**
-         * @function
-         * @return {Number}
-         */
-        ByteArray.prototype.getElementCount = function () {
-            return (this._buffer.length - 1) * _bytesPerInt + this._subIndex;
-        };
-        
-        /**
-         * @function
-         * @return {iterator}
-         */
-        ByteArray.prototype[Symbol.iterator] = function () {
-            return ({
-                next : function () {
-                    var done = this._index >= this._target.getElementCount();
-                    var value = undefined;
-                    
-                    if(!done) {
-                        value = this._target.get(this._index);
-                        ++this._index;
-                    }
-                    
-                    return ({
-                        done : done,
-                        value : value
-                    });
-                },
-                _target : this,
-                _index : 0
-            });
-        };
-        
-        /**
-         * @function
-         * @param {Number} index
-         * @return {Number}
-         */
-        ByteArray.prototype.get = function (index) {
-            _assertIsValidIndex(this, index);
-            
-            var bufNdx = index >>> _bufNdxExp;
-            var subNdx = index & _subNdxBm;
-            
-            return _get(this._buffer, bufNdx, subNdx);
-        };
-        
-        /**
-         * @function
-         * @param {Number} index
-         * @param {Number} v
-         * @return {karbonator.ByteArray}
-         */
-        ByteArray.prototype.set = function (index, v) {
-            _assertIsValidIndex(this, index);
-            _assertIsUint8(v); 
-            
-            var bufNdx = index >>> _bufNdxExp;
-            var subNdx = index & _subNdxBm;
-            
-            _set(this._buffer, bufNdx, subNdx, v);
-            
-            return this;
-        };
-        
-        /**
-         * @function
-         * @param {Number} v
-         * @param {Number} [start]
-         * @param {Number} [end]
-         * @return {karbonator.ByteArray}
-         */
-        ByteArray.prototype.fill = function (v) {
-            _assertIsUint8(v);
-            var start = (karbonator.isUndefined(arguments[1]) ? 0 : _assertIsValidIndex(this, arguments[1]));
-            var elemCount = this.getElementCount();
-            var end = (karbonator.isUndefined(arguments[2]) ? elemCount : _assertIsValidIndex(this, arguments[2], elemCount + 1));
-            
-            for(var i = start; i < end; ++i) {
-                this.set(i, v);
-            };
-            
-            return this;
-        };
-        
-        /**
-         * @function
-         * @param {Number} lhsIndex
-         * @param {Number} rhsIndex
-         * @return {karbonator.ByteArray}
-         */
-        ByteArray.prototype.swapElements = function (lhsIndex, rhsIndex) {
-            _assertIsValidIndex(this, lhsIndex);
-            _assertIsValidIndex(this, rhsIndex);
-            
-            var lhsElem = this.get(lhsIndex);
-            this.set(lhsIndex, this.get(rhsIndex));
-            this.set(rhsIndex, lhsElem);
-            
-            return this;
-        };
-        
-        /**
-         * @function
-         * @return {karbonator.ByteArray}
-         */
-        ByteArray.prototype.reverse = function () {
-            var count = this.getElementCount();
-            var halfCount = count >>> 1;
-            for(var i = 0, j = count; i < halfCount; ++i) {
-                --j;
-                this.swapElements(i, j);
-            }
-            
-            return this;
-        };
-        
-        /**
-         * @function
-         * @param {Number} v
-         * @param {Number} [index]
-         * @return {karbonator.ByteArray}
-         */
-        ByteArray.prototype.insert = function (v, index) {
-            _assertIsUint8(v);
-            var elemCount = this.getElementCount();
-            index = (karbonator.isUndefined(index) ? elemCount : index);
-            _assertIsValidIndex(this, index, elemCount + 1);
-            
-            if(this._subIndex >= _bytesPerInt) {
-                this._buffer.push(0);
-                this._subIndex = 0;
-            }
-            
-            var destBufNdx = index >>> _bufNdxExp;
-            var destSubNdx = index & _subNdxBm;
-            
-            for(var i = this._buffer.length - 1; i > destBufNdx; --i) {
-                this._buffer[i] >>>= _bitsPerByte;
-                _set(
-                    this._buffer,
-                    i, 0,
-                    _get(this._buffer, i - 1, _bytesPerInt - 1)
-                );
-            }
-            
-            if(destSubNdx === 0) {
-                this._buffer[destBufNdx] >>>= _bitsPerByte;
-            }
-            else if(destSubNdx < _bytesPerInt - 1) {
-                for(var i = _bytesPerInt - 1; i > destSubNdx; --i) {
-                    _set(
-                        this._buffer,
-                        destBufNdx, i,
-                        _get(this._buffer, destBufNdx, i - 1)
-                    );
-                }
-            }
-            
-            _set(this._buffer, destBufNdx, destSubNdx, v);
-            ++this._subIndex;
-            
-            return this;
-        };
-        
-        /**
-         * @function
-         * @param {Number} index
-         * @return {Number}
-         */
-        ByteArray.prototype.removeAt = function (index) {
-            if(this.isEmpty()) {
-                throw new Error("No more bytes left.");
-            }
-            
-            _assertIsValidIndex(this, index);
-            
-            var destBufNdx = index >>> _bufNdxExp;
-            var destSubNdx = index & _subNdxBm;
-            
-            var value = _get(this._buffer, destBufNdx, destSubNdx);
-            
-            if(destSubNdx === 0) {
-                this._buffer[destBufNdx] <<= _bitsPerByte;
-            }
-            else if(destSubNdx >= _bytesPerInt - 1) {
-                this._buffer[destBufNdx] &= ~_byteBm;
-            }
-            else {
-                for(var i = destSubNdx + 1; i < _bytesPerInt; ++i) {
-                    _set(
-                        this._buffer,
-                        destBufNdx, i - 1,
-                        _get(this._buffer, destBufNdx, i)
-                    );
-                }
-            }
-            
-            for(var i = destBufNdx + 1, len = this._buffer.length; i < len; ++i) {
-                _set(this._buffer,
-                    i - 1, _bytesPerInt - 1,
-                    _get(this._buffer, i, 0)
-                );
-                this._buffer[i] <<= _bitsPerByte;
-            };
-            
-            --this._subIndex;
-            if(this._subIndex < 1 && this._buffer.length > 1) {
-                this._buffer.pop();
-                this._subIndex = _bytesPerInt;
-            }
-            
-            return value;
-        };
-        
-        /**
-         * @function
-         * @param {iterable} iterable
-         * @return {karbonator.ByteArray}
-         */
-        ByteArray.prototype.concatenateAssign = function (iterable) {
-            return detail._arrayFromFunctionBody(
-                this, _assertIsUint8,
-                "pushBack", iterable
-            );
-            
-            return this;
-        };
-        
-        /**
-         * @function
-         * @param {Number} v
-         * @return {karbonator.ByteArray}
-         */
-        ByteArray.prototype.pushFront = function (v) {
-            this.insert(v, 0);
-            
-            return this;
-        };
-        
-        /**
-         * @function
-         * @param {Number} v
-         * @return {karbonator.ByteArray}
-         */
-        ByteArray.prototype.pushBack = function (v) {
-            this.insert(v);
-            
-            return this;
-        };
-        
-        /**
-         * @function
-         * @return {Number}
-         */
-        ByteArray.prototype.popFront = function () {
-            return this.removeAt(0);
-        };
-        
-        /**
-         * @function
-         * @return {Number}
-         */
-        ByteArray.prototype.popBack = function () {
-            return this.removeAt(this.getElementCount() - 1);
-        };
-        
-        /**
-         * @function
-         * @return {karbonator.ByteArray}
-         */
-        ByteArray.prototype.clear = function () {
-            this._buffer.length = 1;
-            this._buffer[0] = 0;
+        return v;
+    };
+    
+    var _bitsPerByteExp = 3;
+    
+    var _bitsPerByte = 1 << _bitsPerByteExp;
+    
+    var _byteBm = (1 << _bitsPerByte) - 1;
+    
+    var _bufNdxExp = 2;
+    
+    var _subNdxBm = (1 << _bufNdxExp) - 1;
+    
+    var _bytesPerInt = 1 << _bufNdxExp;
+    
+    /**
+     * @function
+     * @param {Number} subIndex
+     * @return {Number}
+     */
+    var _calculateShiftCount = function (subIndex) {
+        return ((_bytesPerInt - 1) - subIndex) << _bitsPerByteExp;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @constructor
+     * @param {Number} [elementCount=0]
+     * @param {Number} [initialValue=0]
+     */
+    var ByteArray = function () {
+        var elementCount = (
+            karbonator.isUndefined(arguments[0])
+            ? 0
+            : _assertIsNonNegativeSafeInteger(arguments[0])
+        );
+
+        if(elementCount < 1) {
+            this._buffer = [0];
             this._subIndex = 0;
             
-            return this;
-        };
+            if(!karbonator.isUndefined(arguments[1])) {
+                this.fill(arguments[1]);
+            }
+        }
+        else {
+            this._buffer = new Array(((elementCount - 1) >>> _bufNdxExp) + 1);
+            this._subIndex = ((elementCount - 1) & _subNdxBm) + 1;
+            this.fill((karbonator.isUndefined(arguments[1]) ? 0 : arguments[1]));
+        }
+    };
+    
+    /**
+     * @function
+     * @param {ByteArray} oThis
+     * @param {Number} index
+     * @param {Number} [maxBound]
+     * @return {Number}
+     */
+    var _assertIsValidIndex = function (oThis, index) {
+        _assertIsNonNegativeSafeInteger(index);
         
-        /**
-         * @function
-         * @param {karbonator.ByteArray} rhs
-         * @return {Boolean}
-         */
-        ByteArray.prototype[karbonator.equals] = function (rhs) {
-            if(this === rhs) {
-                return true;
-            }
-            
-            if(karbonator.isUndefinedOrNull(rhs)) {
-                return false;
-            }
-            
-            var elemCount = this.getElementCount();
-            if(elemCount !== rhs.getElementCount()) {
-                return false;
-            }
-            
-            for(var i = 0; i < elemCount; ++i) {
-                if(this.get(i) !== rhs.get(i)) {
-                    return false;
+        var maxBound = (karbonator.isUndefined(arguments[2]) ? oThis.getElementCount() : arguments[2]);
+        if(index >= maxBound) {
+            throw new RangeError("Index out of range.");
+        }
+        
+        return index;
+    };
+    
+    /**
+     * @function
+     * @param {Array.<Number>} buffer
+     * @param {Number} bufferIndex
+     * @param {Number} subIndex
+     * @return {Number}
+     */
+    var _get = function (buffer, bufferIndex, subIndex) {
+        var shiftCount = _calculateShiftCount(subIndex);
+        
+        return (buffer[bufferIndex] & (_byteBm << shiftCount)) >>> shiftCount;
+    };
+    
+    /**
+     * @function
+     * @param {Array.<Number>} buffer
+     * @param {Number} bufferIndex
+     * @param {Number} subIndex
+     * @param {Number} v
+     */
+    var _set = function (buffer, bufferIndex, subIndex, v) {
+        var shiftCount = _calculateShiftCount(subIndex);
+        
+        buffer[bufferIndex] &= ~(_byteBm << shiftCount);
+        buffer[bufferIndex] |= (v << shiftCount);
+    };
+    
+    /**
+     * @memberof karbonator.ByteArray
+     * @param {Object} numberArrayLike
+     * @param {Function} [mapFunction]
+     * @param {Object} [thisArg]
+     * @return {karbonator.ByteArray}
+     */
+    ByteArray.from = function (numberArrayLike) {
+        return detail._arrayFromFunctionBody(
+            new ByteArray(), _assertIsUint8,
+            "pushBack", numberArrayLike,
+            arguments[1], arguments[2]
+        );
+    };
+    
+    /**
+     * @function
+     * @return {karbonator.ByteArray}
+     */
+    ByteArray.prototype[karbonator.shallowClone] = function () {
+        return ByteArray.from(this);
+    };
+    
+    /**
+     * @function
+     * @return {karbonator.ByteArray}
+     */
+    ByteArray.prototype[karbonator.deepClone] = function () {
+        return ByteArray.from(this);
+    };
+    
+    /**
+     * @function
+     * @return {Boolean}
+     */
+    ByteArray.prototype.isEmpty = function () {
+        return this._buffer.length < 2 && this._subIndex < 1;
+    };
+    
+    /**
+     * @function
+     * @return {Number}
+     */
+    ByteArray.prototype.getElementCount = function () {
+        return ((this._buffer.length - 1) << _bufNdxExp) + this._subIndex;
+    };
+    
+    /**
+     * @function
+     * @return {iterator}
+     */
+    ByteArray.prototype[Symbol.iterator] = function () {
+        return ({
+            next : function () {
+                var out = {
+                    done : this._index >= this._target.getElementCount()
+                };
+                
+                if(!out.done) {
+                    out.value = this._target.get(this._index);
+                    ++this._index;
                 }
+                
+                return out;
+            },
+            _target : this,
+            _index : 0
+        });
+    };
+    
+    /**
+     * @function
+     * @param {Number} index
+     * @return {Number}
+     */
+    ByteArray.prototype.get = function (index) {
+        _assertIsValidIndex(this, index);
+        
+        var bufNdx = index >>> _bufNdxExp;
+        var subNdx = index & _subNdxBm;
+        
+        return _get(this._buffer, bufNdx, subNdx);
+    };
+    
+    /**
+     * @function
+     * @param {Number} index
+     * @param {Number} v
+     * @return {karbonator.ByteArray}
+     */
+    ByteArray.prototype.set = function (index, v) {
+        _assertIsValidIndex(this, index);
+        _assertIsUint8(v); 
+        
+        var bufNdx = index >>> _bufNdxExp;
+        var subNdx = index & _subNdxBm;
+        
+        _set(this._buffer, bufNdx, subNdx, v);
+        
+        return this;
+    };
+    
+    /**
+     * @function
+     * @param {Number} v
+     * @param {Number} [start]
+     * @param {Number} [end]
+     * @return {karbonator.ByteArray}
+     */
+    ByteArray.prototype.fill = function (v) {
+        _assertIsUint8(v);
+        var start = (karbonator.isUndefined(arguments[1]) ? 0 : _assertIsValidIndex(this, arguments[1]));
+        var elemCount = this.getElementCount();
+        var end = (karbonator.isUndefined(arguments[2]) ? elemCount : _assertIsValidIndex(this, arguments[2], elemCount + 1));
+        
+        for(var i = start; i < end; ++i) {
+            this.set(i, v);
+        };
+        
+        return this;
+    };
+    
+    /**
+     * @function
+     * @param {Number} lhsIndex
+     * @param {Number} rhsIndex
+     * @return {karbonator.ByteArray}
+     */
+    ByteArray.prototype.swapElements = function (lhsIndex, rhsIndex) {
+        _assertIsValidIndex(this, lhsIndex);
+        _assertIsValidIndex(this, rhsIndex);
+        
+        var lhsElem = this.get(lhsIndex);
+        this.set(lhsIndex, this.get(rhsIndex));
+        this.set(rhsIndex, lhsElem);
+        
+        return this;
+    };
+    
+    /**
+     * @function
+     * @return {karbonator.ByteArray}
+     */
+    ByteArray.prototype.reverse = function () {
+        var count = this.getElementCount();
+        var halfCount = count >>> 1;
+        for(var i = 0, j = count; i < halfCount; ++i) {
+            --j;
+            this.swapElements(i, j);
+        }
+        
+        return this;
+    };
+    
+    /**
+     * @function
+     * @param {Number} v
+     * @param {Number} [index]
+     * @return {karbonator.ByteArray}
+     */
+    ByteArray.prototype.insert = function (v, index) {
+        _assertIsUint8(v);
+        var elemCount = this.getElementCount();
+        index = (karbonator.isUndefined(index) ? elemCount : index);
+        _assertIsValidIndex(this, index, elemCount + 1);
+
+        if(this._subIndex >= _bytesPerInt) {
+            this._buffer.push(0);
+            this._subIndex = 0;
+        }
+
+        var destBufNdx = index >>> _bufNdxExp;
+        var destSubNdx = index & _subNdxBm;
+
+        for(var i = this._buffer.length - 1; i > destBufNdx; --i) {
+            this._buffer[i] >>>= _bitsPerByte;
+            _set(
+                this._buffer,
+                i, 0,
+                _get(this._buffer, i - 1, _bytesPerInt - 1)
+            );
+        }
+
+        if(destSubNdx === 0) {
+            this._buffer[destBufNdx] >>>= _bitsPerByte;
+        }
+        else if(destSubNdx < _bytesPerInt - 1) {
+            for(var i = _bytesPerInt - 1; i > destSubNdx; --i) {
+                _set(
+                    this._buffer,
+                    destBufNdx, i,
+                    _get(this._buffer, destBufNdx, i - 1)
+                );
             }
-            
+        }
+
+        _set(this._buffer, destBufNdx, destSubNdx, v);
+        ++this._subIndex;
+
+        return this;
+    };
+
+    /**
+     * @function
+     * @param {Number} index
+     * @return {Number}
+     */
+    ByteArray.prototype.removeAt = function (index) {
+        if(this.isEmpty()) {
+            throw new Error("No more bytes left.");
+        }
+
+        _assertIsValidIndex(this, index);
+
+        var destBufNdx = index >>> _bufNdxExp;
+        var destSubNdx = index & _subNdxBm;
+
+        var value = _get(this._buffer, destBufNdx, destSubNdx);
+
+        if(destSubNdx === 0) {
+            this._buffer[destBufNdx] <<= _bitsPerByte;
+        }
+        else if(destSubNdx >= _bytesPerInt - 1) {
+            this._buffer[destBufNdx] &= ~_byteBm;
+        }
+        else {
+            for(var i = destSubNdx + 1; i < _bytesPerInt; ++i) {
+                _set(
+                    this._buffer,
+                    destBufNdx, i - 1,
+                    _get(this._buffer, destBufNdx, i)
+                );
+            }
+        }
+
+        for(var i = destBufNdx + 1, len = this._buffer.length; i < len; ++i) {
+            _set(this._buffer,
+                i - 1, _bytesPerInt - 1,
+                _get(this._buffer, i, 0)
+            );
+            this._buffer[i] <<= _bitsPerByte;
+        };
+
+        --this._subIndex;
+        if(this._subIndex < 1 && this._buffer.length > 1) {
+            this._buffer.pop();
+            this._subIndex = _bytesPerInt;
+        }
+
+        return value;
+    };
+
+    /**
+     * @function
+     * @param {iterable} iterable
+     * @return {karbonator.ByteArray}
+     */
+    ByteArray.prototype.concatenateAssign = function (iterable) {
+        return detail._arrayFromFunctionBody(
+            this, _assertIsUint8,
+            "pushBack", iterable
+        );
+
+        return this;
+    };
+
+    /**
+     * @function
+     * @param {Number} v
+     * @return {karbonator.ByteArray}
+     */
+    ByteArray.prototype.pushFront = function (v) {
+        this.insert(v, 0);
+
+        return this;
+    };
+
+    /**
+     * @function
+     * @param {Number} v
+     * @return {karbonator.ByteArray}
+     */
+    ByteArray.prototype.pushBack = function (v) {
+        this.insert(v);
+
+        return this;
+    };
+
+    /**
+     * @function
+     * @return {Number}
+     */
+    ByteArray.prototype.popFront = function () {
+        return this.removeAt(0);
+    };
+
+    /**
+     * @function
+     * @return {Number}
+     */
+    ByteArray.prototype.popBack = function () {
+        return this.removeAt(this.getElementCount() - 1);
+    };
+
+    /**
+     * @function
+     * @return {karbonator.ByteArray}
+     */
+    ByteArray.prototype.clear = function () {
+        this._buffer.length = 1;
+        this._buffer[0] = 0;
+        this._subIndex = 0;
+
+        return this;
+    };
+
+    /**
+     * @function
+     * @param {karbonator.ByteArray} rhs
+     * @return {Boolean}
+     */
+    ByteArray.prototype[karbonator.equals] = function (rhs) {
+        if(this === rhs) {
             return true;
-        };
-        
-        /**
-         * @function
-         * @param {Number} [base=10]
-         * @return {String}
-         */
-        ByteArray.prototype.toString = function () {
-            var base = arguments[0];
-            var str = '[';
-            
-            var count = this.getElementCount();
-            if(count > 0) {
-                str += this.get(0).toString(base);
+        }
+
+        if(karbonator.isUndefinedOrNull(rhs)) {
+            return false;
+        }
+
+        var elemCount = this.getElementCount();
+        if(elemCount !== rhs.getElementCount()) {
+            return false;
+        }
+
+        for(var i = 0; i < elemCount; ++i) {
+            if(this.get(i) !== rhs.get(i)) {
+                return false;
             }
-            
-            for(var i = 1; i < count; ++i) {
-                str += ", ";
-                str += this.get(i).toString(base);
-            }
-            
-            str += ']';
-            
-            return str;
-        };
-        
-        return ByteArray;
-    }());
+        }
+
+        return true;
+    };
+
+    /**
+     * @function
+     * @param {Number} [base=10]
+     * @return {String}
+     */
+    ByteArray.prototype.toString = function () {
+        var base = arguments[0];
+        var str = '[';
+
+        var count = this.getElementCount();
+        if(count > 0) {
+            str += this.get(0).toString(base);
+        }
+
+        for(var i = 1; i < count; ++i) {
+            str += ", ";
+            str += this.get(i).toString(base);
+        }
+
+        str += ']';
+
+        return str;
+    };
+
+    karbonator.ByteArray = ByteArray;
     
     /*////////////////////////////////*/
     
     /*////////////////////////////////*/
     //Bit conversion functions.
+    
+    /**
+     * @memberof karbonator.detail
+     * @function
+     */
+    detail._throwRangeErrorOfByteCount = function () {
+        throw new RangeError("'byteCount' can be only 1, 2 or 4.");
+    };
     
     /**
      * @memberof karbonator.detail
@@ -1601,7 +1741,7 @@
             throw new TypeError("'byteCount' must be a non-negative safe integer.");
         }
         if(!([1, 2, 4].includes(byteCount))) {
-            throw new RangeError("'byteCount' can be only 1, 2 or 4.");
+            detail._throwRangeErrorOfByteCount();
         }
         
         return byteCount;
@@ -1674,129 +1814,131 @@
         if(!(bytes instanceof karbonator.ByteArray)) {
             throw new TypeError("The parameter 'byteArray' must be an instance of 'karbonator.ByteArray'.");
         }
+        if(!karbonator.isNonNegativeSafeInteger(byteCount)) {
+            throw new TypeError("'byteCount' must be a non-negative integer.");
+        }
         
-        detail._assertByteCountInRange(byteCount);
+        var signed = !!arguments[2];
+        var byteOrderReversed = !!arguments[3];
+        var index = arguments[4];
+        if(karbonator.isUndefined(index)) {
+            index = 0;
+        }
+        else if(!karbonator.isNonNegativeSafeInteger(index)) {
+            throw new TypeError("The parameter 'startIndex' must be a non-negative safe integer.");
+        }
         
-        var startIndex = 0;
-        if(!karbonator.isUndefined(arguments[4])) {
-            startIndex = arguments[4];
-            if(!karbonator.isNonNegativeSafeInteger(startIndex)) {
-                throw new TypeError("The parameter 'startIndex' must be a non-negative safe integer.");
+        var intValue = 0;
+        
+        switch(byteCount) {
+        case 0:
+            detail._throwRangeErrorOfByteCount();
+        break;
+        case 1:
+            intValue = bytes.get(index);
+            
+            if(signed && intValue >= detail._twoPower7) {
+                intValue -= detail._twoPower8;
             }
-        }
-        
-        var buffer = new karbonator.ByteArray();
-        var count = 0;
-        for(var len = bytes.getElementCount(); count < byteCount && count < len; ++count) {
-            buffer.pushBack((bytes.get(startIndex + count) & 0xFF));
-        }
-        if(count < byteCount) {
-            throw new Error("Not enough bytes.");
-        }
-        
-        if(!!arguments[3]) {
-            buffer.reverse();
-        }
-        
-        var value = 0;
-        for(var i = 0; i < byteCount; ++i) {
-            value <<= 8;
-            value |= buffer.get(i);
-        }
-        
-        if((byteCount & 0x01) !== 0) {
-            if(!!arguments[2] && (value & 0x80) !== 0) {
-                value -= detail._twoPower8;
+        break;
+        case 2:
+            if(byteOrderReversed) {
+                intValue = bytes.get(index);
+                intValue |= (bytes.get(++index) << 8);
             }
-        }
-        else if(((byteCount >>> 1) & 0x01) !== 0) {
-            if(!!arguments[2] && (value & 0x8000) !== 0) {
-                value -= detail._twoPower16;
+            else {
+                intValue = bytes.get(index);
+                intValue <<= 8;
+                intValue = bytes.get(++index);
             }
-        }
-        else if(((byteCount >>> 2) & 0x01) !== 0) {
-            if(!arguments[2] && value < 0) {
-                value += detail._twoPower32;
+            
+            if(signed && intValue >= detail._twoPower15) {
+                intValue -= detail._twoPower16;
             }
+        break;
+        case 3:
+            detail._throwRangeErrorOfByteCount();
+        break;
+        case 4:
+            if(byteOrderReversed) {
+                intValue = bytes.get(index);
+                intValue |= (bytes.get(++index) << 8);
+                intValue |= (bytes.get(++index) << 16);
+                intValue |= (bytes.get(++index) << 24);
+            }
+            else {
+                intValue = bytes.get(index);
+                intValue <<= 8;
+                intValue = bytes.get(++index);
+                intValue <<= 8;
+                intValue = bytes.get(++index);
+                intValue <<= 8;
+                intValue = bytes.get(++index);
+            }
+            
+            if(signed && intValue >= detail._twoPower31) {
+                intValue -= detail._twoPower32;
+            }
+        break;
+        default:
+            detail._throwRangeErrorOfByteCount();
         }
         
-        return value;
+        return intValue;
+        
+//        if(!(bytes instanceof karbonator.ByteArray)) {
+//            throw new TypeError("The parameter 'byteArray' must be an instance of 'karbonator.ByteArray'.");
+//        }
+//        
+//        detail._assertByteCountInRange(byteCount);
+//        
+//        var startIndex = 0;
+//        if(!karbonator.isUndefined(arguments[4])) {
+//            startIndex = arguments[4];
+//            if(!karbonator.isNonNegativeSafeInteger(startIndex)) {
+//                throw new TypeError("The parameter 'startIndex' must be a non-negative safe integer.");
+//            }
+//        }
+//        
+//        var buffer = new karbonator.ByteArray();
+//        var count = 0;
+//        for(var len = bytes.getElementCount(); count < byteCount && count < len; ++count) {
+//            buffer.pushBack((bytes.get(startIndex + count) & 0xFF));
+//        }
+//        if(count < byteCount) {
+//            throw new Error("Not enough bytes.");
+//        }
+//        
+//        if(!!arguments[3]) {
+//            buffer.reverse();
+//        }
+//        
+//        var value = 0;
+//        for(var i = 0; i < byteCount; ++i) {
+//            value <<= 8;
+//            value |= buffer.get(i);
+//        }
+//        
+//        if((byteCount & 0x01) !== 0) {
+//            if(!!arguments[2] && (value & 0x80) !== 0) {
+//                value -= detail._twoPower8;
+//            }
+//        }
+//        else if(((byteCount >>> 1) & 0x01) !== 0) {
+//            if(!!arguments[2] && (value & 0x8000) !== 0) {
+//                value -= detail._twoPower16;
+//            }
+//        }
+//        else if(((byteCount >>> 2) & 0x01) !== 0) {
+//            if(!arguments[2] && value < 0) {
+//                value += detail._twoPower32;
+//            }
+//        }
+//        
+//        return value;
     };
     
     /*////////////////////////////////*/
-    
-    /*////////////////////////////////////////////////////////////////*/
-    //karbonator.assertion namespace.
-    
-    /**
-     * @memberof karbonator
-     * @namespace
-     */
-    var assertion = karbonator.assertion || {};
-    karbonator.assertion = assertion;
-    
-    /**
-     * @memberof karbonator.assertion
-     * @function
-     * @param {Boolean} boolExpr
-     * @param {String} [message]
-     * @param {Function} [errorClass]
-     */
-    assertion.isTrue = function (boolExpr) {
-        if(!boolExpr) {
-            var errorClass = (
-                karbonator.isFunction(arguments[2])
-                ? arguments[2] :
-                Error
-            );
-            
-            throw new errorClass((
-                karbonator.isUndefinedOrNull(arguments[1])
-                ? "Assertion Failed" :
-                arguments[1].toString()
-            ));
-        }
-    };
-    
-    /**
-     * @memberof karbonator.assertion
-     * @function
-     * @param {Boolean} boolExpr
-     * @param {String} [message]
-     * @param {Function} [errorClass]
-     */
-    assertion.isFalse = function (boolExpr) {
-        return assertion.isTrue(
-            !boolExpr,
-            arguments[1],
-            arguments[2]
-        );
-    };
-    
-    /**
-     * @memberof karbonator.assertion
-     * @function
-     * @param {*} o
-     * @param {String} [message]
-     * @param {Function} [errorClass]
-     */
-    assertion.isNotUndefined = function (o) {
-        assertion.isTrue(!karbonator.isUndefined(o), arguments[1], arguments[2]);
-    };
-    
-    /**
-     * @memberof karbonator.assertion
-     * @function
-     * @param {Object} o
-     * @param {Function} klass
-     * @param {String} [message]
-     * @param {Function} [errorClass]
-     */
-    assertion.isInstanceOf = function (o, klass) {
-        assertion.isTrue(o instanceof klass, arguments[2], arguments[3]);
-    };
-    
-    /*////////////////////////////////////////////////////////////////*/
     
     /*////////////////////////////////////////////////////////////////*/
     //karbonator.math namespace.

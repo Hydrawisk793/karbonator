@@ -50,6 +50,27 @@
     var Set = collection.ListSet;
     var Map = collection.ListMap;
     
+    //For debugging only...
+    //Array.prototype.toString function fucking sucks...
+    //Why the function just flattens all multidimensional arrays?
+    //It's fucking annoying because it makes debugging hard...
+    Array.prototype.toString = function () {
+        var str = '[';
+        
+        if(this.length > 0) {
+            str += this[0];
+        }
+        
+        for(var i = 1; i < this.length; ++i) {
+            str += ',';
+            str += this[i];
+        }
+        
+        str += ']';
+        
+        return str;
+    };
+    
     /**
      * @memberof karbonator
      * @namespace
@@ -205,7 +226,7 @@
     RegexVm._Frame = function (arg0) {
         if(arg0 instanceof RegexVm._Frame) {
             this._returnAddress = arg0._returnAddress;
-            this._repStack = arg0._repStack.slice();
+            this._repStack = detail._copyIntArray(arg0._repStack);
         }
         else if(karbonator.isNonNegativeSafeInteger(arg0)) {
             this._returnAddress = arg0;
@@ -223,6 +244,9 @@
      * @param {RegexVm} vm
      * @param {Number} id
      * @param {Number} pc
+     * @param {RegexVm._Thread} [parent]
+     * @param {Number} [forkKey]
+     * @param {Boolean} [prioritize]
      */
     RegexVm._Thread = function (vm, id, pc) {
         if(!(vm instanceof RegexVm)) {
@@ -237,12 +261,57 @@
         
         this._vm = vm;
         this._id = id;
+        this._initialPc = pc;
         this._pc = pc;
-        this._lastOpCode = 0xFF;
         this._matchResult = null;
-        this._consumeRanges = [this._vm._cursor];
-        this._frameStack = [new RegexVm._Frame(0)];
-        this._path = [];
+        
+        var parent = arguments[3];
+        var forkKey = arguments[4];
+        if(
+            (parent instanceof RegexVm._Thread)
+            && karbonator.isNonNegativeSafeInteger(forkKey)
+        ) {
+            var parentFrameStack = parent._frameStack;
+            var i = parentFrameStack.length;
+            var newThFrameStack = new Array(i);
+            while(i > 0) {
+                --i;
+                newThFrameStack[i] = new RegexVm._Frame(
+                    parentFrameStack[i]
+                );
+            }
+            this._frameStack = newThFrameStack;
+
+            var parentPath = parent._path;
+            parentPath.push([forkKey, 0, 0]);
+            var lastNdx = parentPath.length - 1;
+            var newThPath = detail._copyTwoDimIntArray(parentPath);
+            parentPath[lastNdx][1] = +!!arguments[5];
+            this._path = newThPath;
+            
+            this._consumeRanges = detail._copyIntArray(parent._consumeRanges);
+            
+            this._groupNdxStack = detail._copyIntArray(parent._groupNdxStack);
+            
+            parent._consumedValues.push([1, -forkKey]);
+            this._consumedValues = detail._copyTwoDimIntArray(parent._consumedValues);
+            parent._consumedValues[parent._consumedValues.length - 1][1] = (+!!arguments[5] ? forkKey : -forkKey);
+            
+            this._instAddr = parent._instAddr;
+            this._lastOpCode = parent._lastOpCode;
+        }
+        else {
+            this._frameStack = [new RegexVm._Frame(0)];
+            this._path = [];
+            this._consumeRanges = [vm._cursor];
+            
+            this._groupNdxStack = [];
+            
+            this._consumedValues = [];
+            
+            this._instAddr = 0;
+            this._lastOpCode = 0x00;
+        }
     };
     
     /**
@@ -261,37 +330,76 @@
     
     /**
      * @function
-     * @param {Number} id
-     * @param {Number} forkKey
-     * @param {Number} pc
-     * @param {Boolean} [prioritize=false]
-     * @return {RegexVm._Thread}
+     * @param {RegexVm._Thread} rhs
+     * @return {Boolean}
      */
-    RegexVm._Thread.prototype.createForkedThread = function (id, forkKey, pc) {
-        if(!karbonator.isNonNegativeSafeInteger(forkKey)) {
-            throw new TypeError("'forkKey' must be a non-negative safe integer.");
+    RegexVm._Thread.prototype.comparePriorityTo = function (rhs) {
+        var thisPath = this._path;
+        var rhsPath = rhs._path;
+        var thisPathLen = thisPath.length;
+        var rhsPathLen = rhsPath.length;
+        
+        var lenDiff = thisPathLen - rhsPathLen;
+        var minLen = (lenDiff < 0 ? thisPathLen : rhsPathLen);
+        
+        for(var i = 0; i < minLen; ++i) {
+            var lhsPoint = thisPath[i];
+            var rhsPoint = rhsPath[i];
+            
+            if(lhsPoint[0] !== rhsPoint[0]) {
+                break;
+            }
+            
+            var priorityDiff = lhsPoint[1] - rhsPoint[1];
+            if(priorityDiff !== 0) {
+                return priorityDiff;
+            }
         }
         
-        var newTh = new RegexVm._Thread(this._vm, id, pc);
-        
-        newTh._consumeRanges = this._consumeRanges.slice();
-        
-        newTh._frameStack = new Array(this._frameStack.length);
-        for(var i = 0; i < newTh._frameStack.length; ++i) {
-            newTh._frameStack[i] = new RegexVm._Frame(
-                this._frameStack[i]
-            );
+        switch(
+            (this._frameStack.length < 1 ? 0x02 : 0)
+            | (rhs._frameStack.length < 1 ? 0x01 : 0)
+        ) {
+        case 0x00:
+            return lenDiff;
+        //break;
+        case 0x01:
+            return 1;
+        //break;
+        case 0x02:
+            return -1;
+        //break;
+        case 0x03:
+            var lhsResult = this._matchResult;
+            var rhsResult = rhs._matchResult;
+            switch(
+                (null !== lhsResult ? 0x02 : 0)
+                | (null !== rhsResult ? 0x01 : 0)
+            ) {
+            case 0:
+                return lenDiff;
+            //break;
+            case 1:
+                return -1;
+            //break;
+            case 2:
+                return 1;
+            //break;
+            case 3:
+                return lhsResult.text.length - rhsResult.text.length;
+            //break;
+            }
+        //break;
         }
-        
-        newTh._path = new Array(this._path.length);
-        for(var i = 0; i < this._path.length; ++i) {
-            newTh._path[i] = this._path[i].slice();
-        }
-        
-        this._path.push([forkKey, (!!arguments[3] ? 1 : 0)]);
-        newTh._path.push([forkKey, 0]);
-        
-        return newTh;
+    };
+    
+    /**
+     * @function
+     * @param {RegexVm._Thread} rhs
+     * @return {Boolean}
+     */
+    RegexVm._Thread.prototype.isPriorTo = function (rhs) {
+        return this.comparePriorityTo(rhs) > 0;
     };
     
     /**
@@ -575,14 +683,14 @@
                     [RegexVm.OperandType.characterCode]
                 ],
                 [
-                    "reserved0E",
+                    "begin.group",
                     0x0E,
-                    [RegexVm.OperandType.characterCode]
+                    [RegexVm.OperandType.byteIndex]
                 ],
                 [
-                    "reserved0F",
+                    "end.group",
                     0x0F,
-                    [RegexVm.OperandType.characterCode]
+                    [RegexVm.OperandType.byteIndex]
                 ],
                 [
                     "test.code",
@@ -763,10 +871,6 @@
             throw new TypeError("'end' must be a non-negative safe integer.");
         }
         
-        if(this._bytecode._regexStr === "((a*b*c*)|(a*c*b*))*") {
-            debugger;
-        }
-        
         var results = [];
         for(var i = start; ; ) {
             var result = this._run(i);
@@ -795,7 +899,6 @@
     };
     
     /**
-     * TODO : 우선순위가 적용되지 않은 루트에서 매치된 것까지 모두 수용하도록 수정
      * @private
      * @function
      * @param {Number} startIndex
@@ -809,12 +912,12 @@
         var found = false;
         var matchThread = null;
         
-        var debugMatchThreads = [];
-        var debugStr = "";
+//        var debugStr = "";
         
         this.createThread(0);
         
         var aliveThreads = [];
+        var acceptedThreads = [];
         var deadThreads = [];
         for(
             ;
@@ -824,8 +927,8 @@
             for(var i = 0; i < this._ctxts.length; ++i) {
                 var th = this._ctxts[i];
                 while(!th.isDead()) {
-                    var execInfo = th.execute();
-                    debugStr += this.createExecInfoDebugMessage(execInfo) + "\r\n";
+                    th.execute();
+//                    debugStr += this.createExecInfoDebugMessage(th) + "\r\n";
                     
                     if(((th._lastOpCode & 0xF0) >>> 4) === 1) {
                         break;
@@ -833,13 +936,20 @@
                 }
                 
                 if(th.isDead()) {
-                    deadThreads.push(th);
+                    if(null === th._matchResult){
+                        deadThreads.push(th);
+                    }
+                    else {
+                        acceptedThreads.push(th);
+                    }
                 }
                 else {
                     aliveThreads.push(th);
                 }
                 
-                debugStr += ".............................." + "\r\n";
+//                debugStr += ".............................." + "\r\n";
+                
+                //debugger;
             }
             
             var temp = this._ctxts;
@@ -847,26 +957,22 @@
             aliveThreads = temp;
             aliveThreads.length = 0;
             
-            debugStr += "threads === "
-                + Array.from(
-                    this._ctxts,
-                    function (current) {
-                        return 'T' + current._id + '(' + '[' + current._path + ']' + ')';
-                    }
-                ).toString()
-                 + "\r\n"
-            ;
+//            debugStr += "threads(" + this._ctxts.length + ") === [" + "\r\n";
+//            for(var i = 0; i < this._ctxts.length; ++i) {
+//                var th = this._ctxts[i];
+//                debugStr += 'T' + th._id + '(' + '[' + _createConsumedValuesDebugString(th._consumedValues) + ']' + ')' + "\r\n";
+//            }
+//            debugStr += ']';
+//            if(this._ctxts.length < 1) {
+//                debugStr += "\r\n";
+//            }
             
-            for(var i = 0; i < deadThreads.length; ++i) {
-                var th = deadThreads[i];
-                if(null === th._matchResult) {
-                    continue;
-                }
+            for(var i = 0; i < acceptedThreads.length; ++i) {
+                var th = acceptedThreads[i];
                 
-                debugStr += this.createMatchResultDebugMessage(th)
-                    + "\r\n"
-                ;
-                debugMatchThreads.push(th);
+//                debugStr += this.createMatchResultDebugMessage(th)
+//                    + "\r\n"
+//                ;
                 
                 if(null === matchThread) {
                     matchThread = th;
@@ -884,7 +990,7 @@
                     if(th.isPriorTo(matchThread)) {
                         matchThread = th;
                         
-                        debugStr += 'T' + th._id + " is prior to the selected thread." + "\r\n";
+//                        debugStr += 'T' + th._id + " is prior to the selected thread." + "\r\n";
                     }
                     
                     var priorToAlivingThs = true;
@@ -894,34 +1000,68 @@
                     if(priorToAlivingThs) {
                         found = true;
                         
-                        debugStr += 'T' + th._id + " is prior to aliving threads." + "\r\n";
+//                        debugStr += 'T' + th._id + " is prior to aliving threads." + "\r\n";
                     }
                 }
             }
+            acceptedThreads.length = 0;
             deadThreads.length = 0;
             
             if(null !== matchThread) {
-                debugStr += "selectedResult === "
-                    + this.createMatchResultDebugMessage(matchThread)
-                    + "\r\n"
-                ;
+                for(var i = this._ctxts.length; i > 0; ) {
+                    --i;
+                    
+                    if(this._ctxts[i].comparePriorityTo(matchThread) < 0) {
+                        this._ctxts.splice(i, 1);
+                    }
+                }
+                
+//                debugStr += "selectedResult === "
+//                    + this.createMatchResultDebugMessage(matchThread)
+//                    + "\r\n"
+//                ;
             }
-            debugStr += "matchThreads === ";
-            for(var t = 0; t < debugMatchThreads.length; ++t) {
-                debugStr += this.createMatchResultDebugMessage(debugMatchThreads[t])
-                    + "\r\n"
-                ;
-            }
-            debugStr += "\r\n";
-            debugStr += "------------------------------" + "\r\n";
+            
+//            debugStr += "\r\n";
+//            debugStr += "------------------------------" + "\r\n";
         }
         
-        debugStr += (null === matchThread ? "Failed..." : "Found!!!") + "\r\n";
-        debugStr += "==============================" + "\r\n";
+//        debugStr += (null === matchThread ? "Failed..." : "Found!!!") + "\r\n";
+//        debugStr += "==============================" + "\r\n";
         
         //console.log(debugStr);
         
         return (null !== matchThread ? matchThread._matchResult : null);
+    };
+    
+    /**
+     * @fucntion
+     * @param {Array.<Array.<Number>>} values
+     * @returns {String}
+     */
+    var _createConsumedValuesDebugString = function (values) {
+        var str = "";
+        
+        for(var i = 0; i < values.length; ++i) {
+            var value = values[i];
+            
+            switch(value[0]) {
+            case 0:
+                str += String.fromCharCode(value[1]);
+            break;
+            case 1:
+                str += '{' + (value[1] >= 0 ? '+' : '') + value[1] + '}';
+            break;
+            case 2:
+                str += '(' + value[1];
+            break;
+            case 3:
+                str += ')' + value[1];
+            break;
+            }
+        }
+        
+        return str;
     };
     
     /**
@@ -939,10 +1079,10 @@
         
         var newThread = (
             !karbonator.isUndefinedOrNull(parent)
-            ? parent.createForkedThread(
-                newThreadId,
+            ? new RegexVm._Thread(
+                this, newThreadId, pc,
+                parent,
                 parent._pc - RegexVm.Instruction.fork.getSize(),
-                pc,
                 arguments[2]
             )
             : new RegexVm._Thread(this, newThreadId, pc)
@@ -1014,69 +1154,9 @@
     
     /**
      * @function
-     * @param {RegexVm._Thread} rhs
-     * @return {Boolean}
-     */
-    RegexVm._Thread.prototype.isPriorTo = function (rhs) {
-        var minLen = (
-            this._path.length < rhs._path.length
-            ? this._path.length
-            : rhs._path.length
-        );
-        for(var i = 0; i < minLen; ++i) {
-            var lhsPoint = this._path[i];
-            var rhsPoint = rhs._path[i];
-            
-            //TODO : Longest match preferred alternation 실험
-            if(lhsPoint[0] !== rhsPoint[0]) {
-                break;
-            }
-            
-            if(lhsPoint[1] !== rhsPoint[1]) {
-                return lhsPoint[1] > rhsPoint[1];
-            }
-        }
-        
-        var lhsDead = (this._frameStack.length < 1 ? 0x02 : 0);
-        var rhsDead = (rhs._frameStack.length < 1 ? 0x01 : 0);
-        switch(lhsDead | rhsDead) {
-        case 0x00:
-            //TODO : 제대로 동작하는지 확인.
-            throw new Error(
-                "An edge case has been detected."
-                + " concat Hydrawisk793."
-                + " (hyw793@naver.com, http://blog.naver.com)"
-            );
-        //break;
-        case 0x01:
-            return true;
-        //break;
-        case 0x02:
-            return false;
-        //break;
-        case 0x03:
-            return this._matchResult.text.length > rhs._matchResult.text.length;
-        //break;
-        }
-    };
-    
-    /**
-     * @function
-     * @return {Object}
      */
     RegexVm._Thread.prototype.execute = function () {
-        var info = {
-            thread : this,
-            instructionAddress : this._pc,
-            postExecutionPc : 0,
-            opCode : 0
-        };
-        
-        var opCode = this.getNextOpCode();
-        ++this._pc;
-        
-        info.opCode = opCode;
-        
+        var opCode = this.readOpCode();
         switch(opCode) {
         case 0x00:
             this.branch();
@@ -1110,9 +1190,13 @@
         break;
         case 0x0C:
         case 0x0D:
-        case 0x0E:
-        case 0x0F:
             throw new Error("An invalid opcode has been found.");
+        break;
+        case 0x0E:
+            this.beginGroup();
+        break;
+        case 0x0F:
+            this.endGroup();
         break;
         case 0x10:
             this.testCode();
@@ -1129,20 +1213,21 @@
         default:
             throw new Error("An invalid opcode has been found.");
         }
-        
-        this._lastOpCode = opCode;
-        
-        info.postExecutionPc = this._pc;
-        
-        return info;
     };
     
     /**
      * @function
      * @return {Number}
      */
-    RegexVm._Thread.prototype.getNextOpCode = function () {
-        return this._vm._bytecode._codeBlock.get(this._pc);
+    RegexVm._Thread.prototype.readOpCode = function () {
+        this._instAddr = this._pc;
+        
+        var opCode = this._vm._bytecode._codeBlock.get(this._pc);
+        ++this._pc;
+        
+        this._lastOpCode = opCode;
+        
+        return opCode;
     };
     
     /**
@@ -1152,7 +1237,7 @@
      */
     RegexVm.prototype.createMatchResultDebugMessage = function (matchThread) {
         return 'T' + matchThread._id
-            + '(' + '[' + matchThread._path + ']' + ')'
+            + '(' + '[' + _createConsumedValuesDebugString(matchThread._consumedValues) + ']' + ')'
             + "."
             + "result === "
             + matchThread._matchResult.toString()
@@ -1161,28 +1246,27 @@
     
     /**
      * @function
-     * @param {Object} execInfo
+     * @param {RegexVm._Thread} th
      * @returns {String}
      */
-    RegexVm.prototype.createExecInfoDebugMessage = function (execInfo) {
-        var th = execInfo.thread;
-        var inst = RegexVm.findInstructionByOpCode(execInfo.opCode);
+    RegexVm.prototype.createExecInfoDebugMessage = function (th) {
+        var inst = RegexVm.findInstructionByOpCode(th._lastOpCode);
         if(karbonator.isUndefined(inst)) {
             throw new Error("An invalid opcode has been found.");
         }
         
         var debugStr = 'T' + th._id;
         debugStr += '(';
-        debugStr += '[' + th._path + ']';
+        debugStr += '[' + _createConsumedValuesDebugString(th._consumedValues) + ']';
         debugStr += ')';
         
         var mnemonic = inst.getMnemonic();
-        debugStr += " " + (execInfo.instructionAddress) + ":";
+        debugStr += " " + (th._instAddr) + ":";
         debugStr += "\t" + mnemonic;
         
         if(mnemonic.endsWith("fork")) {
             debugStr += " " + "parent : T" + th._id;
-            debugStr += '(' + execInfo.postExecutionPc + ')';
+            debugStr += '(' + th._pc + ')';
             var childTh = th._vm._ctxts[th._vm._ctxts.length - 1];
             debugStr += ", child : T" + childTh._id;
             debugStr += '(' + childTh._pc + ')';
@@ -1193,6 +1277,22 @@
         }
         
         return debugStr;
+    };
+    
+    /**
+     * @function
+     * @return {Number}
+     */
+    RegexVm._Thread.prototype.readUint8 = function () {
+        var value = karbonator.bytesToInteger(
+            this._vm._bytecode._codeBlock,
+            1, false,
+            this._vm._bytecode._littleEndian,
+            this._pc
+        );
+        this._pc += 1;
+        
+        return value;
     };
     
     /**
@@ -1286,6 +1386,33 @@
         var goToOffset = this.readInt16();
         var newThreadPcOffset = this.readInt16();
         
+        var forkPc = this._instAddr;
+        for(var i = this._consumedValues.length; i > 0; ) {
+            --i;
+            
+            var point = this._consumedValues[i];
+            if(point[0] === 0) {
+                break;
+            }
+            else if(point[0] === 1 && Math.abs(point[1]) === forkPc) {
+                this._frameStack.length = 0;
+                return;
+            }
+        }
+//        for(var i = this._path.length; i > 0; ) {
+//            --i;
+//            
+//            var point = this._path[i];
+//            if(point[2] > 0) {
+//                break;
+//            }
+//            
+//            if(point[0] === forkPc) {
+//                this._frameStack.length = 0;
+//                return;
+//            }
+//        }
+        
         this._vm.createThread(
             this._pc + newThreadPcOffset,
             this,
@@ -1345,6 +1472,20 @@
         this._consumeRanges.push(this._vm._cursor);
     };
     
+    RegexVm._Thread.prototype.beginGroup = function () {
+        var groupIndex = this.readUint8();
+        
+        this._groupNdxStack.push(groupIndex);
+        this._consumedValues.push([2, groupIndex]);
+    };
+    
+    RegexVm._Thread.prototype.endGroup = function () {
+        var groupIndex = this.readUint8();
+        
+        this._groupNdxStack.pop();
+        this._consumedValues.push([3, groupIndex]);
+    };
+    
     /**
      * @function
      */
@@ -1353,6 +1494,13 @@
         
         if(!this._vm.inputMatchesCode(charCode)) {
             this._frameStack.length = 0;
+        }
+        else {
+            if(this._path.length > 0) {
+                ++this._path[this._path.length - 1][2];
+            }
+            
+            this._consumedValues.push([0, this._vm._inStr.charCodeAt(this._vm._cursor)]);
         }
     };
     
@@ -1365,6 +1513,13 @@
         if(!this._vm.inputIsInRange(rangeIndex)) {
             this._frameStack.length = 0;
         }
+        else {
+            if(this._path.length > 0) {
+                ++this._path[this._path.length - 1][2];
+            }
+            
+            this._consumedValues.push([0, this._vm._inStr.charCodeAt(this._vm._cursor)]);
+        }
     };
     
     /**
@@ -1375,6 +1530,13 @@
         
         if(!this._vm.inputIsInRangeSet(rangeSetIndex)) {
             this._frameStack.length = 0;
+        }
+        else {
+            if(this._path.length > 0) {
+                ++this._path[this._path.length - 1][2];
+            }
+            
+            this._consumedValues.push([0, this._vm._inStr.charCodeAt(this._vm._cursor)]);
         }
     };
     
@@ -1399,19 +1561,15 @@
      * @constructor
      * @param {Number} type
      * @param {Object} value
-     * @param {Boolean} [rootOfGroup]
+     * @param {Boolean} [rootOfGroup=false]
      */
     var AstNode = function (type, value) {
         assertion.isTrue(karbonator.isNonNegativeSafeInteger(type));
         assertion.isTrue(!karbonator.isUndefined(value));
-
+        
         this._type = type;
         this._value = value;
-        this._rootOfGroup = (
-            karbonator.isUndefined(arguments[2])
-            ? false
-            : !!arguments[2]
-        );
+        this._rootOfGroup = !!arguments[2];
         this._parent = null;
         this._children = [];
     };
@@ -2321,9 +2479,10 @@
     var OperatorTypeKeys = {
         regexAlternation : 0,
         accept : 1,
-        alternation : 2,
-        concatenation : 3,
-        repetition : 4
+        tokenExpressionCall : 2,
+        alternation : 3,
+        concatenation : 4,
+        repetition : 5
     };
     
     /**
@@ -2343,7 +2502,13 @@
                 new OperatorType(
                     OperatorTypeKeys.accept,
                     "accept",
-                    1, 10,
+                    0, 20,
+                    OperatorType.Associativity.leftToRight
+                ),
+                new OperatorType(
+                    OperatorTypeKeys.tokenExpressionCall,
+                    "tokenExpressionCall",
+                    0, 10,
                     OperatorType.Associativity.leftToRight
                 ),
                 new OperatorType(
@@ -2380,9 +2545,11 @@
      * @constructor
      */
     var RegexParser = function () {
-        this._exprCtxStack = [];
+        this._regexStr = "";
+        this._state = 0;
         this._pos = 0;
         this._parsing = false;
+        this._exprCtxStack = [];
         this._error = {
             occured : false,
             message : "",
@@ -3036,7 +3203,7 @@
                 scanning = false;
             }
         }
-
+        
         if(scanning && !valid) {
             errorCode = 6;
             errorMessage = "Not enough characters for parsing a repetition operator.";
@@ -3044,6 +3211,124 @@
         
         return new ScannerResult(
             valueType, [min, max],
+            new karbonator.math.Interval(startIndex, pos),
+            new ScannerError(errorCode, errorMessage)
+        );
+    };
+    
+    /**
+     * @memberof RegexParser
+     * @private
+     * @function
+     * @param {String} str
+     * @param {Number} [startIndex=0]
+     * @return {ScannerResult}
+     */
+    RegexParser._scanIdInBraces = function (str) {
+        var startIndex = arguments[1];
+        if(karbonator.isUndefined(startIndex)) {
+            startIndex = 0;
+        }
+        else if(!karbonator.isNonNegativeSafeInteger(startIndex)) {
+            throw new TypeError("'startIndex' must be a non-negative integer.");
+        }
+        
+        var pos = startIndex;
+        var value = [];
+        
+        var valid = false;
+        var errorCode = 0;
+        var errorMessage = "";
+        
+        var state = 0;
+        
+        while(
+            state < 10
+            && pos < str.length
+            && errorCode === 0
+        ) {
+            var ch = str.charAt(pos);
+            
+            switch(state) {
+            case 0:
+                if(ch === '{') {
+                    ++pos;
+                    state = 1;
+                }
+                else {
+                    errorCode = 1;
+                    errorMessage = "An id in braces term must start with '{'.";
+                }
+            break;
+            case 1:
+                switch(ch) {
+                case '_': case '$':
+                case 'a': case 'b': case 'c': case 'd': case 'e':
+                case 'f': case 'g': case 'h': case 'i': case 'j':
+                case 'k': case 'l': case 'm': case 'n': case 'o':
+                case 'p': case 'q': case 'r': case 's': case 't':
+                case 'u': case 'v': case 'w': case 'x': case 'y':
+                case 'z':
+                case 'A': case 'B': case 'C': case 'D': case 'E':
+                case 'F': case 'G': case 'H': case 'I': case 'J':
+                case 'K': case 'L': case 'M': case 'N': case 'O':
+                case 'P': case 'Q': case 'R': case 'S': case 'T':
+                case 'U': case 'V': case 'W': case 'X': case 'Y':
+                case 'Z':
+                    value.push(ch.charCodeAt(0));
+                    ++pos;
+                    state = 2;
+                break;
+                default:
+                    errorCode = 2;
+                    errorMessage = "An invalid character has been found in the identifier.";
+                }
+            break;
+            case 2:
+                switch(ch) {
+                case '_': case '$':
+                case 'a': case 'b': case 'c': case 'd': case 'e':
+                case 'f': case 'g': case 'h': case 'i': case 'j':
+                case 'k': case 'l': case 'm': case 'n': case 'o':
+                case 'p': case 'q': case 'r': case 's': case 't':
+                case 'u': case 'v': case 'w': case 'x': case 'y':
+                case 'z':
+                case 'A': case 'B': case 'C': case 'D': case 'E':
+                case 'F': case 'G': case 'H': case 'I': case 'J':
+                case 'K': case 'L': case 'M': case 'N': case 'O':
+                case 'P': case 'Q': case 'R': case 'S': case 'T':
+                case 'U': case 'V': case 'W': case 'X': case 'Y':
+                case 'Z':
+                case '0': case '1': case '2': case '3': case '4':
+                case '5': case '6': case '7': case '8': case '9':
+                    value.push(ch.charCodeAt(0));
+                    ++pos;
+                break;
+                default:
+                    state = 3;
+                }
+            break;
+            case 3:
+                if(ch === '}') {
+                    valid = true;
+                    ++pos;
+                    state = 10;
+                }
+                else {
+                    errorCode = 5;
+                    errorMessage = "An id in braces term must end with '}'.";
+                }
+            break;
+            }
+        }
+        
+        if(errorCode === 0 && !valid) {
+            errorCode = 10;
+            errorMessage = "";
+        }
+        
+        return new ScannerResult(
+            0, value,
             new karbonator.math.Interval(startIndex, pos),
             new ScannerError(errorCode, errorMessage)
         );
@@ -3547,7 +3832,7 @@
             }
         }
         
-        if(errorCode === 0 && valid) {
+        if(errorCode === 0 && !valid) {
             errorCode = 50;
             errorMessage = "";
         }
@@ -3610,7 +3895,18 @@
         }
         
         var op = new Operator(opType, arguments[1]);
-        if(opType.getParameterCount() === 1) {
+        //TODO : tokenExpressionCall을 term 취급하기 위한 임시 조치.
+        if(opType.getParameterCount() < 2) {
+            //TODO : 임시 조치
+            if(opType.getKey() === OperatorTypeKeys.tokenExpressionCall) {
+                if(
+                    this._termNodeStack.length >= 1
+                    && this._lastNodeType === RegexParser.AstNodeType.terminal
+                ) {
+                    this.pushOperator(OperatorTypeKeys.concatenation);
+                }
+            }
+            
             this._createAndPushOperatorNode(op);
         }
         else {
@@ -3789,6 +4085,7 @@
      * @function
      * @param {String} regexStr
      * @param {Number} [tokenKey=0]
+     * @param {karbonator.collection.TreeMap|karbonator.collection.ListMap} [tokenNameKeyMap]
      * @return {AstNode}
      */
     RegexParser.prototype.parse = function (regexStr) {
@@ -3804,8 +4101,26 @@
             throw new TypeError("'tokenKey' must be a non-negative safe integer.");
         }
         
+        var tokenNameKeyMap = arguments[2];
+        if(
+            !karbonator.isUndefined(tokenNameKeyMap)
+            && !(
+                tokenNameKeyMap instanceof karbonator.collection.TreeMap
+                || tokenNameKeyMap instanceof karbonator.collection.ListMap
+            )
+        ) {
+            throw new TypeError(
+                "'tokenNameKeyMap'"
+                + " must be a "
+                + "{string, non-negative integer}"
+                + " map collection."
+            );
+        }
+        
         var charSetParser = new RegexParser._CharSetParser();
         
+        this._regexStr = regexStr;
+        this._state = 0;
         this._exprCtxStack.length = 0;
         this._exprCtxStack.push(new RegexParser._ExprContext());
         this._pos = 0;
@@ -3824,147 +4139,172 @@
         //   입력된 character-term을 토큰 스택에 push.
         
         for(
-            var regexLen = regexStr.length;
+            var regexLen = this._regexStr.length;
             this._parsing && this._pos < regexLen;
         ) {
             var groupRootNode = null;
             var scanResult = null;
             
             var exprCtx = this._getLastExpressionContext();
-            var ch = regexStr.charAt(this._pos);
-            switch(ch) {
-            case '\r': case '\n':
-            break;
-            case '^':
-                this._cancelParsing("Start of string anchor is not implemented yet...");
-            break;
-            case '$':
-                this._cancelParsing("End of string anchor is not implemented yet...");
-            break;
-            case '(':
-                this._exprCtxStack.push(new RegexParser._ExprContext());
-                
-                this._moveToNextIfNoError();
-            break;
-            case ')':
-                if(this._exprCtxStack.length >= 1) {
-                    groupRootNode = exprCtx.evaluateAll();
-                    if(null !== groupRootNode) {
-                        groupRootNode.setRootOfGroup(true);
-                        this._exprCtxStack.pop();
-                        this._getLastExpressionContext().pushTerm(groupRootNode);
-                        
-                        this._moveToNextIfNoError();
-                    }
-                    else {
-                        this._cancelParsing("There are some errors in the grouped expression.");
-                    }
-                }
-                else {
-                    this._cancelParsing("There is no open parenthesis.");
-                }
-            break;
-            case '?': case '*':
-            case '+': case '{':
-                scanResult = RegexParser._scanRepetitionOperator(
-                    regexStr,
-                    this._pos
-                );
-                if(scanResult.error.code === 0) {
-                    if(scanResult.valueType === 1) {
-                        this._cancelParsing("Possessive quantifiers are not supported.");
-                    }
-                    else {
-                        exprCtx.pushOperator(
-                            OperatorTypeKeys.repetition,
-                            [
-                                scanResult.valueType,
-                                new Interval(
-                                    scanResult.value[0], 
-                                    scanResult.value[1]
-                                )
-                            ]
-                        );
-                        
-                        this._pos = scanResult.range.getMaximum();
-                    }
-                }
-                else {
-                    this._cancelParsing(scanResult.error.message);
-                }
-            break;
-            case '}':
-                this._cancelParsing("An invalid token that specifies end of constrained repetition has been found.");
-            break;
-            case '|':
-                exprCtx.pushOperator(OperatorTypeKeys.alternation);
-                
-                this._moveToNextIfNoError();
-            break;
-            case '[':
-                var charSetResult = charSetParser.parse(regexStr, this._pos);
-                if(charSetResult.error.code === 0) {
-                    exprCtx.pushTerm(charSetResult.codeRanges);
+            var ch = this._regexStr.charAt(this._pos);
+            
+            switch(this._state) {
+            case 0:
+                switch(ch) {
+                case '\r': case '\n':
+                break;
+                case '^':
+                    this._cancelParsing("Start of string anchor is not implemented yet...");
+                break;
+                case '$':
+                    this._cancelParsing("End of string anchor is not implemented yet...");
+                break;
+                case '(':
+                    this._exprCtxStack.push(new RegexParser._ExprContext());
                     
-                    this._pos = charSetResult.textRange.getMaximum();
-                }
-                else {
-                    this._cancelParsing(charSetResult.error.message);
+                    this._moveToNextIfNoError();
+                break;
+                case ')':
+                    if(this._exprCtxStack.length >= 1) {
+                        groupRootNode = exprCtx.evaluateAll();
+                        if(null !== groupRootNode) {
+                            groupRootNode.setRootOfGroup(true);
+                            this._exprCtxStack.pop();
+                            this._getLastExpressionContext().pushTerm(groupRootNode);
+
+                            this._moveToNextIfNoError();
+                        }
+                        else {
+                            this._cancelParsing("There are some errors in the grouped expression.");
+                        }
+                    }
+                    else {
+                        this._cancelParsing("There is no open parenthesis.");
+                    }
+                break;
+                case '{':
+                    ++this._pos;
+                    this._state = 1;
+                break;
+                case '*': case '+': case '?':
+                    this._processRepetitionOperator();
+                break;
+                case '}':
+                    this._cancelParsing("An invalid token that specifies end of constrained repetition has been found.");
+                break;
+                case '|':
+                    exprCtx.pushOperator(OperatorTypeKeys.alternation);
+
+                    this._moveToNextIfNoError();
+                break;
+                case '\\':
+                    scanResult = RegexParser._scanEscapedCharacter(
+                        this._regexStr,
+                        this._pos
+                    );
+                    if(scanResult.error.code === 0) {
+                        switch(scanResult.valueType) {
+                        case 0:
+                            exprCtx.pushTerm(scanResult.value[0]);
+
+                            this._pos = scanResult.range.getMaximum();
+                        break;
+                        case 1:
+                            exprCtx.pushTerm(
+                                karbonator.Enum.getValueAt(
+                                    RegexParser._CharRange,
+                                    scanResult.value[0]
+                                ).getRange()
+                            );
+
+                            this._pos = scanResult.range.getMaximum();
+                        break;
+                        case 2:
+                            exprCtx.pushTerm(
+                                karbonator.Enum.getValueAt(
+                                    RegexParser._CharRangeSet,
+                                    scanResult.value[0]
+                                ).getRanges()
+                            );
+
+                            this._pos = scanResult.range.getMaximum();
+                        break;
+                        case 3:
+                            this._cancelParsing("Back referencing is not supported.");
+                        break;
+                        }
+                    }
+                    else {
+                        this._cancelParsing(scanResult.error.message);
+                    }
+                break;
+                case '[':
+                    var charSetResult = charSetParser.parse(
+                        this._regexStr,
+                        this._pos
+                    );
+                    if(charSetResult.error.code === 0) {
+                        exprCtx.pushTerm(charSetResult.codeRanges);
+
+                        this._pos = charSetResult.textRange.getMaximum();
+                    }
+                    else {
+                        this._cancelParsing(charSetResult.error.message);
+                    }
+                break;
+                case ']':
+                    this._cancelParsing("An invalid token that specifies end of a character set has been found.");
+                break;
+                case '.':
+                    exprCtx.pushTerm(RegexParser._CharRange.anyChars.getRange());
+
+                    this._moveToNextIfNoError();
+                break;
+                default:
+                    exprCtx.pushTerm(this._regexStr.charCodeAt(this._pos));
+
+                    this._moveToNextIfNoError();
                 }
             break;
-            case ']':
-                this._cancelParsing("An invalid token that specifies end of a character set has been found.");
-            break;
-            case '\\':
-                scanResult = RegexParser._scanEscapedCharacter(
-                    regexStr,
-                    this._pos
-                );
-                if(scanResult.error.code === 0) {
-                    switch(scanResult.valueType) {
-                    case 0:
-                        exprCtx.pushTerm(scanResult.value[0]);
-                        
-                        this._pos = scanResult.range.getMaximum();
-                    break;
-                    case 1:
-                        exprCtx.pushTerm(
-                            karbonator.Enum.getValueAt(
-                                RegexParser._CharRange,
-                                scanResult.value[0]
-                            ).getRange()
-                        );
-                        
-                        this._pos = scanResult.range.getMaximum();
-                    break;
-                    case 2:
-                        exprCtx.pushTerm(
-                            karbonator.Enum.getValueAt(
-                                RegexParser._CharRangeSet,
-                                scanResult.value[0]
-                            ).getRanges()
-                        );
-                        
-                        this._pos = scanResult.range.getMaximum();
-                    break;
-                    case 3:
-                        this._cancelParsing("Back referencing is not supported.");
-                    break;
+            case 1://Starts with '{'.
+                switch(ch) {
+                case '0': case '1': case '2': case '3': case '4':
+                case '5': case '6': case '7': case '8': case '9':
+                    --this._pos;
+                    this._processRepetitionOperator();
+                    
+                    this._state = 0;
+                break;
+                default:
+                    --this._pos;
+                    scanResult = RegexParser._scanIdInBraces(
+                        this._regexStr,
+                        this._pos
+                    );
+                    if(scanResult.error.code === 0) {
+                        var targetTokenName = charCodesToString(scanResult.value);
+                        var targetTokenKey = tokenNameKeyMap.get(targetTokenName);
+                        if(!karbonator.isUndefined(targetTokenKey)) {
+                            exprCtx.pushOperator(
+                                OperatorTypeKeys.tokenExpressionCall,
+                                [targetTokenKey]
+                            );
+                            
+                            this._pos = scanResult.range.getMaximum();
+                            this._state = 0;
+                        }
+                        else {
+                            this._cancelParsing("'" + targetTokenName + "' is not defined.");
+                        }
+                    }
+                    else {
+                        this._cancelParsing(scanResult.error.message);
                     }
                 }
-                else {
-                    this._cancelParsing(scanResult.error.message);
-                }
             break;
-            case '.':
-                exprCtx.pushTerm(RegexParser._CharRange.anyChars.getRange());
+            case 2://Starts with '('.
                 
-                this._moveToNextIfNoError();
             break;
-            default:
-                exprCtx.pushTerm(regexStr.charCodeAt(this._pos));
-                
-                this._moveToNextIfNoError();
             }
         }
         
@@ -3999,6 +4339,39 @@
      */
     RegexParser.prototype._getLastExpressionContext = function () {
         return this._exprCtxStack[this._exprCtxStack.length - 1];
+    };
+    
+    /**
+     * @private
+     * @function
+     */
+    RegexParser.prototype._processRepetitionOperator = function () {
+        var scanResult = RegexParser._scanRepetitionOperator(
+            this._regexStr,
+            this._pos
+        );
+        if(scanResult.error.code === 0) {
+            if(scanResult.valueType === 1) {
+                this._cancelParsing("Possessive quantifiers are not supported.");
+            }
+            else {
+                this._getLastExpressionContext().pushOperator(
+                    OperatorTypeKeys.repetition,
+                    [
+                        scanResult.valueType,
+                        new Interval(
+                            scanResult.value[0], 
+                            scanResult.value[1]
+                        )
+                    ]
+                );
+                
+                this._pos = scanResult.range.getMaximum();
+            }
+        }
+        else {
+            this._cancelParsing(scanResult.error.message);
+        }
     };
     
     /**
@@ -4043,13 +4416,13 @@
             for(var i = 0; i < arg0._lines.length; ++i) {
                 this._lines[i] = arg0._lines[i].slice();
             }
-
+            
             this._lineAddrs = null;
         }
         else {
             this._byteOrderReversed = !!arg0;
             this._lines = [];
-
+            
             this._lineAddrs = null;
         }
     };
@@ -4083,7 +4456,7 @@
         }
         
         for(var i = 0, len = rhs._lines.length; i < len; ++i) {
-            this._lines.push(rhs._lines[i]);
+            this._lines.push(detail._copyIntArray(rhs._lines[i]));
         }
         
         return this;
@@ -4096,9 +4469,36 @@
      */
     InstructionBuffer.prototype.consume = function (rhs) {
         this.add(rhs);
-
+        
         rhs.clear();
-
+        
+        return this;
+    };
+    
+    /**
+     * @function
+     * @param {RegexVm.Instruction} inst
+     * @param {...Number} [operands]
+     * @return {InstructionBuffer}
+     */
+    InstructionBuffer.prototype.putFront = function (inst) {
+        if(!(inst instanceof RegexVm.Instruction)) {
+            throw new TypeError("The parameter 'inst' must be an instance of 'RegexVm.Instruction.'.");
+        }
+        
+        var line = [inst.getOpCode()];
+        var args = Array.prototype.slice.call(arguments);
+        for(var i = 1; i < args.length; ++i) {
+            var arg = args[i];
+            if(!karbonator.isNumber(arg)) {
+                throw new TypeError("Optional arguments must be numbers.");
+            }
+            
+            line.push(arg);
+        }
+        
+        this._lines.splice(0, 0, line);
+        
         return this;
     };
     
@@ -4260,6 +4660,11 @@
      * @constructor
      */
     var CodeEmitter = function () {
+        this._tokenKeySrNdxMap = new TreeMap(karbonator.numberComparator);
+        this._localSrBuffers = [];
+        this._tokenSrBuffers = [];
+        this._keyTokenMap = null;
+        
         this._ranges = new ListSet(_edgeComparator);
         this._rangeIndexSets = new ListSet(
             function (l, r) {
@@ -4283,21 +4688,26 @@
                 return (l === r ? 0 : -1);
             }
         );
-
+        
         this._byteOrderReversed = true;
         this._rootNode = null;
     };
-
+    
     /**
      * @function
      * @param {AstNode} rootNode
-     * @return {RegexVm.Bytecode} 
+     * @param {karbonator.collection.ListMap} keyTokenMap
+     * @return {RegexVm.Bytecode}
      */
-    CodeEmitter.prototype.emitCode = function (rootNode) {
+    CodeEmitter.prototype.emitCode = function (rootNode, keyTokenMap) {
         if(!(rootNode instanceof AstNode)) {
             throw new TypeError("The parameter must be an instance of 'AstNode'.");
         }
         
+        this._keyTokenMap = keyTokenMap;
+        this._tokenKeySrNdxMap.clear();
+        this._localSrBuffers.length = 0;
+        this._tokenSrBuffers.length = 0;
         this._ranges.clear();
         this._rangeIndexSets.clear();
         this._nodeCodeMap.clear();
@@ -4314,10 +4724,14 @@
         
         var instBuffer = this._nodeCodeMap.get(rootNode);
         
-        return instBuffer.printBytecode(
+        var bytecode = instBuffer.printBytecode(
             Array.from(this._ranges),
             Array.from(this._rangeIndexSets)
-        );
+        ); 
+        
+        this._keyTokenMap = null;
+        
+        return bytecode;
     };
     
     /**
@@ -4329,29 +4743,57 @@
         if(this._nodeCodeMap.has(node)) {
             throw new Error("The node has been already processed.");
         }
-
-        var buffer = null;
+        
+        var buffer = new InstructionBuffer(this._byteOrderReversed);
+        
+        if(node.isRootOfGroup()) {
+            buffer.put(RegexVm.Instruction.beginGroup, 0);
+        }
+        
         switch(node.getType()) {
         case RegexParser.AstNodeType.operator:
             var op = node.getValue();
             switch(op.getType().getKey()) {
             case OperatorTypeKeys.accept:
-                buffer = this._visitAccept(node, op.getStaticArguments()[0]);
+                buffer = this._visitAccept(
+                    buffer,
+                    node,
+                    op.getStaticArguments()
+                );
+            break;
+            case OperatorTypeKeys.tokenExpressionCall:
+                buffer = this._visitTokenExpressionCall(
+                    buffer,
+                    node,
+                    op.getStaticArguments()
+                );
             break;
             case OperatorTypeKeys.regexAlternation:
-                buffer = this._visitRegexAlternation(node);
+                buffer = this._visitRegexAlternation(
+                    buffer,
+                    node,
+                    op.getStaticArguments()
+                );
             break;
             case OperatorTypeKeys.alternation:
-                buffer = this._visitAlternation(node);
+                buffer = this._visitAlternation(
+                    buffer,
+                    node,
+                    op.getStaticArguments()
+                );
             break;
             case OperatorTypeKeys.concatenation:
-                buffer = this._visitConcatenation(node);
+                buffer = this._visitConcatenation(
+                    buffer,
+                    node,
+                    op.getStaticArguments()
+                );
             break;
             case OperatorTypeKeys.repetition:
                 buffer = this._visitRepetition(
+                    buffer,
                     node,
-                    op.getStaticArguments()[0],
-                    op.getStaticArguments()[1]
+                    op.getStaticArguments()
                 );
             break;
             default:
@@ -4359,24 +4801,228 @@
             }
         break;
         case RegexParser.AstNodeType.terminal:
-            buffer = this._visitTerminal(node);
+            buffer = this._visitTerminal(
+                buffer,
+                node
+            );
         break;
         default:
-            throw new Error("Not implemented yet...");
+            throw new Error("An unknown ast node type has been detected.");
         }
-
+        
+        if(node.isRootOfGroup()) {
+            buffer.put(RegexVm.Instruction.endGroup, 0);
+        }
+        
         this._nodeCodeMap.set(node, buffer);
     };
-
+    
     /**
      * @private
      * @function
+     * @param {InstructionBuffer} buffer
      * @param {AstNode} node
      * @return {InstructionBuffer}
      */
-    CodeEmitter.prototype._visitTerminal = function (node) {
-        var buffer = new InstructionBuffer(this._byteOrderReversed);
+    CodeEmitter.prototype._visitRegexAlternation = function (buffer, node) {
+        var offsetInfo = this._caculateSumOfChildCodeOffset(node);
+        var offset = offsetInfo.sum;
+        var childCount = node.getChildCount();
+        var codeLen = 2;
+        var calledTokenCount = 0;
+        for(var i = 0; i < childCount; ++i) {
+            var childNode = node.getChildAt(i);
+            if(
+                childNode.getType() !== RegexParser.AstNodeType.operator
+                || childNode.getValue().getType().getKey() !== OperatorTypeKeys.accept
+            ) {
+                throw new Error("Parameter nodes of 'regexAlternation' operator must be 'accept' operator nodes.");
+            }
+            
+            var token = this._keyTokenMap.get(childNode.getValue().getStaticArguments()[0]);
+            if(token._subRoutineOnly) {
+                continue;
+            }
+            
+            if(i < childCount - 1) {
+                offset -= offsetInfo.lengths[i];
+                buffer.put(RegexVm.Instruction.fork, 0, offsetInfo.lengths[i] + 1);
+            }
+            
+            buffer.consume(this._nodeCodeMap.get(childNode));
+            
+            if(i < childCount - 1) {
+                buffer.put(RegexVm.Instruction.bra, (childCount - 2 - i) * codeLen + offset);
+            }
+            
+            ++calledTokenCount;
+        }
         
+        if(calledTokenCount < 1) {
+            buffer.put(RegexVm.Instruction.rts);
+        }
+        
+        this._mergeAllTokenSubRoutines(buffer);
+        
+        return buffer;
+    };
+    
+    /**
+     * @private
+     * @function
+     * @param {InstructionBuffer} buffer
+     * @param {AstNode} node
+     * @param {Array.<Number>} staticArgs
+     * @return {InstructionBuffer}
+     */
+    CodeEmitter.prototype._visitAccept = function (buffer, node, staticArgs) {
+        var tokenKey = staticArgs[0];
+        
+        this._createTokenSubRoutine(node, tokenKey);
+        
+        buffer.put(RegexVm.Instruction.jsr, 0.2, tokenKey);
+        buffer.put(RegexVm.Instruction.accept, tokenKey);
+        buffer.put(RegexVm.Instruction.rts);
+        
+        return buffer;
+    };
+    
+    /**
+     * @private
+     * @function
+     * @param {InstructionBuffer} buffer
+     * @param {AstNode} node
+     * @param {Array.<Number>} staticArgs
+     * @return {InstructionBuffer}
+     */
+    CodeEmitter.prototype._visitTokenExpressionCall = function (buffer, node, staticArgs) {
+        node;
+        
+        buffer.put(RegexVm.Instruction.jsr, 0.2, staticArgs[0]);
+        
+        return buffer;
+    };
+    
+    /**
+     * @private
+     * @function
+     * @param {InstructionBuffer} buffer
+     * @param {AstNode} node
+     * @return {InstructionBuffer}
+     */
+    CodeEmitter.prototype._visitAlternation = function (buffer, node) {
+        var offsetInfo = this._caculateSumOfChildCodeOffset(node);
+        var offset = offsetInfo.sum;
+        var childCount = node.getChildCount();
+        var codeLen = 2;
+        for(var i = 0; i < childCount - 1; ++i) {
+            offset -= offsetInfo.lengths[i];
+            
+            buffer.put(RegexVm.Instruction.pfork, 0, offsetInfo.lengths[i] + 1);
+            buffer.consume(this._getAndWrapChildCode(node, i));
+            buffer.put(RegexVm.Instruction.bra, (childCount - 2 - i) * codeLen + offset);
+        }
+        if(i < childCount) {
+            buffer.consume(this._getAndWrapChildCode(node, i));
+        }
+        
+        return buffer;
+    };
+    
+    /**
+     * @private
+     * @function
+     * @param {InstructionBuffer} buffer
+     * @param {AstNode} node
+     * @return {InstructionBuffer}
+     */
+    CodeEmitter.prototype._visitConcatenation = function (buffer, node) {
+        var childCount = node.getChildCount();
+        for(var i = 0; i < childCount; ++i) {
+            buffer.consume(this._getAndWrapChildCode(node, i));
+        }
+        
+        return buffer;
+    };
+    
+    /**
+     * @private
+     * @function
+     * @param {InstructionBuffer} buffer
+     * @param {AstNode} node
+     * @param {Array.<Number>} staticArgs
+     * @return {InstructionBuffer}
+     */
+    CodeEmitter.prototype._visitRepetition = function (buffer, node, staticArgs) {
+        var repType = staticArgs[0];
+        var repRange = staticArgs[1];
+        
+        var childNode = node.getChildAt(0);
+        var childCode = this._nodeCodeMap.get(childNode);
+        
+        var minRep = repRange.getMinimum();
+        switch(minRep) {
+        case 0:
+        break;
+        case 1:
+            buffer.add(childCode);
+        break;
+        default:
+            //TODO : A stub. Should be optimized
+            //by using repetition bytecodes if possible.
+            for(var i = 0; i < minRep; ++i) {
+                buffer.add(childCode);
+            }
+        }
+        
+        var childCodeLen = childCode.getCount();
+        var isNonGreedy = repType === 2;
+        var maxRep = repRange.getMaximum();
+        if(maxRep >= _maxInt) {
+            if(isNonGreedy) {
+                buffer.put(RegexVm.Instruction.pfork, childCodeLen + 1, 0);
+            }
+            else {
+                buffer.put(RegexVm.Instruction.pfork, 0, childCodeLen + 1);
+            }
+            
+            buffer.consume(childCode);
+            
+            buffer.put(RegexVm.Instruction.bra, -(childCodeLen + 2));
+        }
+        else if(minRep !== maxRep) {
+            var optRepCount = repRange.getMaximum() - repRange.getMinimum();
+            
+            //TODO : A stub. Should be optimized
+            //by using repetition bytecodes if possible.
+            for(var i = 0; i < optRepCount; ++i) {
+                if(isNonGreedy) {
+                    buffer.put(RegexVm.Instruction.pfork, childCodeLen, 0);
+                }
+                else {
+                    buffer.put(RegexVm.Instruction.pfork, 0, childCodeLen);
+                }
+                
+                if(i < optRepCount - 1) {
+                    buffer.add(childCode);
+                }
+                else {
+                    buffer.consume(childCode);
+                }
+            }
+        }
+        
+        return buffer;
+    };
+    
+    /**
+     * @private
+     * @function
+     * @param {InstructionBuffer} buffer
+     * @param {AstNode} node
+     * @return {InstructionBuffer}
+     */
+    CodeEmitter.prototype._visitTerminal = function (buffer, node) {
         var ranges = node.getValue();
         
         var range = null;
@@ -4424,191 +5070,77 @@
      * @function
      * @param {AstNode} node
      * @param {Number} tokenKey
-     * @return {InstructionBuffer}
+     * @return {Number}
      */
-    CodeEmitter.prototype._visitAccept = function (node, tokenKey) {
+    CodeEmitter.prototype._createTokenSubRoutine = function (node, tokenKey) {
         var buffer = new InstructionBuffer(this._byteOrderReversed);
         
-        this._consumeCode(buffer, node, 0);
+        var srNdx = this._tokenSrBuffers.length;
         
-        //TODO : consume 명령어를 넣는 것이 타당한 지 테스트.
+        buffer.put(RegexVm.Instruction.beginGroup, 0);
+        buffer.consume(this._getAndWrapChildCode(node, 0));
+        buffer.put(RegexVm.Instruction.endGroup, 0);
+        
+        this._labelGroups(buffer);
+        
         buffer.put(RegexVm.Instruction.consume);
-        buffer.put(RegexVm.Instruction.accept, tokenKey);
         buffer.put(RegexVm.Instruction.rts);
         
-        return buffer;
+        this._tokenSrBuffers.push(buffer);
+        
+        this._tokenKeySrNdxMap.set(tokenKey, srNdx);
+        
+        return srNdx;
     };
     
-    /**
-     * @private
-     * @function
-     * @param {AstNode} node
-     * @return {InstructionBuffer}
-     */
-    CodeEmitter.prototype._visitRegexAlternation = function (node) {
-        var buffer = new InstructionBuffer(this._byteOrderReversed);
-        
-        var offsetInfo = this._caculateSumOfChildCodeOffset(node);
-        var offset = offsetInfo.sum;
-        var childCount = node.getChildCount();
-        var codeLen = 2;
-        for(var i = 0; i < childCount - 1; ++i) {
-            offset -= offsetInfo.lengths[i];
-            
-            buffer.put(RegexVm.Instruction.fork, 0, offsetInfo.lengths[i] + 1);
-            this._consumeCode(buffer, node, i);
-            buffer.put(RegexVm.Instruction.bra, (childCount - 2 - i) * codeLen + offset);
-        }
-        if(i < childCount) {
-            this._consumeCode(buffer, node, i);
-        }
-        
-        return buffer;
-    };
-    
-    /**
-     * @private
-     * @function
-     * @param {AstNode} node
-     * @return {InstructionBuffer}
-     */
-    CodeEmitter.prototype._visitAlternation = function (node) {
-        var buffer = new InstructionBuffer(this._byteOrderReversed);
-        
-        var offsetInfo = this._caculateSumOfChildCodeOffset(node);
-        var offset = offsetInfo.sum;
-        var childCount = node.getChildCount();
-        var codeLen = 2;
-        for(var i = 0; i < childCount - 1; ++i) {
-            offset -= offsetInfo.lengths[i];
-            
-            buffer.put(RegexVm.Instruction.pfork, 0, offsetInfo.lengths[i] + 1);
-            this._consumeCode(buffer, node, i);
-            buffer.put(RegexVm.Instruction.bra, (childCount - 2 - i) * codeLen + offset);
-        }
-        if(i < childCount) {
-            this._consumeCode(buffer, node, i);
-        }
-        
-        return buffer;
-    };
-    
-    /**
-     * @private
-     * @function
-     * @param {AstNode} node
-     * @return {InstructionBuffer}
-     */
-    CodeEmitter.prototype._visitConcatenation = function (node) {
-        var buffer = new InstructionBuffer(this._byteOrderReversed);
-        
-        var childCount = node.getChildCount();
-        for(var i = 0; i < childCount; ++i) {
-            this._consumeCode(buffer, node, i);
-        }
-        
-        return buffer;
-    };
-    
-    /**
-     * @private
-     * @function
-     * @param {AstNode} node
-     * @param {Number} repType
-     * @param {karbonator.math.Interval} repRange
-     * @return {InstructionBuffer}
-     */
-    CodeEmitter.prototype._visitRepetition = function (node, repType, repRange) {
-        var buffer = new InstructionBuffer(this._byteOrderReversed);
-        
-        var minRep = repRange.getMinimum();
-        switch(minRep) {
-        case 0:
-        break;
-        case 1:
-            this._addCode(buffer, node, 0);
-        break;
-        default:
-            //TODO : A stub. Should be optimized
-            //by using repetition bytecodes if possible.
-            for(var i = 0; i < minRep; ++i) {
-                this._addCode(buffer, node, 0);
-            }
-        }
-        
-        var isGreedy = repType === 0;
-        var childCodeLen = this._nodeCodeMap.get(node.getChildAt(0)).getCount();
-        var maxRep = repRange.getMaximum();
-        if(maxRep >= _maxInt) {
-            if(isGreedy) {
-                buffer.put(RegexVm.Instruction.pfork, 0, childCodeLen + 1);
-            }
-            else {
-                buffer.put(RegexVm.Instruction.pfork, childCodeLen + 1, 0);
-            }
-            
-            this._consumeCode(buffer, node, 0);
-            buffer.put(RegexVm.Instruction.bra, -(childCodeLen + 2));
-        }
-        else if(minRep !== maxRep) {
-            var optRepCount = repRange.getMaximum() - repRange.getMinimum();
-            
-            //TODO : A stub. Should be optimized
-            //by using repetition bytecodes if possible.
-            for(var i = 0; i < optRepCount; ++i) {
-                if(isGreedy) {
-                    buffer.put(RegexVm.Instruction.pfork, 0, childCodeLen);
-                }
-                else {
-                    buffer.put(RegexVm.Instruction.pfork, childCodeLen, 0);
-                }
-                
-                if(i < optRepCount - 1) {
-                    this._addCode(buffer, node, 0);
-                }
-                else {
-                    this._consumeCode(buffer, node, 0);
-                }
-            }
-        }
-
-        return buffer;
-    };
-
     /**
      * @private
      * @function
      * @param {InstructionBuffer} buffer
-     * @param {AstNode} parentNode
-     * @param {Number} childIndex
-     * @returns {InstructionBuffer}
      */
-    CodeEmitter.prototype._addCode = function (buffer, parentNode, childIndex) {
-        var childCode = new InstructionBuffer(
-            this._nodeCodeMap.get(parentNode.getChildAt(childIndex))
-        );
-        this._fillLabelAddress(childCode, childCode.getCount(), 0.1);
-        buffer.consume(childCode);
-
-        return buffer;
+    CodeEmitter.prototype._mergeAllTokenSubRoutines = function (buffer) {
+        var offset = buffer.getCount();
+        var tokenSrAddrs = [];
+        for(var i = 0; i < this._tokenSrBuffers.length; ++i) {
+            var tokenSrBuffer = this._tokenSrBuffers[i];
+            var tokenSrLineCount = tokenSrBuffer.getCount();
+            
+            tokenSrAddrs.push(offset);
+            buffer.consume(tokenSrBuffer);
+            
+            offset += tokenSrLineCount;
+        }
+        this._tokenSrBuffers.length = 0;
+        
+        var jsrOpCode = RegexVm.Instruction.jsr.getOpCode();
+        for(var i = 0; i < buffer.getCount(); ++i) {
+            var line = buffer.getLineAt(i);
+            if(line[0] === jsrOpCode && line[1] === 0.2) {
+                line[1] = tokenSrAddrs[this._tokenKeySrNdxMap.get(line[2])];
+                line.pop();
+            }
+        }
     };
-
+    
     /**
      * @private
      * @function
-     * @param {InstructionBuffer} buffer
      * @param {AstNode} parentNode
      * @param {Number} childIndex
      * @returns {InstructionBuffer}
      */
-    CodeEmitter.prototype._consumeCode = function (buffer, parentNode, childIndex) {
-        var childCode = this._nodeCodeMap.get(parentNode.getChildAt(childIndex));
-        this._fillLabelAddress(childCode, childCode.getCount(), 0.1);
-        buffer.consume(childCode);
-
-        return buffer;
+    CodeEmitter.prototype._getAndWrapChildCode = function (parentNode, childIndex) {
+        var childNode = parentNode.getChildAt(childIndex);
+        var childCode = this._nodeCodeMap.get(childNode);
+        
+        //this._fillLabelAddress(childCode, childCode.getCount(), 0.1);
+//        if(childNode.isRootOfGroup()) {
+//            this._wrapWithGroupBoundary(childCode);
+//        }
+        
+        return childCode;
     };
-
+    
     /**
      * @private
      * @function
@@ -4627,12 +5159,12 @@
         if(karbonator.isUndefined(epsilon)) {
             epsilon = karbonator.math.epsilon;
         }
-
+        
         for(var i = 0, lineCount = buffer.getCount(); i < lineCount; ++i) {
             --labelAddress;
-
+            
             var line = buffer.getLineAt(i);
-
+            
             //함수 마지막 부분으로 점프하는 모든 레이블 조사
             var inst = RegexVm.findInstructionByOpCode(line[0]);
             for(var j = 0; j < inst.getOperandCount(); ++j) {
@@ -4646,10 +5178,64 @@
                 }
             }
         }
-
+        
         return buffer;
     };
-
+    
+    /**
+     * @private
+     * @function
+     * @param {InstructionBuffer} buffer
+     * @return {InstructionBuffer}
+     */
+    CodeEmitter.prototype._wrapWithGroupBoundary = function (buffer) {
+        buffer.putFront(RegexVm.Instruction.beginGroup, 0);
+        buffer.put(RegexVm.Instruction.endGroup, 0);
+        
+        return buffer;
+    };
+    
+    /**
+     * @private
+     * @function
+     * @param {InstructionBuffer} buffer
+     * @return {InstructionBuffer}
+     */
+    CodeEmitter.prototype._labelGroups = function (buffer) {
+        var startIndex = 0;
+        
+        var beginGroupOpCode = RegexVm.Instruction.beginGroup.getOpCode();
+        var endGroupOpCode = RegexVm.Instruction.endGroup.getOpCode();        
+        
+        var lineCount = buffer.getCount();
+        var groupIndex = startIndex;
+        
+        var groupIndexStack = [];
+        for(var i = 0; i < lineCount; ++i) {
+            var line = buffer.getLineAt(i);
+            
+            switch(line[0]) {
+            case beginGroupOpCode:
+                groupIndexStack.push(groupIndex);
+                line[1] = groupIndex;
+                ++groupIndex;
+            break;
+            case endGroupOpCode:
+                if(groupIndexStack.length < 1) {
+                    throw new Error("Some group pairs lack an open or close parenthesis.");
+                }
+                line[1] = groupIndexStack.pop();
+            break;
+            }
+        }
+        
+        if(groupIndexStack.length > 0) {
+            throw new Error("Some group pairs lack an open or close parenthesis.");
+        }
+        
+        return buffer;
+    };
+    
     /**
      * @private
      * @function
@@ -4697,8 +5283,9 @@
      * @param {Number} key
      * @param {String} name
      * @param {String} regexText
+     * @param {Boolean} subRoutineOnly
      */
-    Lexer.Token = function (key, name, regexText) {
+    Lexer.Token = function (key, name, regexText, subRoutineOnly) {
         if(!karbonator.isNonNegativeSafeInteger(key)) {
             throw new TypeError("'key' must be a non-negative safe integer.");
         }
@@ -4712,6 +5299,7 @@
         this.key = key;
         this.name = name;
         this.regexText = regexText;
+        this.subRoutineOnly = !!subRoutineOnly;
     };
     
     /**
@@ -4734,6 +5322,11 @@
         str += "regexText";
         str += " : ";
         str += '\"' + this.regexText + '\"';
+        
+        str += ", ";
+        str += "subRoutineOnly";
+        str += " : ";
+        str += this.subRoutineOnly;
         
         str += '}';
         
@@ -4850,12 +5443,19 @@
      * @param {Number} key
      * @param {String} name
      * @param {String} regexText
+     * @param {Boolean} subRoutineOnly
      * @param {AstNode} astRootNode
      */
-    LexerGenerator._Token = function (key, name, regexText, astRootNode) {
+    LexerGenerator._Token = function (
+        key, name,
+        regexText,
+        subRoutineOnly,
+        astRootNode
+    ) {
         this._key = key;
         this._name = name;
         this._regexText = regexText;
+        this._subRoutineOnly = subRoutineOnly;
         this._astRootNode = astRootNode;
     };
     
@@ -4866,6 +5466,11 @@
     LexerGenerator._Token.prototype.toString = function () {
         var str = '{';
         
+        str += "key";
+        str += " : ";
+        str += this._key;
+        
+        str += ", ";
         str += "name";
         str += " : ";
         str += this._name;
@@ -4874,6 +5479,11 @@
         str += "regex";
         str += " : ";
         str += this._regexText;
+        
+        str += ", ";
+        str += "subRoutineOnly";
+        str += " : ";
+        str += this._subRoutineOnly;
         
         str += ", ";
         str += "ast";
@@ -4906,6 +5516,7 @@
      * @function
      * @param {String} name
      * @param {String} regexText
+     * @param {Boolean} [subRoutineOnly=false]
      * @return {Number}
      */
     LexerGenerator.prototype.defineToken = function (name, regexText) {
@@ -4913,10 +5524,16 @@
         if(karbonator.isUndefined(tokenKey)) {
             tokenKey = this._keySeq;
             ++this._keySeq;
+            
+            this._nameKeyMap.set(name, tokenKey);
         }
         
-        var astRootNode = this._regexParser.parse(regexText, tokenKey);
+        var astRootNode = this._regexParser.parse(
+            regexText,
+            tokenKey, this._nameKeyMap
+        );
         if(null === astRootNode) {
+            this._nameKeyMap.remove(name);
             --this._keySeq;
             
             throw new Error(this._regexParser._error.message);
@@ -4924,7 +5541,9 @@
         
         var newToken = new LexerGenerator._Token(
             tokenKey, name,
-            regexText, astRootNode
+            regexText,
+            !!arguments[2],
+            astRootNode
         );
         this._keyTokenMap.set(tokenKey, newToken);
         
@@ -4954,35 +5573,37 @@
      */
     LexerGenerator.prototype.generate = function () {
         var regexStr = "";
-        var rootNode = null;
-        if(this._keyTokenMap.getElementCount() >= 2) {
-            rootNode = new AstNode(
-                RegexParser.AstNodeType.operator,
-                new Operator(
-                    _opTypeMap.get(OperatorTypeKeys.regexAlternation)
-                )
-            );
-            for(
-                var i = this._keyTokenMap.values(), iP = i.next();
-                !iP.done;
-                iP = i.next()
-            ) {
-                var token = iP.value;
-                regexStr += (regexStr === "" ? "" : "||") + token._regexText;
-                regexStr += "(@accept{" + token._key + '})';
-                rootNode.addChild(iP.value._astRootNode);
+        var rootNode = new AstNode(
+            RegexParser.AstNodeType.operator,
+            new Operator(
+                _opTypeMap.get(OperatorTypeKeys.regexAlternation)
+            )
+        );
+        for(
+            var i = this._keyTokenMap.values(), iP = i.next();
+            !iP.done;
+            iP = i.next()
+        ) {
+            var token = iP.value;
+            regexStr += (regexStr === "" ? "" : "|||");
+            if(token._subRoutineOnly) {
+                regexStr += "(@{subRoutineOnly}" + token._regexText + ')';
             }
-        }
-        else {
-            var token = this._keyTokenMap.values().next().value;
-            regexStr = token._regexText;
-            regexStr += "(@accept{" + token._key + '})';
-            rootNode = token._astRootNode;
+            else {
+                regexStr += token._regexText;
+            }
+            regexStr += "(@{accept}{" + token._key + '})';
+            rootNode.addChild(iP.value._astRootNode);
         }
         
         var lexer = new string.Lexer();
-        lexer._regexVm._bytecode = this._bytecodeEmitter.emitCode(rootNode);
-        lexer._regexVm._bytecode._regexStr = regexStr;
+        var bytecode = this._bytecodeEmitter.emitCode(
+            rootNode,
+            this._keyTokenMap
+        );
+        bytecode._regexStr = regexStr;
+        lexer._regexVm._bytecode = bytecode;
+        
         for(
             var i = this._keyTokenMap.entries(), iP = i.next();
             !iP.done;
@@ -4994,7 +5615,8 @@
                 key,
                 new Lexer.Token(
                     key, token._name,
-                    token._regexText
+                    token._regexText,
+                    token._subRoutineOnly
                 )
             );
             lexer._nameKeyMap.set(token._name, key);

@@ -1801,640 +1801,647 @@
     /*////////////////////////////////*/
     //TreeMap
     
-    collection.TreeMap = (function () {
-        /**
-         * @function
-         * @param {Object} pair
-         * @return {Object}
-         */
-        var _treeMapKeyGetter = function (pair) {
-            return pair.key;
+    /**
+     * @function
+     * @param {Object} pair
+     * @return {Object}
+     */
+    var _treeMapKeyGetter = function (pair) {
+        return pair.key;
+    };
+    
+    /**
+     * @memberof karbonator.collection
+     * @constructor
+     * @param {karbonator.comparator} comparator
+     * @param {iterable} [iterable]
+     */
+    var TreeMap = function (comparator) {
+        this._rbTreeSet = new RbTreeSetBase(comparator, _treeMapKeyGetter);
+        this._comparator = comparator;
+        
+        if(!karbonator.isUndefined(arguments[1])) {
+            _mapConcatenateAssign(this, arguments[1]);
+        }
+    };
+    
+    /**
+     * @memberof karbonator.collection.TreeMap
+     * @constructor
+     * @param {TreeMap} treeMap
+     */
+    TreeMap.PairIterator = function (treeMap) {
+        this._iter = treeMap._rbTreeSet.begin();
+        this._end = treeMap._rbTreeSet.end();
+    };
+    
+    /**
+     * @function
+     * @return {Object}
+     */
+    TreeMap.PairIterator.prototype.next = function () {
+        var out = {
+            done : this._iter[karbonator.equals](this._end)
         };
         
-        /**
-         * @memberof karbonator.collection
-         * @constructor
-         * @param {karbonator.comparator} comparator
-         * @param {iterable} [iterable]
-         */
-        var TreeMap = function (comparator) {
-            this._rbTreeSet = new RbTreeSetBase(comparator, _treeMapKeyGetter);
-            this._comparator = comparator;
+        if(!out.done) {
+            var pair = this._iter.dereference();
+            out.value = [pair.key, pair.value];
             
-            if(!karbonator.isUndefined(arguments[1])) {
-                _mapConcatenateAssign(this, arguments[1]);
-            }
+            this._iter.moveToNext();
+        }
+        
+        return out;
+    };
+    
+    /**
+     * @memberof karbonator.collection.TreeMap
+     * @constructor
+     * @param {TreeMap} treeMap
+     */
+    TreeMap.KeyIterator = function (treeMap) {
+        this._iter = treeMap._rbTreeSet.begin();
+        this._end = treeMap._rbTreeSet.end();
+    };
+    
+    /**
+     * @function
+     * @return {Object}
+     */
+    TreeMap.KeyIterator.prototype.next = function () {
+        var done = this._iter[karbonator.equals](this._end);
+        var out = {
+            value : (!done ? this._iter.dereference().key : undefined),
+            done : done
         };
         
-        var PairIterator = (function () {
-            /**
-             * @function
-             * @param {TreeMap} treeMap
-             */
-            var PairIterator = function (treeMap) {
-                this._iter = treeMap._rbTreeSet.begin();
-                this._end = treeMap._rbTreeSet.end();
+        this._iter.moveToNext();
+        
+        return out;
+    };
+    
+    /**
+     * @memberof karbonator.collection.TreeMap
+     * @constructor
+     * @param {TreeMap} treeMap
+     */
+    TreeMap.ValueIterator = function (treeMap) {
+        this._iter = treeMap._rbTreeSet.begin();
+        this._end = treeMap._rbTreeSet.end();
+    };
+    
+    /**
+     * @function
+     * @return {Object}
+     */
+    TreeMap.ValueIterator.prototype.next = function () {
+        var out = {
+            done : this._iter[karbonator.equals](this._end)
+        };
+        
+        if(!out.done) {
+            out.value = this._iter.dereference().value;
+            
+            this._iter.moveToNext();
+        }
+        
+        return out;
+    };
+    
+    /**
+     * @function
+     * @return {TreeMap}
+     */
+    TreeMap.prototype[karbonator.shallowClone] = function () {
+        return _mapShallowCopy(TreeMap, this);
+    };
+    
+    /**
+     * @function
+     * @return {Number}
+     */
+    TreeMap.prototype.getElementCount = function () {
+        return this._rbTreeSet.getElementCount();
+    };
+    
+    /**
+     * @function
+     * @param {Object} key
+     * @param {Object} [defaultValue]
+     * @return {Object|undefined}
+     */
+    TreeMap.prototype.get = function (key) {
+        var endIter = this._rbTreeSet.end();
+        var iter = this._rbTreeSet.find(
+            {key : key},
+            RbTreeSetBase.SearchTarget.equal
+        );
+        var found = !iter[karbonator.equals](endIter);
+        if(found) {
+            return iter.dereference().value;
+        }
+        else if(arguments.length >= 2) {
+            this.set(key, arguments[1]);
+            
+            return arguments[1];
+        }
+    };
+    
+    /**
+     * @function
+     * @param {Object} key
+     * @param {Object} value
+     * @return {TreeMap}
+     */
+    TreeMap.prototype.set = function (key, value) {
+        var endIter = this._rbTreeSet.end();
+        var iter = this._rbTreeSet.find(
+            {key : key},
+            RbTreeSetBase.SearchTarget.equal
+        );
+        if(iter[karbonator.equals](endIter)) {
+            this._rbTreeSet.insert({key : key, value : value});
+        }
+        else {
+            iter.dereference().value = value;
+        }
+        
+        return this;
+    };
+    
+    /**
+     * @function
+     * @param {Object} key
+     * @param {Object} value
+     * @return {Boolean}
+     */
+    TreeMap.prototype.tryAdd = function (key, value) {
+        var endIter = this._rbTreeSet.end();
+        var iter = this._rbTreeSet.find(
+            {key : key},
+            RbTreeSetBase.SearchTarget.equal
+        );
+        var result = iter[karbonator.equals](endIter);
+        if(result) {
+            this._rbTreeSet.insert({key : key, value : value});
+        }
+        
+        return result;
+    };
+    
+    /**
+     * @function
+     * @param {Object} key
+     * @return {Boolean}
+     */
+    TreeMap.prototype.has = function (key) {
+        return !this._rbTreeSet.find(
+            {key : key},
+            RbTreeSetBase.SearchTarget.equal
+        )[karbonator.equals](this._rbTreeSet.end());
+    };
+    
+    /**
+     * @function
+     * @param {Object} key
+     * @return {Object|undefined}
+     */
+    TreeMap.prototype.findNotLessThan = function (key) {
+        var endIter = this._rbTreeSet.end();
+        var iter = this._rbTreeSet.find(
+            {key : key},
+            RbTreeSetBase.SearchTarget.greaterOrEqual
+        );
+        if(!iter[karbonator.equals](endIter)) {
+            var pair = iter.dereference();
+            return {
+                key : pair.key,
+                value : pair.value
             };
-            
-            /**
-             * @function
-             * @return {Object}
-             */
-            PairIterator.prototype.next = function () {
-                var done = this._iter[karbonator.equals](this._end);
-                var pair = (!done ? this._iter.dereference() : undefined);
-                var out = {
-                    value : (pair ? [pair.key, pair.value] : undefined),
-                    done : done
-                };
-                
-                this._iter.moveToNext();
-                
-                return out;
+        }
+    };
+    
+    /**
+     * @function
+     * @param {Object} key
+     * @return {Object|undefined}
+     */
+    TreeMap.prototype.findGreaterThan = function (key) {
+        var endIter = this._rbTreeSet.end();
+        var iter = this._rbTreeSet.find(
+            {key : key},
+            RbTreeSetBase.SearchTarget.greater
+        );
+        if(!iter[karbonator.equals](endIter)) {
+            var pair = iter.dereference();
+            return {
+                key : pair.key,
+                value : pair.value
             };
-            
-            return PairIterator;
-        }());
-        
-        var KeyIterator = (function () {
-            /**
-             * @function
-             * @param {TreeMap} treeMap
-             */
-            var KeyIterator = function (treeMap) {
-                this._iter = treeMap._rbTreeSet.begin();
-                this._end = treeMap._rbTreeSet.end();
-            };
-            
-            /**
-             * @function
-             * @return {Object}
-             */
-            KeyIterator.prototype.next = function () {
-                var done = this._iter[karbonator.equals](this._end);
-                var out = {
-                    value : (!done ? this._iter.dereference().key : undefined),
-                    done : done
-                };
-                
-                this._iter.moveToNext();
-                
-                return out;
-            };
-            
-            return KeyIterator;
-        }());
-        
-        var ValueIterator = (function () {
-            /**
-             * @function
-             * @param {TreeMap} treeMap
-             */
-            var ValueIterator = function (treeMap) {
-                this._iter = treeMap._rbTreeSet.begin();
-                this._end = treeMap._rbTreeSet.end();
-            };
-            
-            /**
-             * @function
-             * @return {Object}
-             */
-            ValueIterator.prototype.next = function () {
-                var done = this._iter[karbonator.equals](this._end);
-                var out = {
-                    value : (!done ? this._iter.dereference().value : undefined),
-                    done : done
-                };
-                
-                this._iter.moveToNext();
-                
-                return out;
-            };
-            
-            return ValueIterator;
-        }());
-        
-        /**
-         * @function
-         * @return {TreeMap}
-         */
-        TreeMap.prototype[karbonator.shallowClone] = function () {
-            return _mapShallowCopy(TreeMap, this);
-        };
-        
-        /**
-         * @function
-         * @return {Number}
-         */
-        TreeMap.prototype.getElementCount = function () {
-            return this._rbTreeSet.getElementCount();
-        };
-        
-        /**
-         * @function
-         * @param {Object} key
-         * @param {Object} [defaultValue]
-         * @return {Object|undefined}
-         */
-        TreeMap.prototype.get = function (key) {
-            var endIter = this._rbTreeSet.end();
-            var iter = this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.equal);
-            var found = !iter[karbonator.equals](endIter);
-            if(found) {
-                return iter.dereference().value;
-            }
-            else if(arguments.length >= 2) {
-                this.set(key, arguments[1]);
-                
-                return arguments[1];
-            }
-        };
-        
-        /**
-         * @function
-         * @param {Object} key
-         * @param {Object} value
-         * @return {TreeMap}
-         */
-        TreeMap.prototype.set = function (key, value) {
-            var endIter = this._rbTreeSet.end();
-            var iter = this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.equal);
-            if(iter[karbonator.equals](endIter)) {
-                this._rbTreeSet.insert({key : key, value : value});
-            }
-            else {
-                iter.dereference().value = value;
-            }
-            
-            return this;
-        };
-        
-        /**
-         * @function
-         * @param {Object} key
-         * @param {Object} value
-         * @return {Boolean}
-         */
-        TreeMap.prototype.tryAdd = function (key, value) {
-            var endIter = this._rbTreeSet.end();
-            var iter = this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.equal);
-            var result = iter[karbonator.equals](endIter);
-            if(result) {
-                this._rbTreeSet.insert({key : key, value : value});
-            }
-            
-            return result;
-        };
-        
-        /**
-         * @function
-         * @param {Object} key
-         * @return {Boolean}
-         */
-        TreeMap.prototype.has = function (key) {
-            return !this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.equal)[karbonator.equals](this._rbTreeSet.end());
-        };
-        
-        /**
-         * @function
-         * @param {Object} key
-         * @return {Object|undefined}
-         */
-        TreeMap.prototype.findNotLessThan = function (key) {
-            var endIter = this._rbTreeSet.end();
-            var iter = this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.greaterOrEqual);
-            if(!iter[karbonator.equals](endIter)) {
-                var pair = iter.dereference();
-                return {
-                    key : pair.key,
-                    value : pair.value
-                };
-            }
-        };
-        
-        /**
-         * @function
-         * @param {Object} key
-         * @return {Object|undefined}
-         */
-        TreeMap.prototype.findGreaterThan = function (key) {
-            var endIter = this._rbTreeSet.end();
-            var iter = this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.greater);
-            if(!iter[karbonator.equals](endIter)) {
-                var pair = iter.dereference();
-                return {
-                    key : pair.key,
-                    value : pair.value
-                };
-            }
-        };
-        
-        /**
-         * @function
-         * @param {Function} callback
-         * @param {Object} thisArg
-         */
-        TreeMap.prototype.forEach = function (callback, thisArg) {
-            for(
-                var end = this._rbTreeSet.end(), iter = this._rbTreeSet.begin();
-                !iter[karbonator.equals](end);
-                iter.moveToNext()
-            ) {
-                var pair = iter.dereference();
-                callback.call(thisArg, pair.value, pair.key, this);
-            }
-        };
-        
-        /**
-         * @function
-         * @return {PairIterator}
-         */
-        TreeMap.prototype.entries = function () {
-            return new PairIterator(this);
-        };
-        
-        /**
-         * @function
-         * @return {PairIterator}
-         */
-        TreeMap.prototype[Symbol.iterator] = function () {
-            return new PairIterator(this);
-        };
-        
-        /**
-         * @function
-         * @return {KeyIterator}
-         */
-        TreeMap.prototype.keys = function () {
-            return new KeyIterator(this);
-        };
-        
-        /**
-         * @function
-         * @return {ValueIterator}
-         */
-        TreeMap.prototype.values = function () {
-            return new ValueIterator(this);
-        };
-         
-        /**
-         * @function
-         * @param {Object} key
-         * @return {Boolean}
-         */
-        TreeMap.prototype.remove = function (key) {
-            return this._rbTreeSet.remove(key);
-        };
-        
-        /**
-         * @function
-         * @param {Object} key
-         * @return {Boolean}
-         */
-        TreeMap.prototype["delete"] = TreeMap.prototype.remove;
-        
-        /**
-         * @function
-         */
-        TreeMap.prototype.clear = function () {
-            this._rbTreeSet.removeAll();
-        };
-        
-        /**
-         * @function
-         * @return {String}
-         */
-        TreeMap.prototype.toString = _mapToStringMethod;
-        
-        return TreeMap;
-    }());
+        }
+    };
+    
+    /**
+     * @function
+     * @param {Function} callback
+     * @param {Object} thisArg
+     */
+    TreeMap.prototype.forEach = function (callback, thisArg) {
+        for(
+            var end = this._rbTreeSet.end(), iter = this._rbTreeSet.begin();
+            !iter[karbonator.equals](end);
+            iter.moveToNext()
+        ) {
+            var pair = iter.dereference();
+            callback.call(thisArg, pair.value, pair.key, this);
+        }
+    };
+    
+    /**
+     * @function
+     * @return {karbonator.collection.TreeMap.PairIterator}
+     */
+    TreeMap.prototype.entries = function () {
+        return new TreeMap.PairIterator(this);
+    };
+    
+    /**
+     * @function
+     * @return {karbonator.collection.TreeMap.PairIterator}
+     */
+    TreeMap.prototype[Symbol.iterator] = function () {
+        return new TreeMap.PairIterator(this);
+    };
+    
+    /**
+     * @function
+     * @return {karbonator.collection.TreeMap.KeyIterator}
+     */
+    TreeMap.prototype.keys = function () {
+        return new TreeMap.KeyIterator(this);
+    };
+    
+    /**
+     * @function
+     * @return {karbonator.collection.TreeMap.ValueIterator}
+     */
+    TreeMap.prototype.values = function () {
+        return new TreeMap.ValueIterator(this);
+    };
+    
+    /**
+     * @function
+     * @param {Object} key
+     * @return {Boolean}
+     */
+    TreeMap.prototype.remove = function (key) {
+        return this._rbTreeSet.remove(key);
+    };
+    
+    /**
+     * @function
+     * @param {Object} key
+     * @return {Boolean}
+     */
+    TreeMap.prototype["delete"] = TreeMap.prototype.remove;
+    
+    /**
+     * @function
+     */
+    TreeMap.prototype.clear = function () {
+        this._rbTreeSet.removeAll();
+    };
+    
+    /**
+     * @function
+     * @return {String}
+     */
+    TreeMap.prototype.toString = _mapToStringMethod;
+    
+    karbonator.collection.TreeMap = TreeMap;
     
     /*////////////////////////////////*/
     
     /*////////////////////////////////*/
     //ListSet
     
-    collection.ListSet = (function () {
-        /**
-         * @memberof karbonator.collection
-         * @constructor
-         * @param {karbonator.comparator} comparator
-         * @param {iterable} [iterable]
-         */
-        var ListSet = function (comparator) {
-            detail._assertIsComparator(comparator);
+    /**
+     * @memberof karbonator.collection
+     * @constructor
+     * @param {karbonator.comparator} comparator
+     * @param {iterable} [iterable]
+     */
+    var ListSet = function (comparator) {
+        detail._assertIsComparator(comparator);
+        
+        this._comparator = comparator;
+        this._elements = [];
+        
+        if(!karbonator.isUndefined(arguments[1])) {
+            _setConcatenateAssign(this, arguments[1]);
+        }
+    };
+    
+    /**
+     * @memberof karbonator.collection.ListSet
+     * @constructor
+     * @param {karbonator.collection.ListSet} listSet
+     * @param {Number} [index = 0]
+     */
+    ListSet.ValueIterator = function (listSet) {
+        this._listSet = listSet;
+        this._index = detail._selectNonUndefined(arguments[1], 0);
+    };
+
+    /**
+     * @function
+     * @return {Object}
+     */
+    ListSet.ValueIterator.prototype.next = function () {
+        var out = {
+            done : this._index >= this._listSet.getElementCount()
+        };
+
+        if(!out.done) {
+            out.value = this._listSet.getAt(this._index);
+
+            ++this._index;
+        }
+
+        return out;
+    };
+    
+    /**
+     * @memberof karbonator.collection.ListSet
+     * @constructor
+     * @param {karbonator.collection.ListSet} listSet
+     * @param {Number} [index = 0]
+     */
+    ListSet.PairIterator = function (listSet) {
+        this._listSet = listSet;
+        this._index = detail._selectNonUndefined(arguments[1], 0);
+    };
+    
+    /**
+     * @function
+     * @return {Object}
+     */
+    ListSet.PairIterator.prototype.next = function () {
+        var out = {
+            done : this._index >= this._listSet.getElementCount()
+        };
+        
+        if(!out.done) {
+            var value = this._listSet.getAt(this._index);
+            out.value = [value, value],
             
-            this._comparator = comparator;
-            this._elements = [];
-            
-            if(!karbonator.isUndefined(arguments[1])) {
-                _setConcatenateAssign(this, arguments[1]);
+            ++this._index;
+        }
+        
+        return out;
+    };
+    
+    /**
+     * @function
+     * @return {karbonator.collection.ListSet}
+     */
+    ListSet.prototype[karbonator.shallowClone] = function () {
+        return _setShallowCopy(ListSet, this);
+    };
+
+    /**
+     * @function
+     * @return {Number}
+     */
+    ListSet.prototype.getElementCount = function () {
+        return this._elements.length;
+    };
+
+    /**
+     * @function
+     * @param {Number} index
+     * @return {Object}
+     */
+    ListSet.prototype.getAt = function (index) {
+        return this._elements[index];
+    };
+
+    /**
+     * @function
+     * @param {Number} index
+     * @param {Object} element
+     */
+    ListSet.prototype.setAt = function (index, element) {
+        this._elements[index] = element;
+    };
+
+    /**
+     * @function
+     * @param {Function} callback
+     * @param {Object} thisArg
+     */
+    ListSet.prototype.forEach = function (callback, thisArg) {
+        for(var i = 0; i < this._elements.length; ++i) {
+            callback.call(thisArg, this._elements[i], i, this);
+        };
+    };
+
+    /**
+     * @function
+     * @return {karbonator.collection.ListSet.PairIterator}
+     */
+    ListSet.prototype.entries = function () {
+        return new ListSet.PairIterator(this);
+    };
+
+    /**
+     * @function
+     * @return {karbonator.collection.ListSet.ValueIterator}
+     */
+    ListSet.prototype.keys = function () {
+        return new ListSet.ValueIterator(this);
+    };
+
+    /**
+     * @function
+     * @return {karbonator.collection.ListSet.ValueIterator}
+     */
+    ListSet.prototype.values = function () {
+        return new ListSet.ValueIterator(this);
+    };
+
+    /**
+     * @function
+     * @return {karbonator.collection.ListSet.ValueIterator}
+     */
+    ListSet.prototype[Symbol.iterator] = function () {
+        return new ListSet.ValueIterator(this);
+    };
+
+    /**
+     * @function
+     * @param {Object} element
+     * @return {Boolean}
+     */
+    ListSet.prototype.has = function (element) {
+        return this.findIndex(element) >= 0;
+    };
+    
+    /**
+     * @function
+     * @param {Object} element
+     * @param {karbonator.comparator} [comparator]
+     * @return {Number}
+     */
+    ListSet.prototype.findIndex = function (element) {
+        var comparator = detail._selectNonUndefined(arguments[1], this._comparator);
+        for(var i = 0; i < this._elements.length; ++i) {
+            if(comparator(this._elements[i], element) === 0) {
+                return i;
             }
         };
         
-        var ValueIterator = (function () {
-            /**
-             * @constructor
-             * @param {karbonator.collection.ListSet} listSet
-             * @param {Number} [index = 0]
-             */
-            var ValueIterator = function (listSet) {
-                this._listSet = listSet;
-                this._index = detail._selectNonUndefined(arguments[1], 0);
-            };
-            
-            /**
-             * @function
-             * @return {Object}
-             */
-            ValueIterator.prototype.next = function () {
-                var done = this._index >= this._listSet.getElementCount();
-                var out = {
-                    value : (done ? undefined : this._listSet.getAt(this._index)),
-                    done : done
-                };
-                
-                ++this._index;
-                
-                return out;
-            };
-            
-            return ValueIterator;
-        })();
+        return -1;
+    };
+    
+    /**
+     * @function
+     * @param {Object} element
+     */
+    ListSet.prototype.add = function (element) {
+        var result = !this.has(element);
+        if(result) {
+            this._elements.push(element);
+        }
         
-        var PairIterator = (function () {
-            /**
-             * @constructor
-             * @param {karbonator.collection.ListSet} listSet
-             * @param {Number} [index = 0]
-             */
-            var PairIterator = function (listSet) {
-                this._listSet = listSet;
-                this._index = detail._selectNonUndefined(arguments[1], 0);
-            };
-            
-            /**
-             * @function
-             * @return {Object}
-             */
-            PairIterator.prototype.next = function () {
-                var done = this._index >= this._listSet.getElementCount();
-                var value = (done ? undefined : this._listSet.getAt(this._index));
-                var out = {
-                    value : [value, value],
-                    done : done
-                };
-                
-                ++this._index;
-                
-                return out;
-            };
-            
-            return PairIterator;
-        })();
-        
-        /**
-         * @function
-         * @return {karbonator.collection.ListSet}
-         */
-        ListSet.prototype[karbonator.shallowClone] = function () {
-            return _setShallowCopy(ListSet, this);
-        };
-        
-        /**
-         * @function
-         * @return {Number}
-         */
-        ListSet.prototype.getElementCount = function () {
-            return this._elements.length;
-        };
-        
-        /**
-         * @function
-         * @param {Number} index
-         * @return {Object}
-         */
-        ListSet.prototype.getAt = function (index) {
-            return this._elements[index];
-        };
-        
-        /**
-         * @function
-         * @param {Number} index
-         * @param {Object} element
-         */
-        ListSet.prototype.setAt = function (index, element) {
-            this._elements[index] = element;
-        };
-        
-        /**
-         * @function
-         * @param {Function} callback
-         * @param {Object} thisArg
-         */
-        ListSet.prototype.forEach = function (callback, thisArg) {
-            for(var i = 0; i < this._elements.length; ++i) {
-                callback.call(thisArg, this._elements[i], i, this);
-            };
-        };
-        
-        /**
-         * @function
-         * @return {PairIterator}
-         */
-        ListSet.prototype.entries = function () {
-            return new PairIterator(this);
-        };
-        
-        /**
-         * @function
-         * @return {ValueIterator}
-         */
-        ListSet.prototype.keys = function () {
-            return new ValueIterator(this);
-        };
-        
-        /**
-         * @function
-         * @return {ValueIterator}
-         */
-        ListSet.prototype.values = function () {
-            return new ValueIterator(this);
-        };
-        
-        /**
-         * @function
-         * @return {ValueIterator}
-         */
-        ListSet.prototype[Symbol.iterator] = function () {
-            return new ValueIterator(this);
-        };
-        
-        /**
-         * @function
-         * @param {Object} element
-         * @return {Boolean}
-         */
-        ListSet.prototype.has = function (element) {
-            return this.findIndex(element) >= 0;
-        };
-        
-        /**
-         * @function
-         * @param {Object} element
-         * @param {karbonator.comparator} [comparator]
-         * @return {Number}
-         */
-        ListSet.prototype.findIndex = function (element) {
-            var comparator = detail._selectNonUndefined(arguments[1], this._comparator);
-            for(var i = 0; i < this._elements.length; ++i) {
-                if(comparator(this._elements[i], element) === 0) {
-                    return i;
-                }
-            };
-            
-            return -1;
-        };
-        
-        /**
-         * @function
-         * @param {Object} element
-         */
-        ListSet.prototype.add = function (element) {
-            var result = !this.has(element);
-            if(result) {
-                this._elements.push(element);
-            }
-            
-            return this;
-        };
-        
-        /**
-         * @function
-         * @param {Object} element
-         * @return {Boolean}
-         */
-        ListSet.prototype.tryAdd = function (element) {
-            var result = !this.has(element);
-            if(result) {
-                this._elements.push(element);
-            }
-            
-            return result;
-        };
-        
-        /**
-         * @function
-         * @param {Number} index
-         */
-        ListSet.prototype.removeAt = function (index) {
-            var result = (index < this._elements.length && index >= 0);
-            if(result) {
-                this._elements.splice(index, 1);
-            }
-            
-            return result;
-        };
-        
-        /**
-         * @function
-         * @param {Object} element
-         * @return {Boolean}
-         */
-        ListSet.prototype.remove = function (element) {
-            return this.removeAt(this.findIndex(element));
-        };
-        
-        /**
-         * @function
-         * @param {Object} element
-         * @return {Boolean}
-         */
-        ListSet.prototype["delete"] = function (element) {
-            return this.removeAt(this.findIndex(element));
-        };
-        
-        /**
-         * @function
-         */
-        ListSet.prototype.clear = function () {
-            this._elements.length = 0;
-        };
-        
-        /**
-         * lhs = (lhs ∪ rhs).<br>
-         * This method tries to add rhs's elements, so it uses <b>lhs</b>'s comparator to check if lhs lacks rhs's elements.<br>
-         * @function
-         * @param {karbonator.collection.ListSet} rhs
-         * @return {karbonator.collection.ListSet}
-         */
-        ListSet.prototype.uniteAssign = function (rhs) {
-            return _setUniteAssign(this, rhs);
-        };
-        
-        /**
-         * Creates a new set of (lhs ∪ rhs).<br>
-         * This method tries to add rhs's elements, so it uses <b>lhs</b>'s comparator to check if lhs lacks rhs's elements.<br>
-         * @function
-         * @param {karbonator.collection.ListSet} rhs
-         * @return {karbonator.collection.ListSet}
-         */
-        ListSet.prototype.unite = function (rhs) {
-            return _setUnite(ListSet, this, rhs);
-        };
-        
-        /**
-         * lhs = (lhs - rhs).<br>
-         * This method uses <b>lhs</b>'s comparator to check if lhs has rhs's elements.<br>
-         * @function
-         * @param {karbonator.collection.ListSet} rhs
-         * @return {karbonator.collection.ListSet}
-         */
-        ListSet.prototype.subtractAssign = function (rhs) {
-            return _setSubtractAssign(this, rhs);
-        };
-        
-        /**
-         * Creates a new set of (lhs - rhs).
-         * This method uses <b>lhs</b>'s comparator to check if lhs has rhs's elements.<br>
-         * @function
-         * @param {karbonator.collection.ListSet} rhs
-         * @return {karbonator.collection.ListSet}
-         */
-        ListSet.prototype.subtract = function (rhs) {
-            return _setSubtract(ListSet, this, rhs);
-        };
-        
-        /**
-         * lhs = (lhs ∩ rhs).<br>
-         * This method will actually calculate <b>(lhs - (lhs - rhs))</b> instead to consistently use <b>lhs</b>'s comparator.
-         * @function
-         * @param {karbonator.collection.ListSet} rhs
-         * @return {karbonator.collection.ListSet}
-         */
-        ListSet.prototype.intersectAssign = function (rhs) {
-            return _setIntersectAssign(ListSet, this, rhs);
-        };
-        
-        /**
-         * Creates a new set of (lhs ∩ rhs).<br>
-         * This method will actually calculate <b>(lhs - (lhs - rhs))</b> instead to consistently use <b>lhs</b>'s comparator.
-         * @function
-         * @param {karbonator.collection.ListSet} rhs
-         * @return {karbonator.collection.ListSet}
-         */
-        ListSet.prototype.intersect = function (rhs) {
-            return _setIntersect(ListSet, this, rhs);
-        };
-        
-        /**
-         * @function
-         * @return {String}
-         */
-        ListSet.prototype.toString = _setToStringMethod;
-        
-        return ListSet;
-    })();
+        return this;
+    };
+    
+    /**
+     * @function
+     * @param {Object} element
+     * @return {Boolean}
+     */
+    ListSet.prototype.tryAdd = function (element) {
+        var result = !this.has(element);
+        if(result) {
+            this._elements.push(element);
+        }
+
+        return result;
+    };
+    
+    /**
+     * @function
+     * @param {Number} index
+     */
+    ListSet.prototype.removeAt = function (index) {
+        var result = (index < this._elements.length && index >= 0);
+        if(result) {
+            this._elements.splice(index, 1);
+        }
+
+        return result;
+    };
+    
+    /**
+     * @function
+     * @param {Object} element
+     * @return {Boolean}
+     */
+    ListSet.prototype.remove = function (element) {
+        return this.removeAt(this.findIndex(element));
+    };
+    
+    /**
+     * @function
+     * @param {Object} element
+     * @return {Boolean}
+     */
+    ListSet.prototype["delete"] = function (element) {
+        return this.removeAt(this.findIndex(element));
+    };
+    
+    /**
+     * @function
+     */
+    ListSet.prototype.clear = function () {
+        this._elements.length = 0;
+    };
+    
+    /**
+     * lhs = (lhs ∪ rhs).<br>
+     * This method tries to add rhs's elements, so it uses <b>lhs</b>'s comparator to check if lhs lacks rhs's elements.<br>
+     * @function
+     * @param {karbonator.collection.ListSet} rhs
+     * @return {karbonator.collection.ListSet}
+     */
+    ListSet.prototype.uniteAssign = function (rhs) {
+        return _setUniteAssign(this, rhs);
+    };
+    
+    /**
+     * Creates a new set of (lhs ∪ rhs).<br>
+     * This method tries to add rhs's elements, so it uses <b>lhs</b>'s comparator to check if lhs lacks rhs's elements.<br>
+     * @function
+     * @param {karbonator.collection.ListSet} rhs
+     * @return {karbonator.collection.ListSet}
+     */
+    ListSet.prototype.unite = function (rhs) {
+        return _setUnite(ListSet, this, rhs);
+    };
+    
+    /**
+     * lhs = (lhs - rhs).<br>
+     * This method uses <b>lhs</b>'s comparator to check if lhs has rhs's elements.<br>
+     * @function
+     * @param {karbonator.collection.ListSet} rhs
+     * @return {karbonator.collection.ListSet}
+     */
+    ListSet.prototype.subtractAssign = function (rhs) {
+        return _setSubtractAssign(this, rhs);
+    };
+    
+    /**
+     * Creates a new set of (lhs - rhs).
+     * This method uses <b>lhs</b>'s comparator to check if lhs has rhs's elements.<br>
+     * @function
+     * @param {karbonator.collection.ListSet} rhs
+     * @return {karbonator.collection.ListSet}
+     */
+    ListSet.prototype.subtract = function (rhs) {
+        return _setSubtract(ListSet, this, rhs);
+    };
+    
+    /**
+     * lhs = (lhs ∩ rhs).<br>
+     * This method will actually calculate <b>(lhs - (lhs - rhs))</b> instead to consistently use <b>lhs</b>'s comparator.
+     * @function
+     * @param {karbonator.collection.ListSet} rhs
+     * @return {karbonator.collection.ListSet}
+     */
+    ListSet.prototype.intersectAssign = function (rhs) {
+        return _setIntersectAssign(ListSet, this, rhs);
+    };
+    
+    /**
+     * Creates a new set of (lhs ∩ rhs).<br>
+     * This method will actually calculate <b>(lhs - (lhs - rhs))</b> instead to consistently use <b>lhs</b>'s comparator.
+     * @function
+     * @param {karbonator.collection.ListSet} rhs
+     * @return {karbonator.collection.ListSet}
+     */
+    ListSet.prototype.intersect = function (rhs) {
+        return _setIntersect(ListSet, this, rhs);
+    };
+    
+    /**
+     * @function
+     * @return {String}
+     */
+    ListSet.prototype.toString = _setToStringMethod;
+    
+    collection.ListSet = ListSet;
     
     /*////////////////////////////////*/
     
