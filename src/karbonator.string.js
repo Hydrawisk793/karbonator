@@ -4,6 +4,12 @@
  * blog : http://blog.naver.com/hyw793
  * disclaimer : The author is not responsible for any problems 
  * that that may arise by using this source code.
+ * 
+ * 2017-07-17 Note
+ * Lexer / Regex
+ * basic operators : a* a+ a? a*? a+? a?? ab a|b
+ * character class : [^a-zA-Z0-9] .(any characters)
+ * token regex subroutine call : {tokenName}
  */
 
 /**
@@ -953,7 +959,7 @@
         
         this._thIdSeq = 0;
         this._ctxts.length = 0;
-        var found = false;
+        var finalMatchThreadFound = false;
         var matchThread = null;
         
 //        var debugStr = "";
@@ -965,7 +971,7 @@
         var deadThreads = [];
         for(
             ;
-            this._ctxts.length > 0 && !found;//;//
+            this._ctxts.length > 0 && !finalMatchThreadFound;//;//
             ++this._cursor
         ) {
             for(var i = 0; i < this._ctxts.length; ++i) {
@@ -1047,13 +1053,11 @@
                 if(null === matchThread) {
                     matchThread = th;
                     
-                    var noMore = true;
-                    for(var j = 0; noMore && j < this._ctxts.length; ++j) {
-                        noMore = !this._ctxts[j].isPriorTo(th);
-                    }
-                    
-                    if(noMore) {
-                        found = true;
+                    finalMatchThreadFound = true;
+                    for(var j = this._ctxts.length; finalMatchThreadFound && j > 0; ) {
+                        --j;
+                        
+                        finalMatchThreadFound = !this._ctxts[j].isPriorTo(th);
                     }
                 }
                 else {
@@ -1068,7 +1072,7 @@
                         priorToAlivingThs = th.isPriorTo(this._ctxts[j]);
                     }
                     if(priorToAlivingThs) {
-                        found = true;
+                        finalMatchThreadFound = true;
                         
 //                        debugStr += 'T' + th._id + " is prior to aliving threads." + "\r\n";
                     }
@@ -1081,10 +1085,16 @@
                 for(var i = this._ctxts.length; i > 0; ) {
                     --i;
                     
-                    if(this._ctxts[i].comparePriorityTo(matchThread) < 0) {
-                        this._ctxts.splice(i, 1);
+                    var th = this._ctxts[i];
+                    if(th.comparePriorityTo(matchThread) >= 0) {
+                        aliveThreads.push(th);
                     }
                 }
+                
+                var temp = this._ctxts;
+                this._ctxts = aliveThreads;
+                aliveThreads = temp;
+                aliveThreads.length = 0;
                 
 //                debugStr += "selectedResult === "
 //                    + this.createMatchResultDebugMessage(matchThread)
