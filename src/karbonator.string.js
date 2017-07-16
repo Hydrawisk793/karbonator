@@ -403,6 +403,42 @@
     };
     
     /**
+     * @function
+     * @param {RegexVm._Thread} rhs
+     * @return {Boolean}
+     */
+    RegexVm._Thread.prototype.hasSameForkPathPostfixWith = function (rhs) {
+        var lhsPath = this._path;
+        var rhsPath = rhs._path;
+        
+        var lhsPathLen = lhsPath.length;
+        var rhsPathLen = rhsPath.length;
+        
+        var count = 0;
+        for(
+            var l = lhsPathLen, r = rhsPathLen;
+            l > 0 && r > 0;
+        ) {
+            --l;
+            --r;
+            
+            var lhsPoint = lhsPath[l];
+            var rhsPoint = rhsPath[r];
+            if(
+                lhsPoint[0] !== rhsPoint[0]
+                || lhsPoint[1] !== rhsPoint[1]
+                || lhsPoint[2] !== rhsPoint[2]
+            ) {
+                break;
+            }
+            
+            ++count;
+        }
+        
+        return count > 0;
+    };
+    
+    /**
      * @memberof RegexVm
      * @private
      * @constructor
@@ -944,7 +980,25 @@
                     }
                 }
                 else {
-                    aliveThreads.push(th);
+                    var addCurrent = true;
+                    for(var j = aliveThreads.length; j > 0; ) {
+                        --j;
+                        
+                        var aliveThread = aliveThreads[j];
+                        if(th.hasSameForkPathPostfixWith(aliveThread)) {
+                            if(th.isPriorTo(aliveThread)) {
+                                aliveThreads.splice(j, 1);
+                            }
+                            else {
+                                addCurrent = false;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if(addCurrent) {
+                        aliveThreads.push(th);
+                    }
                 }
                 
 //                debugStr += ".............................." + "\r\n";
@@ -967,7 +1021,9 @@
 //                debugStr += "\r\n";
 //            }
             
-            for(var i = 0; i < acceptedThreads.length; ++i) {
+            for(var i = acceptedThreads.length; i > 0; ) {
+                --i;
+                
                 var th = acceptedThreads[i];
                 
 //                debugStr += this.createMatchResultDebugMessage(th)
@@ -1024,12 +1080,14 @@
             
 //            debugStr += "\r\n";
 //            debugStr += "------------------------------" + "\r\n";
+            
+            //debugger;
         }
         
 //        debugStr += (null === matchThread ? "Failed..." : "Found!!!") + "\r\n";
 //        debugStr += "==============================" + "\r\n";
         
-        //console.log(debugStr);
+//        console.log(debugStr);
         
         return (null !== matchThread ? matchThread._matchResult : null);
     };
@@ -1387,31 +1445,33 @@
         var newThreadPcOffset = this.readInt16();
         
         var forkPc = this._instAddr;
-        for(var i = this._consumedValues.length; i > 0; ) {
-            --i;
-            
-            var point = this._consumedValues[i];
-            if(point[0] === 0) {
-                break;
-            }
-            else if(point[0] === 1 && Math.abs(point[1]) === forkPc) {
-                this._frameStack.length = 0;
-                return;
-            }
-        }
-//        for(var i = this._path.length; i > 0; ) {
+        
+//        for(var i = this._consumedValues.length; i > 0; ) {
 //            --i;
 //            
-//            var point = this._path[i];
-//            if(point[2] > 0) {
+//            var point = this._consumedValues[i];
+//            if(point[0] === 0) {
 //                break;
 //            }
-//            
-//            if(point[0] === forkPc) {
+//            else if(point[0] === 1 && Math.abs(point[1]) === forkPc) {
 //                this._frameStack.length = 0;
 //                return;
 //            }
 //        }
+        
+        for(var i = this._path.length; i > 0; ) {
+            --i;
+            
+            var point = this._path[i];
+            if(point[2] > 0) {
+                break;
+            }
+            
+            if(point[0] === forkPc) {
+                this._frameStack.length = 0;
+                return;
+            }
+        }
         
         this._vm.createThread(
             this._pc + newThreadPcOffset,
@@ -4746,9 +4806,9 @@
         
         var buffer = new InstructionBuffer(this._byteOrderReversed);
         
-        if(node.isRootOfGroup()) {
-            buffer.put(RegexVm.Instruction.beginGroup, 0);
-        }
+//        if(node.isRootOfGroup()) {
+//            buffer.put(RegexVm.Instruction.beginGroup, 0);
+//        }
         
         switch(node.getType()) {
         case RegexParser.AstNodeType.operator:
@@ -4810,9 +4870,9 @@
             throw new Error("An unknown ast node type has been detected.");
         }
         
-        if(node.isRootOfGroup()) {
-            buffer.put(RegexVm.Instruction.endGroup, 0);
-        }
+//        if(node.isRootOfGroup()) {
+//            buffer.put(RegexVm.Instruction.endGroup, 0);
+//        }
         
         this._nodeCodeMap.set(node, buffer);
     };
