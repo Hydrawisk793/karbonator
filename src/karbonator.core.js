@@ -320,6 +320,30 @@
     //karbonator namespace.
     
     /*////////////////////////////////*/
+    //Utilities for Es3 environments.
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {iterable} iterable
+     * @param {Function} callback
+     * @param {Object} [thisArg]
+     */
+    karbonator.forOf = function (iterable, callback) {
+        var thisArg = arguments[2];
+        
+        for(
+            var i = iterable[Symbol.iterator](), iP = i.next();
+            !iP.done;
+            iP = i.next()
+        ) {
+            callback.call(thisArg, iP.value);
+        }
+    };
+    
+    /*////////////////////////////////*/
+    
+    /*////////////////////////////////*/
     //Trait test functions.
     
     /**
@@ -583,9 +607,12 @@
      * @param {Number} r
      * @return {Number}
      */
-    karbonator.numberComparator = function (l, r) {
-        if(!karbonator.isNumber(l) || !karbonator.isNumber(r)) {
-            throw new TypeError("Both 'l' and 'r' must be numbers.");
+    karbonator.integerComparator = function (l, r) {
+        if(
+            !karbonator.isNonNegativeSafeInteger(l)
+            || !karbonator.isNonNegativeSafeInteger(r)
+        ) {
+            throw new TypeError("Both 'l' and 'r' must be non-negative safe integers.");
         }
         
         return l - r;
@@ -599,7 +626,7 @@
      * @return {Number}
      */
     karbonator.booleanComparator = function (l, r) {
-        return karbonator.numberComparator(Number(l), Number(r));
+        return karbonator.integerComparator(Number(l), Number(r));
     };
     
     /**
@@ -700,7 +727,7 @@
         if(detail._isImmutablePrimitive(o)) {
             return o;
         }
-
+        
         if(karbonator.isArray(o)) {
             var clonedArray = new Array(o.length);
 

@@ -48,33 +48,224 @@
     var _colStrMapTo = " => ";
     
     /**
-     * @memberof karbonator.detail
-     * @function
-     * @param {*} o
-     */
-    detail._assertIsArray = function (o) {
-        if(!karbonator.isArray(o)) {
-            throw new TypeError("The parameter must be an array.");
-        }
-    };
-    
-    /**
-     * @memberof karbonator.detail
-     * @function
-     * @param {*} o
-     */
-    detail._assertIsEsIterable = function (o) {
-        if(!karbonator.isEsIterable(o)) {
-            throw new TypeError("The parameter must be an object that has the property 'Symbol.iterator'.");
-        }
-    };
-    
-    /**
      * @memberof karbonator
      * @namespace
      */
     var collection = karbonator.collection || {};
     karbonator.collection = collection;
+    
+    /*////////////////////////////////*/
+    //ListQueue
+    
+    /**
+     * @memberof karbonator.collection
+     * @constructor
+     */
+    var ListQueue = function () {
+        this._head = null;
+        this._tail = null;
+        this._elemCount = 0;
+    };
+    
+    /**
+     * @memberof karbonator.collection.ListQueue
+     * @private
+     * @constructor
+     * @param {Object} element
+     * @param {ListQueue._Node} next
+     */
+    ListQueue._Node = function (element, next) {
+        this.element = element;
+        this.next = next;
+    };
+    
+    /**
+     * 
+     * @param {Object} iterable
+     * @param {Function} [mapFunc]
+     * @param {Object} [thisArg]
+     * @returns {karbonator.collection.ListQueue}
+     */
+    ListQueue.from = function (iterable) {
+        if(!karbonator.isEsIterable(iterable)) {
+            throw new TypeError("'iterable' must have the property 'Symbol.iterator'.");
+        }
+        
+        var queue = new ListQueue();
+        
+        var mapFunc = arguments[1];
+        if(karbonator.isUndefined(mapFunc)) {
+            for(
+                var i = iterable[Symbol.iterator](), iP = i.next();
+                !iP.done;
+                iP = i.next()
+            ) {
+                queue.enqueue(iP.value);
+            }
+        }
+        else {
+            if(!karbonator.isFunction(mapFunc)) {
+                throw new TypeError("'mapFunc' must be a function.");
+            }
+            var thisArg = arguments[2];
+            
+            for(
+                var i = iterable[Symbol.iterator](), iP = i.next();
+                !iP.done;
+                iP = i.next()
+            ) {
+                queue.enqueue(mapFunc.call(thisArg, iP.value));
+            }
+        }
+        
+        return queue;
+    };
+    
+    /**
+     * @function
+     * @return {Number}
+     */
+    ListQueue.prototype.getElementCount = function () {
+        return this._elemCount;
+    };
+    
+    /**
+     * @function
+     * @return {Boolean}
+     */
+    ListQueue.prototype.isEmpty = function () {
+        return null === this._head;
+    };
+    
+    /**
+     * @function
+     * @return {Boolean}
+     */
+    ListQueue.prototype.isFull = function () {
+        return this._elemCount >= Number.MAX_SAFE_INTEGER;
+    };
+    
+    /**
+     * @function
+     * @return {iterator}
+     */
+    ListQueue.prototype[Symbol.iterator] = function () {
+        return {
+            next : function () {
+                var out = {
+                    done : null === this._current
+                };
+                
+                if(!out.done) {
+                    out.value = this._current.element;
+                    this._current = this._current.next;
+                }
+                
+                return out;
+            },
+            _current : this._head
+        };
+    };
+    
+    /**
+     * @function
+     * @return {Object}
+     */
+    ListQueue.prototype.peek = function () {
+        if(this.isEmpty()) {
+            throw new Error("The queue has no element.");
+        }
+        
+        return this._head.element;
+    };
+    
+    /**
+     * @function
+     * @param {Object} e
+     * @return {karbonator.collection.ListQueue}
+     */
+    ListQueue.prototype.enqueue = function (e) {
+        if(this.isFull()) {
+            throw new Error("Cannot enqueue elements any more.");
+        }
+        
+        var newNode = new ListQueue._Node(e, null);
+        
+        if(!this.isEmpty()) {
+            this._tail.next = newNode;
+        }
+        else {
+            this._head = newNode;
+        }
+        this._tail = newNode;
+        
+        ++this._elemCount;
+        
+        return this;
+    };
+    
+    /**
+     * @function
+     * @return {Object}
+     */
+    ListQueue.prototype.dequeue = function () {
+        if(this.isEmpty()) {
+            throw new Error("The queue has no element.");
+        }
+        
+        var element = null;
+        if(this._head !== this._tail) {
+            element = this._head.element;
+            
+            this._head = this._head.next;
+        }
+        else {
+            element = this._tail.element;
+            
+            this._head = null;
+            this._tail = null;
+        }
+        
+        --this._elemCount;
+        
+        return element;
+    };
+    
+    /**
+     * @function
+     */
+    ListQueue.prototype.clear = function () {
+        this._head = null;
+        this._tail = null;
+        this._elemCount = 0;
+    };
+    
+    /**
+     * @function
+     * @return {String}
+     */
+    ListQueue.prototype.toString = function () {
+        var str = '[';
+        
+        var iter = this[Symbol.iterator]();
+        var pair = iter.next();
+        if(!pair.done) {
+            str += pair.value;
+        }
+        
+        for(pair = iter.next(); !pair.done; pair = iter.next()) {
+            str += ", ";
+            str += pair.value;
+        }
+        
+        str += ']';
+        
+        return str;
+    };
+    
+    collection.ListQueue = ListQueue;
+    
+    /*////////////////////////////////*/
     
 //    /**
 //     * @memberof karbonator.collection
@@ -358,11 +549,536 @@
             detail._assertIsComparator(comparator);
             
             this._comparator = comparator;
-            this._keyGetter = (typeof(arguments[1]) === "function" ? arguments[1] : _defaultKeyGetter);
+            this._keyGetter = (karbonator.isFunction(arguments[1]) ? arguments[1] : _defaultKeyGetter);
             this._elementCount = 0;
             this._root = null;
             this._garbageNodes = [];
         };
+        
+        /**
+         * @constructor
+         * @function
+         * @param {_Node} [parent=null]
+         * @param {_Node} [leftChild=null]
+         * @param {_Node} [rightChild=null]
+         * @param {Object} [element=null]
+         * @param {Boolean} [red=false]
+         */
+        var _Node = function () {
+            this._parent = detail._selectNonUndefined(arguments[0], null);
+            this._leftChild = detail._selectNonUndefined(arguments[1], null);
+            this._rightChild = detail._selectNonUndefined(arguments[2], null);
+            this._element = detail._selectNonUndefined(arguments[3], null);
+            this._red = detail._selectNonUndefined(arguments[4], false);
+        };
+        
+        /**
+         * @function
+         * @param {_Node} node
+         * @return {_Node}
+         */
+        _Node.prototype.leftChild = function (node) {
+            if(typeof(node) !== "undefined") {
+                this._leftChild = node;
+                
+                return this;
+            }
+            else {
+                return this._leftChild;
+            }
+        };
+        
+        /**
+         * @function
+         * @param {_Node} node
+         * @return {_Node}
+         */
+        _Node.prototype.rightChild = function (node) {
+            if(typeof(node) !== "undefined") {
+                this._rightChild = node;
+
+                return this;
+            }
+            else {
+                return this._rightChild;
+            }
+        };
+
+        /**
+         * @function
+         * @return {_Node}
+         */
+        _Node.prototype.getRoot = function () {
+            var pRoot = this;
+            for(
+                var pParent = pRoot._parent;
+                pParent !== null;
+                pRoot = pParent, pParent = pRoot._parent
+            );
+
+            return pRoot;
+        };
+
+        /**
+         * @function
+         * @return {_Node}
+         */
+        _Node.prototype.getGrandParent = function () {
+            return (this._parent !== null ? this._parent._parent : null);
+        };
+
+        /**
+         * @function
+         * @return {_Node}
+         */
+        _Node.prototype.getUncle = function () {
+            var pUncle = null;
+
+            var pGrandParent = this.getGrandParent();
+            if(pGrandParent !== null) {
+                pUncle = (pGrandParent._leftChild === this._parent
+                    ? pGrandParent._rightChild
+                    : pGrandParent._leftChild
+                );
+            }
+
+            return pUncle;
+        };
+
+        /**
+         * @function
+         * @param {_Node} parent
+         * @return {_Node}
+         */
+        _Node.prototype.getSibling = function (parent) {
+            if(typeof(parent) === "undefined") {
+                return (
+                    (this._parent !== null)
+                    ? (
+                        this === this._parent._leftChild
+                        ? this._parent._rightChild
+                        : this._parent._leftChild
+                        )
+                    : null
+                );
+            }
+            else {
+                var pSibling = null;
+                if(this === parent._leftChild) {
+                    pSibling = parent._rightChild;
+                }
+                else if(this === parent._rightChild) {
+                    pSibling = parent._leftChild;
+                }
+
+                return pSibling;
+            }
+        };
+
+        /**
+         * @function
+         * @return {Boolean}
+         */
+        _Node.prototype.isNil = function () {
+            return this._element === null;
+        };
+
+        /**
+         * @function
+         * @return {Boolean}
+         */
+        _Node.prototype.isNonNilRoot = function () {
+            return this._parent === null && !this.isNil();
+        };
+
+        /**
+         * @function
+         * @param {Number} index
+         * @return {_Node}
+         */
+        _Node.prototype.getChild = function (index) {
+            var node = null;
+
+            switch(index) {
+            case 0:
+                node = this._leftChild;
+            break;
+            case 1:
+                node = this._rightChild;
+            break;
+            default:
+                throw new Error("The value of the index must be in [0, 1].");
+            }
+
+            return node;
+        };
+
+        /**
+         * @function
+         * @return {_Node}
+         */
+        _Node.prototype.getLastChild = function () {
+            return (this.hasRightChild() ? this._rightChild : this._leftChild);
+        };
+
+        /**
+         * @function
+         * @param {Number} index
+         * @param {_Node} pNode
+         */
+        _Node.prototype.setChild = function (index, pNode) {
+            var pDetachedChild = null;
+
+            switch(index) {
+            case 0:
+                if(this.hasNonNilLeftChild()) {
+                    pDetachedChild = this._leftChild;
+                    this._leftChild._parent = null;
+                }
+                this._leftChild = pNode;
+            break;
+            case 1:
+                if(hasNonNilRightChild()) {
+                    pDetachedChild = this._rightChild;
+                    this._rightChild._parent = null;
+                }
+                this._rightChild = pNode;
+            break;
+            default:
+                throw new Error("The range of the index must be [0, 1].");
+            }
+
+            if(pNode) {
+                if(pNode._parent !== null) {
+                    pNode.getChildSlot().call(pNode._parent, null);
+                }
+                pNode._parent = this;
+            }
+
+            return pDetachedChild;
+        };
+
+        /**
+         * @function
+         * @return {Number}
+         */
+        _Node.prototype.getChildCount = function () {
+            return (this.hasLeftChild() ? 1 : 0)
+                + (this.hasRightChild() ? 1 : 0)
+            ;
+        };
+
+        /**
+         * @function
+         * @return {Number}
+         */
+        _Node.prototype.getNonNilChildCount = function () {
+            return (this.hasNonNilLeftChild() ? 1 : 0)
+                + (this.hasNonNilRightChild() ? 1 : 0)
+            ;
+        };
+
+        /**
+         * @function
+         * @return {Number}
+         */
+        _Node.prototype.getLevel = function () {
+            var level = 0;
+            for(
+                var pCurrent = this._parent;
+                pCurrent !== null;
+                pCurrent = pCurrent._parent, ++level
+            );
+
+            return level;
+        };
+
+        /**
+         * @function
+         * @return {Boolean}
+         */
+        _Node.prototype.isLeaf = function () {
+            return !this.hasLeftChild() && !this.hasRightChild();
+        };
+
+        /**
+         * @function
+         * @return {Boolean}
+         */
+        _Node.prototype.isNonNilLeaf = function () {
+            return !this.hasNonNilLeftChild() && !this.hasNonNilRightChild();
+        };
+
+        /**
+         * @function
+         * @return {Boolean}
+         */
+        _Node.prototype.hasLeftChild = function () {
+            return this._leftChild !== null;
+        };
+
+        /**
+         * @function
+         * @return {Boolean}
+         */
+        _Node.prototype.hasRightChild = function () {
+            return this._rightChild !== null;
+        };
+
+        /**
+         * @function
+         * @return {Boolean}
+         */
+        _Node.prototype.hasNonNilLeftChild = function () {
+            return this.hasLeftChild() && !this._leftChild.isNil();
+        };
+
+        /**
+         * @function
+         * @return {Boolean}
+         */
+        _Node.prototype.hasNonNilRightChild = function () {
+            return this.hasRightChild() && !this._rightChild.isNil();
+        };
+
+        /**
+         * @function
+         * @return {Function}
+         */
+        _Node.prototype.getChildSlot = function () {
+            var pChildSlot = null;
+
+            if(this._parent !== null) {
+                if(this._parent._leftChild === this) {
+                    pChildSlot = this._parent.leftChild;
+                }
+                else {
+                    pChildSlot = this._parent.rightChild;
+                }
+            }
+
+            return pChildSlot;
+        };
+
+        /**
+         * @function
+         * @return {Number}
+         */
+        _Node.prototype.getChildSlotIndex = function () {
+            return (
+                (this._parent !== null)
+                ? (this === this._parent._leftChild ? 0 : 1)
+                : 2
+            );
+        };
+
+        /**
+         * @function
+         */
+        _Node.prototype.rotateLeft = function () {
+            var pChildSlot = this.getChildSlot();
+
+            var pParent = this._parent;
+            var pLeftChildOfRightChild = this._rightChild._leftChild;
+
+            this._rightChild._leftChild = this;
+            this._parent = this._rightChild;
+
+            this._rightChild._parent = pParent;
+            if(pChildSlot !== null) {
+                pChildSlot.call(pParent, this._rightChild);
+            }
+
+            this._rightChild = pLeftChildOfRightChild;
+            if(pLeftChildOfRightChild !== _Node.nil) {
+                pLeftChildOfRightChild._parent = this;
+            }
+        };
+
+        /**
+         * @function
+         */
+        _Node.prototype.rotateRight = function () {
+            var pChildSlot = this.getChildSlot();
+
+            var pParent = this._parent;
+            var pRightChildOfLeftChild = this._leftChild._rightChild;
+
+            this._leftChild._rightChild = this;
+            this._parent = this._leftChild;
+
+            this._leftChild._parent = pParent;
+            if(pChildSlot !== null) {
+                pChildSlot.call(pParent, this._leftChild);
+            }
+
+            this._leftChild = pRightChildOfLeftChild;
+            if(pRightChildOfLeftChild !== _Node.nil) {
+                pRightChildOfLeftChild._parent = this;
+            }
+        };
+
+        /**
+         * @function
+         * @return {_Node}
+         */
+        _Node.prototype.findLeftMostNode = function () {
+            var pCurrent = this;
+            for(
+                ;
+                pCurrent !== null && pCurrent.hasNonNilLeftChild();
+                pCurrent = pCurrent._leftChild
+            );
+
+            return pCurrent;
+        };
+
+        /**
+         * @function
+         * @return {_Node}
+         */
+        _Node.prototype.findRightMostNode = function () {
+            var pCurrent = this;
+            for(
+                ;
+                pCurrent !== null && pCurrent.hasNonNilRightChild();
+                pCurrent = pCurrent._rightChild
+            );
+
+            return pCurrent;
+        };
+
+        /**
+         * @function
+         * @return {_Node}
+         */
+        _Node.prototype.findLeftSubTreeRootNode = function () {
+            var pCurrent = this;
+            for(; pCurrent !== null; ) {
+                var pParent = pCurrent._parent;
+                if(pParent === null || pCurrent === pParent._leftChild) {
+                    break;
+                }
+
+                pCurrent = pParent;
+            }
+
+            return pCurrent;
+        };
+
+        /**
+         * @function
+         * @return {_Node}
+         */
+        _Node.prototype.findRightSubTreeRootNode = function () {
+            var pCurrent = this;
+            for(; pCurrent !== null; ) {
+                var pParent = pCurrent._parent;
+                if(pParent === null || pCurrent === pParent._rightChild) {
+                    break;
+                }
+
+                pCurrent = pParent;
+            }
+
+            return pCurrent;
+        };
+
+        /**
+         * @function
+         * @param {Function} handler
+         * @param {Object} [thisArg]
+         * @return {Boolean}
+         */
+        _Node.prototype.traverseNonNilNodesByPostorder = function (handler) {
+            var thisArg = arguments[1];
+
+            var nodeStack = [];
+            nodeStack.push(this);
+
+            var pLastTraversedNode = null;
+            var continueTraversal = true;
+            for(; continueTraversal && nodeStack.length > 0; ) {
+                var pCurrentNode = nodeStack[nodeStack.length - 1];
+                if(
+                    !pCurrentNode.isLeaf()
+                    && pCurrentNode.getLastChild() !== pLastTraversedNode
+                ) {
+                    if(pCurrentNode.hasRightChild()) {
+                        nodeStack.push(pCurrentNode._rightChild);
+                    }
+
+                    if(pCurrentNode.hasLeftChild()) {
+                        nodeStack.push(pCurrentNode._leftChild);
+                    }
+                }
+                else {
+                    if(!pCurrentNode.isNil()) {
+                        continueTraversal = !handler.call(thisArg, pCurrentNode);
+                    }
+                    pLastTraversedNode = pCurrentNode;
+                    nodeStack.pop();
+                }
+            }
+
+            return continueTraversal;
+        };
+
+        /**
+         * @function
+         * @return {_Node}
+         */
+        _Node.prototype.getGreater = function () {
+            var pGreater = null;
+
+            if(!this._rightChild.isNil()) {
+                pGreater = this._rightChild.findLeftMostNode();
+            }
+            else {
+                if(this._parent !== null) {
+                    if(this === this._parent._leftChild) {
+                        pGreater = this._parent;
+                    }
+                    else {
+                        pGreater = this.findLeftSubTreeRootNode()._parent;
+                    }
+                }
+            }
+
+            return pGreater;
+        };
+
+        /**
+         * @function
+         * @return {_Node}
+         */
+        _Node.prototype.getLesser = function () {
+            var pLesser = null;
+
+            if(this.isNonNilLeaf()) {
+                if(this._parent !== null) {
+                    if(this === this._parent._leftChild) {
+                        pLesser = this.findRightSubTreeRootNode()._parent;
+                    }
+                    else {
+                        pLesser = this._parent;
+                    }
+                }
+            }
+            else if(!this._leftChild.isNil()) {
+                pLesser = this._leftChild.findRightMostNode();
+            }
+            else {
+                pLesser = this._parent;
+            }
+
+            return pLesser;
+        };
+
+        /**
+         * @readonly
+         */
+        _Node.nil = new _Node();
         
         /**
          * @readonly
@@ -370,555 +1086,230 @@
          */
         RbTreeSetBase.SearchTarget = {
             equal : 0,
-            
             greater : 1,
-            
             greaterOrEqual : 2
         };
         
-        var _Node = (function () {
-            /**
-             * @constructor
-             * @function
-             * @param {_Node} [parent=null]
-             * @param {_Node} [leftChild=null]
-             * @param {_Node} [rightChild=null]
-             * @param {Object} [element=null]
-             * @param {Boolean} [red=false]
-             */
-            var _Node = function () {
-                this._parent = detail._selectNonUndefined(arguments[0], null);
-                this._leftChild = detail._selectNonUndefined(arguments[1], null);
-                this._rightChild = detail._selectNonUndefined(arguments[2], null);
-                this._element = detail._selectNonUndefined(arguments[3], null);
-                this._red = detail._selectNonUndefined(arguments[4], false);
-            };
-            
-            /**
-             * @function
-             * @param {_Node} node
-             * @return {_Node}
-             */
-            _Node.prototype.leftChild = function (node) {
-                if(typeof(node) !== "undefined") {
-                    this._leftChild = node;
-                    
-                    return this;
+        /**
+         * @memberof RbTreeSetBase
+         * @constructor
+         * @function
+         * @param {RbTreeSetBase} tree
+         * @param {_Node} node
+         */
+        RbTreeSetBase.IteratorBase = function (tree, node) {
+            this._tree = tree;
+            this._node = node;
+        };
+
+        /**
+         * @function
+         * @param {RbTreeSetBase.IteratorBase} rhs
+         * @return {Boolean}
+         */
+        RbTreeSetBase.IteratorBase.prototype[karbonator.equals] = function (rhs) {
+            return this._tree === rhs._tree
+                && this._node === rhs._node
+            ;
+        };
+
+        /**
+         * @function
+         * @return {Boolean}
+         */
+        RbTreeSetBase.IteratorBase.prototype.moveToNext = function () {
+            var result = this._node !== null;
+            if(result) {
+                this._node = this._node.getGreater();
+            }
+
+            return result;
+        };
+
+        /**
+         * @function
+         * @return {Boolean}
+         */
+        RbTreeSetBase.IteratorBase.prototype.moveToPrevious = function () {
+            var result = true;
+
+            if(this._node === null) {
+                this._node = this._tree._root.findRightMostNode();
+            }
+            else {
+                var lesser = this._node.getLesser();
+                result = lesser !== null;
+                if(result) {
+                    this._node = lesser;
                 }
-                else {
-                    return this._leftChild;
-                }
-            };
-            
-            /**
-             * @function
-             * @param {_Node} node
-             * @return {_Node}
-             */
-            _Node.prototype.rightChild = function (node) {
-                if(typeof(node) !== "undefined") {
-                    this._rightChild = node;
-                    
-                    return this;
-                }
-                else {
-                    return this._rightChild;
-                }
-            };
-            
-            /**
-             * @function
-             * @return {_Node}
-             */
-            _Node.prototype.getRoot = function () {
-                var pRoot = this;
-                for(
-                    var pParent = pRoot._parent;
-                    pParent !== null;
-                    pRoot = pParent, pParent = pRoot._parent
-                );
-                
-                return pRoot;
-            };
-            
-            /**
-             * @function
-             * @return {_Node}
-             */
-            _Node.prototype.getGrandParent = function () {
-                return (this._parent !== null ? this._parent._parent : null);
-            };
-            
-            /**
-             * @function
-             * @return {_Node}
-             */
-            _Node.prototype.getUncle = function () {
-                var pUncle = null;
-                
-                var pGrandParent = this.getGrandParent();
-                if(pGrandParent !== null) {
-                    pUncle = (pGrandParent._leftChild === this._parent
-                        ? pGrandParent._rightChild
-                        : pGrandParent._leftChild
-                    );
-                }
-                
-                return pUncle;
-            };
-            
-            /**
-             * @function
-             * @param {_Node} parent
-             * @return {_Node}
-             */
-            _Node.prototype.getSibling = function (parent) {
-                if(typeof(parent) === "undefined") {
-                    return (
-                        (this._parent !== null)
-                        ? (
-                            this === this._parent._leftChild
-                            ? this._parent._rightChild
-                            : this._parent._leftChild
-                            )
-                        : null
-                    );
-                }
-                else {
-                    var pSibling = null;
-                    if(this === parent._leftChild) {
-                        pSibling = parent._rightChild;
-                    }
-                    else if(this === parent._rightChild) {
-                        pSibling = parent._leftChild;
-                    }
-                    
-                    return pSibling;
-                }
-            };
-            
-            /**
-             * @function
-             * @return {Boolean}
-             */
-            _Node.prototype.isNil = function () {
-                return this._element === null;
-            };
-            
-            /**
-             * @function
-             * @return {Boolean}
-             */
-            _Node.prototype.isNonNilRoot = function () {
-                return this._parent === null && !this.isNil();
-            };
-            
-            /**
-             * @function
-             * @param {Number} index
-             * @return {_Node}
-             */
-            _Node.prototype.getChild = function (index) {
-                var node = null;
-                
-                switch(index) {
-                case 0:
-                    node = this._leftChild;
-                break;
-                case 1:
-                    node = this._rightChild;
-                break;
-                default:
-                    throw new Error("The value of the index must be in [0, 1].");
-                }
-                
-                return node;
-            };
-            
-            /**
-             * @function
-             * @return {_Node}
-             */
-            _Node.prototype.getLastChild = function () {
-                return (this.hasRightChild() ? this._rightChild : this._leftChild);
-            };
-            
-            /**
-             * @function
-             * @param {Number} index
-             * @param {_Node} pNode
-             */
-            _Node.prototype.setChild = function (index, pNode) {
-                var pDetachedChild = null;
-                
-                switch(index) {
-                case 0:
-                    if(this.hasNonNilLeftChild()) {
-                        pDetachedChild = this._leftChild;
-                        this._leftChild._parent = null;
-                    }
-                    this._leftChild = pNode;
-                break;
-                case 1:
-                    if(hasNonNilRightChild()) {
-                        pDetachedChild = this._rightChild;
-                        this._rightChild._parent = null;
-                    }
-                    this._rightChild = pNode;
-                break;
-                default:
-                    throw new Error("The range of the index must be [0, 1].");
-                }
-                
-                if(pNode) {
-                    if(pNode._parent !== null) {
-                        pNode.getChildSlot().call(pNode._parent, null);
-                    }
-                    pNode._parent = this;
-                }
-                
-                return pDetachedChild;
-            };
-            
-            /**
-             * @function
-             * @return {Number}
-             */
-            _Node.prototype.getChildCount = function () {
-                return (this.hasLeftChild() ? 1 : 0)
-                    + (this.hasRightChild() ? 1 : 0)
-                ;
-            };
-            
-            /**
-             * @function
-             * @return {Number}
-             */
-            _Node.prototype.getNonNilChildCount = function () {
-                return (this.hasNonNilLeftChild() ? 1 : 0)
-                    + (this.hasNonNilRightChild() ? 1 : 0)
-                ;
-            };
-            
-            /**
-             * @function
-             * @return {Number}
-             */
-            _Node.prototype.getLevel = function () {
-                var level = 0;
-                for(
-                    var pCurrent = this._parent;
-                    pCurrent !== null;
-                    pCurrent = pCurrent._parent, ++level
-                );
-                
-                return level;
-            };
-            
-            /**
-             * @function
-             * @return {Boolean}
-             */
-            _Node.prototype.isLeaf = function () {
-                return !this.hasLeftChild() && !this.hasRightChild();
-            };
-            
-            /**
-             * @function
-             * @return {Boolean}
-             */
-            _Node.prototype.isNonNilLeaf = function () {
-                return !this.hasNonNilLeftChild() && !this.hasNonNilRightChild();
-            };
-            
-            /**
-             * @function
-             * @return {Boolean}
-             */
-            _Node.prototype.hasLeftChild = function () {
-                return this._leftChild !== null;
-            };
-            
-            /**
-             * @function
-             * @return {Boolean}
-             */
-            _Node.prototype.hasRightChild = function () {
-                return this._rightChild !== null;
-            };
-            
-            /**
-             * @function
-             * @return {Boolean}
-             */
-            _Node.prototype.hasNonNilLeftChild = function () {
-                return this.hasLeftChild() && !this._leftChild.isNil();
-            };
-            
-            /**
-             * @function
-             * @return {Boolean}
-             */
-            _Node.prototype.hasNonNilRightChild = function () {
-                return this.hasRightChild() && !this._rightChild.isNil();
-            };
-            
-            /**
-             * @function
-             * @return {Function}
-             */
-            _Node.prototype.getChildSlot = function () {
-                var pChildSlot = null;
-                
-                if(this._parent !== null) {
-                    if(this._parent._leftChild === this) {
-                        pChildSlot = this._parent.leftChild;
-                    }
-                    else {
-                        pChildSlot = this._parent.rightChild;
-                    }
-                }
-                
-                return pChildSlot;
-            };
-            
-            /**
-             * @function
-             * @return {Number}
-             */
-            _Node.prototype.getChildSlotIndex = function () {
-                return (
-                    (this._parent !== null)
-                    ? (this === this._parent._leftChild ? 0 : 1)
-                    : 2
-                );
-            };
-            
-            /**
-             * @function
-             */
-            _Node.prototype.rotateLeft = function () {
-                var pChildSlot = this.getChildSlot();
-                
-                var pParent = this._parent;
-                var pLeftChildOfRightChild = this._rightChild._leftChild;
-                
-                this._rightChild._leftChild = this;
-                this._parent = this._rightChild;
-                
-                this._rightChild._parent = pParent;
-                if(pChildSlot !== null) {
-                    pChildSlot.call(pParent, this._rightChild);
-                }
-                
-                this._rightChild = pLeftChildOfRightChild;
-                if(pLeftChildOfRightChild !== _Node.nil) {
-                    pLeftChildOfRightChild._parent = this;
-                }
-            };
-            
-            /**
-             * @function
-             */
-            _Node.prototype.rotateRight = function () {
-                var pChildSlot = this.getChildSlot();
-                
-                var pParent = this._parent;
-                var pRightChildOfLeftChild = this._leftChild._rightChild;
-                
-                this._leftChild._rightChild = this;
-                this._parent = this._leftChild;
-                
-                this._leftChild._parent = pParent;
-                if(pChildSlot !== null) {
-                    pChildSlot.call(pParent, this._leftChild);
-                }
-                
-                this._leftChild = pRightChildOfLeftChild;
-                if(pRightChildOfLeftChild !== _Node.nil) {
-                    pRightChildOfLeftChild._parent = this;
-                }
-            };
-            
-            /**
-             * @function
-             * @return {_Node}
-             */
-            _Node.prototype.findLeftMostNode = function () {
-                var pCurrent = this;
-                for(
-                    ;
-                    pCurrent !== null && pCurrent.hasNonNilLeftChild();
-                    pCurrent = pCurrent._leftChild
-                );
-                
-                return pCurrent;
-            };
-            
-            /**
-             * @function
-             * @return {_Node}
-             */
-            _Node.prototype.findRightMostNode = function () {
-                var pCurrent = this;
-                for(
-                    ;
-                    pCurrent !== null && pCurrent.hasNonNilRightChild();
-                    pCurrent = pCurrent._rightChild
-                );
-                
-                return pCurrent;
-            };
-            
-            /**
-             * @function
-             * @return {_Node}
-             */
-            _Node.prototype.findLeftSubTreeRootNode = function () {
-                var pCurrent = this;
-                for(; pCurrent !== null; ) {
-                    var pParent = pCurrent._parent;
-                    if(pParent === null || pCurrent === pParent._leftChild) {
-                        break;
-                    }
-                    
-                    pCurrent = pParent;
-                }
-                
-                return pCurrent;
-            };
-            
-            /**
-             * @function
-             * @return {_Node}
-             */
-            _Node.prototype.findRightSubTreeRootNode = function () {
-                var pCurrent = this;
-                for(; pCurrent !== null; ) {
-                    var pParent = pCurrent._parent;
-                    if(pParent === null || pCurrent === pParent._rightChild) {
-                        break;
-                    }
-                    
-                    pCurrent = pParent;
-                }
-                
-                return pCurrent;
-            };
-            
-            /**
-             * @function
-             * @param {Function} handler
-             * @param {Object} [thisArg]
-             * @return {Boolean}
-             */
-            _Node.prototype.traverseNonNilNodesByPostorder = function (handler) {
-                var thisArg = arguments[1];
-                
-                var nodeStack = [];
-                nodeStack.push(this);
-                
-                var pLastTraversedNode = null;
-                var continueTraversal = true;
-                for(; continueTraversal && nodeStack.length > 0; ) {
-                    var pCurrentNode = nodeStack[nodeStack.length - 1];
-                    if(
-                        !pCurrentNode.isLeaf()
-                        && pCurrentNode.getLastChild() !== pLastTraversedNode
-                    ) {
-                        if(pCurrentNode.hasRightChild()) {
-                            nodeStack.push(pCurrentNode._rightChild);
-                        }
-                        
-                        if(pCurrentNode.hasLeftChild()) {
-                            nodeStack.push(pCurrentNode._leftChild);
-                        }
-                    }
-                    else {
-                        if(!pCurrentNode.isNil()) {
-                            continueTraversal = !handler.call(thisArg, pCurrentNode);
-                        }
-                        pLastTraversedNode = pCurrentNode;
-                        nodeStack.pop();
-                    }
-                }
-                
-                return continueTraversal;
-            };
-            
-            /**
-             * @function
-             * @return {_Node}
-             */
-            _Node.prototype.getGreater = function () {
-                var pGreater = null;
-                
-                if(!this._rightChild.isNil()) {
-                    pGreater = this._rightChild.findLeftMostNode();
-                }
-                else {
-                    if(this._parent !== null) {
-                        if(this === this._parent._leftChild) {
-                            pGreater = this._parent;
-                        }
-                        else {
-                            pGreater = this.findLeftSubTreeRootNode()._parent;
-                        }
-                    }
-                }
-                
-                return pGreater;
-            };
-            
-            /**
-             * @function
-             * @return {_Node}
-             */
-            _Node.prototype.getLesser = function () {
-                var pLesser = null;
-                
-                if(this.isNonNilLeaf()) {
-                    if(this._parent !== null) {
-                        if(this === this._parent._leftChild) {
-                            pLesser = this.findRightSubTreeRootNode()._parent;
-                        }
-                        else {
-                            pLesser = this._parent;
-                        }
-                    }
-                }
-                else if(!this._leftChild.isNil()) {
-                    pLesser = this._leftChild.findRightMostNode();
-                }
-                else {
-                    pLesser = this._parent;
-                }
-                
-                return pLesser;
-            };
-            
-            /**
-             * @readonly
-             */
-            _Node.nil = new _Node();
-            
-            return _Node;
-        })();
+            }
+
+            return result;
+        };
+
+        /**
+         * @function
+         * @return {Object}
+         */
+        RbTreeSetBase.IteratorBase.prototype.dereference = function () {
+            if(this._node === null) {
+                throw new Error("Cannot deference an iterator pointing the end of container.");
+            }
+
+            return this._node._element;
+        };
+
+        /**
+         * @function
+         * @return {RbTreeSetBase.IteratorBase}
+         */
+        RbTreeSetBase.prototype.begin = function () {
+            return new RbTreeSetBase.IteratorBase(
+                this,
+                (this._root !== null ? this._root.findLeftMostNode() : null)
+            );
+        };
         
         /**
          * @function
-         * @param {RbTreeSetBase} oThis
+         * @return {RbTreeSetBase.IteratorBase}
+         */
+        RbTreeSetBase.prototype.end = function () {
+            return new RbTreeSetBase.IteratorBase(this, null);
+        };
+        
+        /**
+         * @function
+         * @return {Number}
+         */
+        RbTreeSetBase.prototype.getElementCount = function () {
+            return this._elementCount;
+        };
+        
+        /**
+         * @function
+         * @return {Boolean}
+         */
+        RbTreeSetBase.prototype.isEmpty = function () {
+            return this._root === null;
+        };
+        
+        /**
+         * @function
+         * @param {Object} element
+         * @param {Number} searchTarget
+         * @return {RbTreeSetBase.IteratorBase}
+         */
+        RbTreeSetBase.prototype.find = function (element, searchTarget) {
+            return new RbTreeSetBase.IteratorBase(this, this._findNode(element, searchTarget));
+        };
+        
+        /**
+         * @function
+         * @param {Object} element
+         * @return {RbTreeSetBase.IteratorBase}
+         */
+        RbTreeSetBase.prototype.insert = function (element) {
+            var insertedNode = this._insertNodeInBst(element);
+            if(insertedNode !== null) {
+                ++this._elementCount;
+                this._rebalanceAfterInsertion(insertedNode);
+            }
+            
+            return new RbTreeSetBase.IteratorBase(this, insertedNode);
+        };
+        
+        /**
+         * @function
+         * @param {Object} element
+         * @return {Boolean}
+         */
+        RbTreeSetBase.prototype.remove = function (element) {
+            var pTarget = this._findNode(element, RbTreeSetBase.SearchTarget.equal);
+            var targetFound = pTarget !== null;
+            if(targetFound) {
+                --this._elementCount;
+                
+                var info = this._disconnectNodeFromBst(pTarget);
+                
+                var pTempNilNode = null;
+                if(info.pReplacement === _Node.nil) {
+                    pTempNilNode = this._constructNode(info.pParentOfReplacement, null);
+                    pTempNilNode._red = false;
+                    if(info.pParentOfReplacement !== null) {
+                        info.pReplacementChildSlot.call(info.pParentOfReplacement, pTempNilNode);
+                    }
+                    info.pReplacement = pTempNilNode;
+                }
+                
+                if(info.pRemovalTarget._red) {
+                    info.pRemovalTarget._red = false;
+                    info.pReplacement._red = true;
+                }
+                else {
+                    this._rebalanceAfterRemoval(info.pReplacement, info.pParentOfReplacement);
+                    if(this._root === pTempNilNode) {
+                        this._root = null;
+                    }
+                    else if(info.pReplacement.isNonNilRoot()) {
+                        this._root = info.pReplacement;
+                    }
+                    else if(!this._root.isNonNilRoot()) {
+                        this._root = this._root.getRoot();
+                    }
+                }
+                
+                info.pRemovalTarget._parent = null;
+                this._destructNode(info.pRemovalTarget);
+                if(pTempNilNode !== null) {
+                    pTempNilNode._parent = null;
+                    this._destructNode(pTempNilNode);
+                    if(info.pParentOfReplacement !== null) {
+                        info.pReplacementChildSlot.call(info.pParentOfReplacement, _Node.nil);
+                    }
+                }
+            }
+            
+            return targetFound;
+        };
+        
+        /**
+         * @function
+         * @param {_Node} node
+         */
+        var _traversalHandlerOfRemoveAll = function (node) {
+            this._destructNode(node);
+        };
+        
+        /**
+         * @function
+         */
+        RbTreeSetBase.prototype.removeAll = function () {
+            if(!this.isEmpty()) {
+                this._root.traverseNonNilNodesByPostorder(
+                    _traversalHandlerOfRemoveAll,
+                    this
+                );
+                
+                this._root = null;
+                this._elementCount = 0;
+            }
+        };
+        
+        /**
+         * @private
+         * @function
          * @param {_Node} parent
          * @param {Object} element
          * @return {_Node}
          */
-        var _constructNode = function (oThis, parent, element) {
+        RbTreeSetBase.prototype._constructNode = function (parent, element) {
             var node = null;
-            if(oThis._garbageNodes.length < 1) {
+            if(this._garbageNodes.length < 1) {
                 node = new _Node(parent, _Node.nil, _Node.nil, element, true);
             }
             else {
-                node = oThis._garbageNodes.pop();
+                node = this._garbageNodes.pop();
                 _Node.call(node, parent, _Node.nil, _Node.nil, element, true);
             }
             
@@ -926,12 +1317,12 @@
         };
         
         /**
+         * @private
          * @function
-         * @param {RbTreeSetBase} oThis
          * @param {_Node} node
          * @param {Boolean} [pushToGarbageList=true]
          */
-        var _destructNode = function (oThis, node) {
+        RbTreeSetBase.prototype._destructNode = function (node) {
             node._element =
             node._parent =
             node._leftChild =
@@ -939,23 +1330,23 @@
             node._red = undefined;
             
             if(typeof(arguments[2]) === "undefined" || !!arguments[2]) {
-                oThis._garbageNodes.push(node);
+                this._garbageNodes.push(node);
             }
         };
         
         /**
+         * @private
          * @function
-         * @param {RbTreeSetBase} oThis
          * @param {Object} element
          * @param {Number} searchTarget
          * @return {_Node}
          */
-        var _findNode = function (oThis, element, searchTarget) {
-            var pElementKey = oThis._keyGetter(element);
-            var pCurrent = oThis._root, pPrevious = null;
+        RbTreeSetBase.prototype._findNode = function (element, searchTarget) {
+            var pElementKey = this._keyGetter(element);
+            var pCurrent = this._root, pPrevious = null;
             for(; pCurrent !== null && !pCurrent.isNil(); ) {
-                var pCurrentElementKey = oThis._keyGetter(pCurrent._element);
-                var compResult = oThis._comparator(pElementKey, pCurrentElementKey);
+                var pCurrentElementKey = this._keyGetter(pCurrent._element);
+                var compResult = this._comparator(pElementKey, pCurrentElementKey);
                 if(compResult < 0) {
                     pPrevious = pCurrent;
                     pCurrent = pCurrent._leftChild;
@@ -974,7 +1365,7 @@
                 searchTarget >= RbTreeSetBase.SearchTarget.greater
                 && pPrevious !== null
                 && !pPrevious.isNil()
-                && oThis._comparator(oThis._keyGetter(pPrevious._element), pElementKey) < 0
+                && this._comparator(this._keyGetter(pPrevious._element), pElementKey) < 0
             ) {
                 pPrevious = pPrevious.getGreater();
             }
@@ -996,29 +1387,29 @@
         };
         
         /**
+         * @private
          * @function
-         * @param {RbTreeSetBase} oThis
          * @param {Object} element
          * @return {_Node}
          */
-        var _insertNodeInBinarySearchTree = function (oThis, element) {
+        RbTreeSetBase.prototype._insertNodeInBst = function (element) {
             var newNode = null;
             
-            if(oThis._root === null) {
-                newNode = _constructNode(oThis, null, element);
-                oThis._root = newNode;
+            if(this._root === null) {
+                newNode = this._constructNode(null, element);
+                this._root = newNode;
             }
             else {
-                var pElementKey = oThis._keyGetter(element);
+                var pElementKey = this._keyGetter(element);
                 for(
-                    var pCurrent = oThis._root;
+                    var pCurrent = this._root;
                     !pCurrent.isNil();
                 ) {
-                    var pCurrentElementKey = oThis._keyGetter(pCurrent._element);
-                    var compResult = oThis._comparator(pElementKey, pCurrentElementKey);
+                    var pCurrentElementKey = this._keyGetter(pCurrent._element);
+                    var compResult = this._comparator(pElementKey, pCurrentElementKey);
                     if(compResult < 0) {
                         if(pCurrent._leftChild === _Node.nil) {
-                            newNode = _constructNode(oThis, pCurrent, element);
+                            newNode = this._constructNode(pCurrent, element);
                             pCurrent._leftChild = newNode;
                             
                             pCurrent = _Node.nil;
@@ -1029,7 +1420,7 @@
                     }
                     else if(compResult > 0) {
                         if(pCurrent._rightChild === _Node.nil) {
-                            newNode = _constructNode(oThis, pCurrent, element);
+                            newNode = this._constructNode(pCurrent, element);
                             pCurrent._rightChild = newNode;
                             
                             pCurrent = _Node.nil;
@@ -1048,12 +1439,12 @@
         };
         
         /**
+         * @private
          * @function
-         * @param {RbTreeSetBase} oThis
          * @param {_Node} target
          * @return {Object}
          */
-        var _disconnectNodeFromBinarySearchTree = function (oThis, target) {
+        RbTreeSetBase.prototype._disconnectNodeFromBst = function (target) {
             var out = {
                 pRemovalTarget : null,
                 pReplacement : null,
@@ -1071,7 +1462,7 @@
                 
                 out.pRemovalTarget = pMaximumOfRightSubTree;
                 
-                //oThis._destructElement(target._element);
+                //this._destructElement(target._element);
                 target._element = pMaximumOfRightSubTree._element;
                 pMaximumOfRightSubTree._element = null;
             }
@@ -1106,11 +1497,11 @@
         };
         
         /**
+         * @private
          * @function
-         * @param {RbTreeSetBase} oThis
          * @param {_Node} insertedNode
          */
-        var _rebalanceAfterInsertion = function (oThis, insertedNode) {
+        RbTreeSetBase.prototype._rebalanceAfterInsertion = function (insertedNode) {
             if(insertedNode.isNonNilRoot()) {
                 insertedNode._red = false;
             }
@@ -1164,7 +1555,7 @@
                                 pGrandParentOfTarget.rotateLeft();
                             }
                             if(isGrandParentRoot) {
-                                oThis._root = pGrandParentOfTarget._parent;
+                                this._root = pGrandParentOfTarget._parent;
                             }
                             
                             pCurrent = null;
@@ -1178,12 +1569,12 @@
         };
         
         /**
+         * @private
          * @function
-         * @param {RbTreeSetBase} oThis
          * @param {_Node} replacement
          * @param {_Node} pParentOfReplacement
          */
-        var _rebalanceAfterRemoval = function (oThis, replacement, pParentOfReplacement) {
+        RbTreeSetBase.prototype._rebalanceAfterRemoval = function (replacement, pParentOfReplacement) {
             if(replacement._red) {
                 replacement._red = false;
             }
@@ -1193,7 +1584,7 @@
                     pCurrent !== null;
                 ) {
                     if(pParentOfCurrent === null) {
-                        oThis._root = pCurrent;
+                        this._root = pCurrent;
                         
                         pCurrent = null;
                     }
@@ -1285,216 +1676,6 @@
             }
         };
         
-        /**
-         * @function
-         * @param {_Node} node
-         */
-        var _traversalHandlerOfRemoveAll = function (node) {
-            _destructNode(this, node);
-        };
-        
-        RbTreeSetBase.IteratorBase = (function () {
-            /**
-             * @memberof {RbTreeSetBase}
-             * @constructor
-             * @function
-             * @param {RbTreeSetBase} tree
-             * @param {_Node} node
-             */
-            var IteratorBase = function (tree, node) {
-                this._tree = tree;
-                this._node = node;
-            };
-            
-            /**
-             * @function
-             * @param {RbTreeSetBase.IteratorBase} rhs
-             * @return {Boolean}
-             */
-            IteratorBase.prototype[karbonator.equals] = function (rhs) {
-                return this._tree === rhs._tree
-                    && this._node === rhs._node
-                ;
-            };
-            
-            /**
-             * @function
-             * @return {Boolean}
-             */
-            IteratorBase.prototype.moveToNext = function () {
-                var result = this._node !== null;
-                if(result) {
-                    this._node = this._node.getGreater();
-                }
-                
-                return result;
-            };
-            
-            /**
-             * @function
-             * @return {Boolean}
-             */
-            IteratorBase.prototype.moveToPrevious = function () {
-                var result = true;
-                
-                if(this._node === null) {
-                    this._node = this._tree._root.findRightMostNode();
-                }
-                else {
-                    var lesser = this._node.getLesser();
-                    result = lesser !== null;
-                    if(result) {
-                        this._node = lesser;
-                    }
-                }
-                
-                return result;
-            };
-            
-            /**
-             * @function
-             * @return {Object}
-             */
-            IteratorBase.prototype.dereference = function () {
-                if(this._node === null) {
-                    throw new Error("Cannot deference an iterator pointing the end of container.");
-                }
-                
-                return this._node._element;
-            };
-            
-            return IteratorBase;
-        })();
-        
-        /**
-         * @function
-         * @return {RbTreeSetBase.IteratorBase}
-         */
-        RbTreeSetBase.prototype.begin = function () {
-            return new RbTreeSetBase.IteratorBase(
-                this,
-                (this._root !== null ? this._root.findLeftMostNode() : null)
-            );
-        };
-        
-        /**
-         * @function
-         * @return {RbTreeSetBase.IteratorBase}
-         */
-        RbTreeSetBase.prototype.end = function () {
-            return new RbTreeSetBase.IteratorBase(this, null);
-        };
-        
-        /**
-         * @function
-         * @return {Number}
-         */
-        RbTreeSetBase.prototype.getElementCount = function () {
-            return this._elementCount;
-        };
-        
-        /**
-         * @function
-         * @return {Boolean}
-         */
-        RbTreeSetBase.prototype.isEmpty = function () {
-            return this._root === null;
-        };
-        
-        /**
-         * @function
-         * @param {Object} element
-         * @param {Number} searchTarget
-         * @return {RbTreeSetBase.IteratorBase}
-         */
-        RbTreeSetBase.prototype.find = function (element, searchTarget) {
-            return new RbTreeSetBase.IteratorBase(this, _findNode(this, element, searchTarget));
-        };
-        
-        /**
-         * @function
-         * @param {Object} element
-         * @return {RbTreeSetBase.IteratorBase}
-         */
-        RbTreeSetBase.prototype.insert = function (element) {
-            var insertedNode = _insertNodeInBinarySearchTree(this, element);
-            if(insertedNode !== null) {
-                ++this._elementCount;
-                _rebalanceAfterInsertion(this, insertedNode);
-            }
-            
-            return new RbTreeSetBase.IteratorBase(this, insertedNode);
-        };
-        
-        /**
-         * @function
-         * @param {Object} element
-         * @return {Boolean}
-         */
-        RbTreeSetBase.prototype.remove = function (element) {
-            var pTarget = _findNode(this, element, RbTreeSetBase.SearchTarget.equal);
-            var targetFound = pTarget !== null;
-            if(targetFound) {
-                --this._elementCount;
-                
-                var info = _disconnectNodeFromBinarySearchTree(this, pTarget);
-                
-                var pTempNilNode = null;
-                if(info.pReplacement === _Node.nil) {
-                    pTempNilNode = _constructNode(this, info.pParentOfReplacement, null);
-                    pTempNilNode._red = false;
-                    if(info.pParentOfReplacement !== null) {
-                        info.pReplacementChildSlot.call(info.pParentOfReplacement, pTempNilNode);
-                    }
-                    info.pReplacement = pTempNilNode;
-                }
-                
-                if(info.pRemovalTarget._red) {
-                    info.pRemovalTarget._red = false;
-                    info.pReplacement._red = true;
-                }
-                else {
-                    _rebalanceAfterRemoval(this, info.pReplacement, info.pParentOfReplacement);
-                    if(this._root === pTempNilNode) {
-                        this._root = null;
-                    }
-                    else if(info.pReplacement.isNonNilRoot()) {
-                        this._root = info.pReplacement;
-                    }
-                    else if(!this._root.isNonNilRoot()) {
-                        this._root = this._root.getRoot();
-                    }
-                }
-                
-                info.pRemovalTarget._parent = null;
-                _destructNode(this, info.pRemovalTarget);
-                if(pTempNilNode !== null) {
-                    pTempNilNode._parent = null;
-                    _destructNode(this, pTempNilNode);
-                    if(info.pParentOfReplacement !== null) {
-                        info.pReplacementChildSlot.call(info.pParentOfReplacement, _Node.nil);
-                    }
-                }
-            }
-            
-            return targetFound;
-        };
-        
-        /**
-         * @function
-         */
-        RbTreeSetBase.prototype.removeAll = function () {
-            if(!this.isEmpty()) {
-                this._root.traverseNonNilNodesByPostorder(
-                    _traversalHandlerOfRemoveAll,
-                    this
-                );
-                
-                this._root = null;
-                this._elementCount = 0;
-            }
-        };
-        
         return RbTreeSetBase;
     })();
     
@@ -1503,298 +1684,308 @@
     /*////////////////////////////////*/
     //TreeSet
     
-    collection.TreeSet = (function () {
-        /**
-         * @memberof karbonator.collection
-         * @constructor
-         * @param {karbonator.comparator} comparator
-         * @param {iterable} [iterable]
-         */
-        var TreeSet = function (comparator) {
-            this._comparator = comparator;
-            this._rbTreeSet = new RbTreeSetBase(comparator);
-            
-            if(!karbonator.isUndefined(arguments[1])) {
-                _setConcatenateAssign(this, arguments[1]);
-            }
+    /**
+     * @memberof karbonator.collection
+     * @constructor
+     * @param {karbonator.comparator} comparator
+     * @param {iterable} [iterable]
+     */
+    var TreeSet = function (comparator) {
+        this._comparator = comparator;
+        this._rbTreeSet = new RbTreeSetBase(comparator);
+
+        if(!karbonator.isUndefined(arguments[1])) {
+            _setConcatenateAssign(this, arguments[1]);
+        }
+    };
+    
+    /**
+     * @memberof karbonator.collection.TreeSet
+     * @constructor
+     * @param {karbonator.collection.TreeSet} set
+     */
+    TreeSet.PairIterator = function (set) {
+        this._iter = set._rbTreeSet.begin();
+        this._end = set._rbTreeSet.end();
+    };
+    
+    /**
+     * @function
+     * @return {Object}
+     */
+    TreeSet.PairIterator.prototype.next = function () {
+        var done = this._iter[karbonator.equals](this._end);
+        var value = (!done ? this._iter.dereference() : undefined);
+        var out = {
+            value : (value ? [value, value] : undefined),
+            done : done
         };
-        
-        var PairIterator = (function () {
-            /**
-             * @constructor
-             * @param {karbonator.collection.TreeSet} set
-             */
-            var PairIterator = function (set) {
-                this._iter = set._rbTreeSet.begin();
-                this._end = set._rbTreeSet.end();
-            };
-            
-            /**
-             * @function
-             * @return {Object}
-             */
-            PairIterator.prototype.next = function () {
-                var done = this._iter[karbonator.equals](this._end);
-                var value = (!done ? this._iter.dereference() : undefined);
-                var out = {
-                    value : (value ? [value, value] : undefined),
-                    done : done
-                };
-                
-                this._iter.moveToNext();
-                
-                return out;
-            };
-            
-            return PairIterator;
-        })();
-        
-        var ValueIterator = (function () {
-            /**
-             * @constructor
-             * @param {karbonator.collection.TreeSet} set
-             */
-            var ValueIterator = function (set) {
-                this._iter = set._rbTreeSet.begin();
-                this._end = set._rbTreeSet.end();
-            };
-            
-            /**
-             * @function
-             * @return {Object}
-             */
-            ValueIterator.prototype.next = function () {
-                var done = this._iter[karbonator.equals](this._end);
-                var out = {
-                    value : (!done ? this._iter.dereference() : undefined),
-                    done : done
-                };
-                
-                this._iter.moveToNext();
-                
-                return out;
-            };
-            
-            return ValueIterator;
-        })();
-        
-        /**
-         * @function
-         * @return {karbonator.collection.TreeSet}
-         */
-        TreeSet.prototype[karbonator.shallowClone] = function () {
-            return _setShallowCopy(TreeSet, this);
+
+        this._iter.moveToNext();
+
+        return out;
+    };
+    
+    /**
+     * @memberof karbonator.collection.TreeSet
+     * @constructor
+     * @param {karbonator.collection.TreeSet} set
+     */
+    TreeSet.ValueIterator = function (set) {
+        this._iter = set._rbTreeSet.begin();
+        this._end = set._rbTreeSet.end();
+    };
+    
+    /**
+     * @function
+     * @return {Object}
+     */
+    TreeSet.ValueIterator.prototype.next = function () {
+        var done = this._iter[karbonator.equals](this._end);
+        var out = {
+            value : (!done ? this._iter.dereference() : undefined),
+            done : done
         };
-        
-        /**
-         * @function
-         * @return {Number}
-         */
-        TreeSet.prototype.getElementCount = function () {
-            return this._rbTreeSet.getElementCount();
-        };
-        
-        /**
-         * @function
-         * @param {Object} value
-         * @return {Boolean}
-         */
-        TreeSet.prototype.has = function (value) {
-            return !this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.equal)[karbonator.equals](this._rbTreeSet.end());
-        };
-        
-        /**
-         * @function
-         * @param {Object} value
-         * @return {Object|undefined}
-         */
-        TreeSet.prototype.findNotLessThan = function (value) {
-            var endIter = this._rbTreeSet.end();
-            var iter = this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.greaterOrEqual);
+
+        this._iter.moveToNext();
+
+        return out;
+    };
+    
+    /**
+     * @function
+     * @return {karbonator.collection.TreeSet}
+     */
+    TreeSet.prototype[karbonator.shallowClone] = function () {
+        return _setShallowCopy(TreeSet, this);
+    };
+    
+    /**
+     * @function
+     * @return {Number}
+     */
+    TreeSet.prototype.getElementCount = function () {
+        return this._rbTreeSet.getElementCount();
+    };
+    
+    /**
+     * @function
+     * @param {Object} value
+     * @return {Boolean}
+     */
+    TreeSet.prototype.has = function (value) {
+        return !this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.equal)[karbonator.equals](this._rbTreeSet.end());
+    };
+    
+    /**
+     * TODO : 코드 검증
+     * @function
+     * @param {Object} value
+     * @return {Object|undefined}
+     */
+    TreeSet.prototype.findNearestLessThan = function (value) {
+        var endIter = this._rbTreeSet.end();
+        var iter = this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.greaterOrEqual);
+        if(!iter[karbonator.equals](endIter)) {
+            iter.moveToPrevious();
+            
             if(!iter[karbonator.equals](endIter)) {
                 return iter.dereference();
             }
-        };
-        
-        /**
-         * @function
-         * @param {Object} value
-         * @return {Object|undefined}
-         */
-        TreeSet.prototype.findGreaterThan = function (value) {
-            var endIter = this._rbTreeSet.end();
-            var iter = this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.greater);
-            if(!iter[karbonator.equals](endIter)) {
-                return iter.dereference();
-            }
-        };
-        
-        /**
-         * @function
-         * @param {Function} callback
-         * @param {Object} [thisArg]
-         */
-        TreeSet.prototype.forEach = function (callback, thisArg) {
-            for(
-                var end = this._rbTreeSet.end(), iter = this._rbTreeSet.begin();
-                !iter[karbonator.equals](end);
-                iter.moveToNext()
-            ) {
-                var value = iter.dereference();
-                callback.call(thisArg, value, value, this);
-            }
-        };
-        
-        /**
-         * @function
-         * @return {PairIterator}
-         */
-        TreeSet.prototype.entries = function () {
-            return new PairIterator(this);
-        };
-        
-        /**
-         * @function
-         * @return {ValueIterator}
-         */
-        TreeSet.prototype.keys = function () {
-            return new ValueIterator(this);
-        };
-        
-        /**
-         * @function
-         * @return {ValueIterator}
-         */
-        TreeSet.prototype.values = function () {
-            return new ValueIterator(this);
-        };
-        
-        /**
-         * @function
-         * @return {ValueIterator}
-         */
-        TreeSet.prototype[Symbol.iterator] = function () {
-            return new ValueIterator(this);
-        };
-        
-        /**
-         * @function
-         * @param {Object} value
-         */
-        TreeSet.prototype.add = function (value) {
-            this._rbTreeSet.insert(value);
-            
-            return this;
-        };
-        
-        /**
-         * @function
-         * @param {Object} value
-         * @return {Boolean}
-         */
-        TreeSet.prototype.tryAdd = function (value) {
-            return !this._rbTreeSet.insert(value)[karbonator.equals](this._rbTreeSet.end());
-        };
-        
-        /**
-         * @function
-         * @param {Object} value
-         * @return {Boolean}
-         */
-        TreeSet.prototype.remove = function (value) {
-            return this._rbTreeSet.remove(value);
-        };
-        
-        /**
-         * @function
-         * @param {Object} value
-         * @return {Boolean}
-         */
-        TreeSet.prototype["delete"] = function (value) {
-            return this._rbTreeSet.remove(value);
-        };
-        
-        /**
-         * @function
-         */
-        TreeSet.prototype.clear = function () {
-            this._rbTreeSet.removeAll();
-        };
-        
-        /**
-         * lhs = (lhs ∪ rhs).<br>
-         * This method tries to add rhs's elements, so it uses <b>lhs</b>'s comparator to check if lhs lacks rhs's elements.<br>
-         * @function
-         * @param {karbonator.collection.TreeSet} rhs
-         * @return {karbonator.collection.TreeSet}
-         */
-        TreeSet.prototype.uniteAssign = function (rhs) {
-            return _setUniteAssign(this, rhs);
-        };
-        
-        /**
-         * Creates a new set of (lhs ∪ rhs).<br>
-         * This method tries to add rhs's elements, so it uses <b>lhs</b>'s comparator to check if lhs lacks rhs's elements.<br>
-         * @function
-         * @param {karbonator.collection.TreeSet} rhs
-         * @return {karbonator.collection.TreeSet}
-         */
-        TreeSet.prototype.unite = function (rhs) {
-            return _setUnite(TreeSet, this, rhs);
-        };
-        
-        /**
-         * lhs = (lhs - rhs).<br>
-         * This method uses <b>lhs</b>'s comparator to check if lhs has rhs's elements.<br>
-         * @function
-         * @param {karbonator.collection.TreeSet} rhs
-         * @return {karbonator.collection.TreeSet}
-         */
-        TreeSet.prototype.subtractAssign = function (rhs) {
-            return _setSubtractAssign(this, rhs);
-        };
-        
-        /**
-         * Creates a new set of (lhs - rhs).
-         * This method uses <b>lhs</b>'s comparator to check if lhs has rhs's elements.<br>
-         * @function
-         * @param {karbonator.collection.TreeSet} rhs
-         * @return {karbonator.collection.TreeSet}
-         */
-        TreeSet.prototype.subtract = function (rhs) {
-            return _setSubtract(TreeSet, this, rhs);
-        };
-        
-        /**
-         * lhs = (lhs ∩ rhs).<br>
-         * This method will actually calculate <b>(lhs - (lhs - rhs))</b> instead to consistently use <b>lhs</b>'s comparator.
-         * @function
-         * @param {karbonator.collection.TreeSet} rhs
-         * @return {karbonator.collection.TreeSet}
-         */
-        TreeSet.prototype.intersectAssign = function (rhs) {
-            return _setIntersectAssign(TreeSet, this, rhs);
-        };
-        
-        /**
-         * Creates a new set of (lhs ∩ rhs).<br>
-         * This method will actually calculate <b>(lhs - (lhs - rhs))</b> instead to consistently use <b>lhs</b>'s comparator.
-         * @function
-         * @param {karbonator.collection.TreeSet} rhs
-         * @return {karbonator.collection.TreeSet}
-         */
-        TreeSet.prototype.intersect = function (rhs) {
-            return _setIntersect(TreeSet, this, rhs);
-        };
-        
-        /**
-         * @function
-         * @return {String}
-         */
-        TreeSet.prototype.toString = _setToStringMethod;
-        
-        return TreeSet;
-    })();
+        }
+    };
+    
+    /**
+     * @function
+     * @param {Object} value
+     * @return {Object|undefined}
+     */
+    TreeSet.prototype.findNotLessThan = function (value) {
+        var endIter = this._rbTreeSet.end();
+        var iter = this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.greaterOrEqual);
+        if(!iter[karbonator.equals](endIter)) {
+            return iter.dereference();
+        }
+    };
+    
+    /**
+     * @function
+     * @param {Object} value
+     * @return {Object|undefined}
+     */
+    TreeSet.prototype.findGreaterThan = function (value) {
+        var endIter = this._rbTreeSet.end();
+        var iter = this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.greater);
+        if(!iter[karbonator.equals](endIter)) {
+            return iter.dereference();
+        }
+    };
+    
+    /**
+     * @function
+     * @param {Function} callback
+     * @param {Object} [thisArg]
+     */
+    TreeSet.prototype.forEach = function (callback, thisArg) {
+        for(
+            var end = this._rbTreeSet.end(), iter = this._rbTreeSet.begin();
+            !iter[karbonator.equals](end);
+            iter.moveToNext()
+        ) {
+            var value = iter.dereference();
+            callback.call(thisArg, value, value, this);
+        }
+    };
+    
+    /**
+     * @function
+     * @return {karbonator.collection.TreeSet.PairIterator}
+     */
+    TreeSet.prototype.entries = function () {
+        return new TreeSet.PairIterator(this);
+    };
+    
+    /**
+     * @function
+     * @return {karbonator.collection.TreeSet.ValueIterator}
+     */
+    TreeSet.prototype.keys = function () {
+        return new TreeSet.ValueIterator(this);
+    };
+    
+    /**
+     * @function
+     * @return {karbonator.collection.TreeSet.ValueIterator}
+     */
+    TreeSet.prototype.values = function () {
+        return new TreeSet.ValueIterator(this);
+    };
+    
+    /**
+     * @function
+     * @return {karbonator.collection.TreeSet.ValueIterator}
+     */
+    TreeSet.prototype[Symbol.iterator] = function () {
+        return new TreeSet.ValueIterator(this);
+    };
+    
+    /**
+     * @function
+     * @param {Object} value
+     */
+    TreeSet.prototype.add = function (value) {
+        this._rbTreeSet.insert(value);
+
+        return this;
+    };
+    
+    /**
+     * @function
+     * @param {Object} value
+     * @return {Boolean}
+     */
+    TreeSet.prototype.tryAdd = function (value) {
+        return !this._rbTreeSet.insert(value)[karbonator.equals](this._rbTreeSet.end());
+    };
+    
+    /**
+     * @function
+     * @param {Object} value
+     * @return {Boolean}
+     */
+    TreeSet.prototype.remove = function (value) {
+        return this._rbTreeSet.remove(value);
+    };
+    
+    /**
+     * @function
+     * @param {Object} value
+     * @return {Boolean}
+     */
+    TreeSet.prototype["delete"] = function (value) {
+        return this._rbTreeSet.remove(value);
+    };
+    
+    /**
+     * @function
+     */
+    TreeSet.prototype.clear = function () {
+        this._rbTreeSet.removeAll();
+    };
+    
+    /**
+     * lhs = (lhs ∪ rhs).<br>
+     * This method tries to add rhs's elements, so it uses <b>lhs</b>'s comparator to check if lhs lacks rhs's elements.<br>
+     * @function
+     * @param {karbonator.collection.TreeSet} rhs
+     * @return {karbonator.collection.TreeSet}
+     */
+    TreeSet.prototype.uniteAssign = function (rhs) {
+        return _setUniteAssign(this, rhs);
+    };
+    
+    /**
+     * Creates a new set of (lhs ∪ rhs).<br>
+     * This method tries to add rhs's elements, so it uses <b>lhs</b>'s comparator to check if lhs lacks rhs's elements.<br>
+     * @function
+     * @param {karbonator.collection.TreeSet} rhs
+     * @return {karbonator.collection.TreeSet}
+     */
+    TreeSet.prototype.unite = function (rhs) {
+        return _setUnite(TreeSet, this, rhs);
+    };
+    
+    /**
+     * lhs = (lhs - rhs).<br>
+     * This method uses <b>lhs</b>'s comparator to check if lhs has rhs's elements.<br>
+     * @function
+     * @param {karbonator.collection.TreeSet} rhs
+     * @return {karbonator.collection.TreeSet}
+     */
+    TreeSet.prototype.subtractAssign = function (rhs) {
+        return _setSubtractAssign(this, rhs);
+    };
+    
+    /**
+     * Creates a new set of (lhs - rhs).
+     * This method uses <b>lhs</b>'s comparator to check if lhs has rhs's elements.<br>
+     * @function
+     * @param {karbonator.collection.TreeSet} rhs
+     * @return {karbonator.collection.TreeSet}
+     */
+    TreeSet.prototype.subtract = function (rhs) {
+        return _setSubtract(TreeSet, this, rhs);
+    };
+    
+    /**
+     * lhs = (lhs ∩ rhs).<br>
+     * This method will actually calculate <b>(lhs - (lhs - rhs))</b> instead to consistently use <b>lhs</b>'s comparator.
+     * @function
+     * @param {karbonator.collection.TreeSet} rhs
+     * @return {karbonator.collection.TreeSet}
+     */
+    TreeSet.prototype.intersectAssign = function (rhs) {
+        return _setIntersectAssign(TreeSet, this, rhs);
+    };
+    
+    /**
+     * Creates a new set of (lhs ∩ rhs).<br>
+     * This method will actually calculate <b>(lhs - (lhs - rhs))</b> instead to consistently use <b>lhs</b>'s comparator.
+     * @function
+     * @param {karbonator.collection.TreeSet} rhs
+     * @return {karbonator.collection.TreeSet}
+     */
+    TreeSet.prototype.intersect = function (rhs) {
+        return _setIntersect(TreeSet, this, rhs);
+    };
+    
+    /**
+     * @function
+     * @return {String}
+     */
+    TreeSet.prototype.toString = _setToStringMethod;
+    
+    collection.TreeSet = TreeSet;
     
     /*////////////////////////////////*/
     
@@ -2002,6 +2193,28 @@
     };
     
     /**
+     * TODO : 코드 검증
+     * @function
+     * @param {Object} key
+     * @return {Object|undefined}
+     */
+    TreeMap.prototype.findNearestLessThan = function (key) {
+        var endIter = this._rbTreeSet.end();
+        var iter = this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.greaterOrEqual);
+        if(!iter[karbonator.equals](endIter)) {
+            iter.moveToPrevious();
+            
+            if(!iter[karbonator.equals](endIter)) {
+                var pair = iter.dereference();
+                return {
+                    key : pair.key,
+                    value : pair.value
+                };
+            }
+        }
+    };
+    
+    /**
      * @function
      * @param {Object} key
      * @return {Object|undefined}
@@ -2038,6 +2251,26 @@
                 key : pair.key,
                 value : pair.value
             };
+        }
+    };
+    
+    /**
+     * @function
+     * @return {Object|undefined}
+     */
+    TreeMap.prototype.getLast = function () {
+        if(this.getElementCount() > 0) {
+            var endIter = this._rbTreeSet.end();
+            var lastElemIter = this._rbTreeSet.end();
+            lastElemIter.moveToPrevious();
+            
+            if(!lastElemIter[karbonator.equals](endIter)) {
+                var pair = lastElemIter.dereference();
+                return {
+                    key : pair.key,
+                    value : pair.value
+                };
+            }
         }
     };
     
@@ -2738,6 +2971,266 @@
         
         return ListMap;
     })();
+    
+    /*////////////////////////////////*/
+    
+    /*////////////////////////////////*/
+    //PriorityQueue
+    
+    /**
+     * @memberof karbonator.collection
+     * @constructor
+     * @param {karbonator.comparator} comparator
+     * @param {Boolean} [allowDuplicate=false]
+     */
+    var PriorityQueue = function (comparator) {
+        if(!karbonator.isComparator(comparator)) {
+            throw new TypeError("'comparator' must satisfy 'karbonator.comparator'.");
+        }
+        
+        this._comp = comparator;
+        this._allowDuplicate = !!arguments[1];
+        this._elemCount = 0;
+        this._nodes = [null];
+    };
+    
+    /**
+     * @memberof karbonator.collection.PriorityQueue
+     * @readonly
+     */
+    PriorityQueue._rootIndex = 1;
+    
+    /**
+     * 
+     * @param {Object} iterable
+     * @param {Function} [mapFunc]
+     * @param {Object} [thisArg]
+     * @returns {karbonator.collection.PriorityQueue}
+     */
+    PriorityQueue.from = function (iterable) {
+        if(!karbonator.isEsIterable(iterable)) {
+            throw new TypeError("'iterable' must have the property 'Symbol.iterator'.");
+        }
+        
+        var queue = new ListQueue();
+        
+        var mapFunc = arguments[1];
+        if(karbonator.isUndefined(mapFunc)) {
+            for(
+                var i = iterable[Symbol.iterator](), iP = i.next();
+                !iP.done;
+                iP = i.next()
+            ) {
+                queue.enqueue(iP.value);
+            }
+        }
+        else {
+            if(!karbonator.isFunction(mapFunc)) {
+                throw new TypeError("'mapFunc' must be a function.");
+            }
+            var thisArg = arguments[2];
+            
+            for(
+                var i = iterable[Symbol.iterator](), iP = i.next();
+                !iP.done;
+                iP = i.next()
+            ) {
+                queue.enqueue(mapFunc.call(thisArg, iP.value));
+            }
+        }
+        
+        return queue;
+    };
+    
+    /**
+     * @function
+     * @return {Number}
+     */
+    PriorityQueue.prototype.getElementCount = function () {
+        return this._elemCount;
+    };
+    
+    /**
+     * @function
+     * @return {Boolean}
+     */
+    PriorityQueue.prototype.isEmpty = function () {
+        return this._elemCount < 1;
+    };
+    
+    /**
+     * @function
+     * @return {Boolean}
+     */
+    PriorityQueue.prototype.isFull = function () {
+        return this._elemCount >= Number.MAX_SAFE_INTEGER;
+    };
+    
+    /**
+     * @function
+     * @return {iterator}
+     */
+//    PriorityQueue.prototype[Symbol.iterator] = function () {
+//        
+//    };
+    
+    /**
+     * @function
+     * @return {Object}
+     */
+    PriorityQueue.prototype.peek = function () {
+        if(this.isEmpty()) {
+            throw new Error("The queue has no element.");
+        }
+        
+        return this._nodes[PriorityQueue._rootIndex];
+    };
+    
+    /**
+     * @function
+     * @param {Object} e
+     * @return {karbonator.collection.ListQueue}
+     */
+    PriorityQueue.prototype.enqueue = function (e) {
+        if(this.isFull()) {
+            throw new Error("The queue is full.");
+        }
+        
+        if(
+            this._allowDuplicate
+            || this._nodes.findIndex(
+                function (elem) {
+                    return null !== elem && this._comp(elem, e) === 0;
+                },
+                this
+            ) < 0
+        ) {
+            this._nodes.push(e);
+            ++this._elemCount;
+            
+            this._constructHeapBottomUp(this._elemCount);
+        }
+        
+        return this;
+    };
+    
+    /**
+     * @function
+     * @return {Object}
+     */
+    PriorityQueue.prototype.dequeue = function () {
+        if(this.isEmpty()) {
+            throw new Error("The queue has no element.");
+        }
+        
+        var rootNdx = PriorityQueue._rootIndex;
+	    var elem = this._nodes[rootNdx];
+        this._nodes[rootNdx] = this._nodes[this._elemCount];
+        --this._elemCount;
+        
+        this._constructHeapTopDown(rootNdx);
+        
+        this._nodes.pop();
+        
+        return elem;
+    };
+    
+    /**
+     * @function
+     */
+    PriorityQueue.prototype.clear = function () {
+        this._nodes = [null];
+        this._elemCount = 0;
+    };
+    
+    /**
+     * @function
+     * @return {String}
+     */
+    PriorityQueue.prototype.toString = function () {
+        var str = '[';
+        
+        var iter = this[Symbol.iterator]();
+        var pair = iter.next();
+        if(!pair.done) {
+            str += pair.value;
+        }
+        
+        for(pair = iter.next(); !pair.done; pair = iter.next()) {
+            str += ", ";
+            str += pair.value;
+        }
+        
+        str += ']';
+        
+        return str;
+    };
+    
+    /**
+     * @private
+     * @function
+     * @param {Number} targetIndex
+     */
+    PriorityQueue.prototype._constructHeapBottomUp = function (targetIndex) {
+        var parentNdx = 0;
+        var target = this._nodes[targetIndex];
+        
+        while(targetIndex > 0) {
+            parentNdx = targetIndex >> 1;
+            if(parentNdx === 0) {
+                break;
+            }
+            
+            if(this._comp(this._nodes[parentNdx], target) > 0) {
+                this._nodes[targetIndex] = this._nodes[parentNdx];
+                
+                targetIndex = parentNdx;
+            }
+            else {
+                break;
+            }
+        }
+        
+        this._nodes[targetIndex] = target;
+    };
+    
+    /**
+     * @private
+     * @function
+     * @param {Number} targetIndex
+     */
+    PriorityQueue.prototype._constructHeapTopDown = function (targetIndex) {
+        var childNdx = 0;
+        var target = this._nodes[targetIndex];
+        
+        for(; ; ) {
+            childNdx = targetIndex << 1;
+            if(childNdx > this._elemCount) {
+                break;
+            }
+            
+            if(
+                childNdx + 1 <= this._elemCount
+                && this._comp(this._nodes[childNdx], this._nodes[childNdx + 1]) > 0
+            ) {
+                ++childNdx;
+            }
+            
+            if(this._comp(target, this._nodes[childNdx]) > 0) {
+                this._nodes[targetIndex] = this._nodes[childNdx];
+                
+                targetIndex = childNdx;
+            }
+            else {
+                break;
+            }
+        }
+        
+        //타겟의 위치 확정
+        this._nodes[targetIndex] = target;
+    };
+    
+    collection.PriorityQueue = PriorityQueue;
     
     /*////////////////////////////////*/
     

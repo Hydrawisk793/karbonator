@@ -783,7 +783,7 @@
      * @readonly
      */
     RegexVm._opCodeInstMap = new TreeMap(
-        karbonator.numberComparator,
+        karbonator.integerComparator,
         Array.from(
             RegexVm.Instruction,
             /**
@@ -2574,7 +2574,7 @@
      * @type {Map.<Number, Operator>}
      */
     var _opTypeMap = new TreeMap(
-        karbonator.numberComparator,
+        karbonator.integerComparator,
         Array.from(
             [
                 new OperatorType(
@@ -4744,7 +4744,7 @@
      * @constructor
      */
     var CodeEmitter = function () {
-        this._tokenKeySrNdxMap = new TreeMap(karbonator.numberComparator);
+        this._tokenKeySrNdxMap = new TreeMap(karbonator.integerComparator);
         this._localSrBuffers = [];
         this._tokenSrBuffers = [];
         this._keyTokenMap = null;
@@ -5351,7 +5351,7 @@
      * @constructor
      */
     var Lexer = function () {
-        this._keyTokenMap = new TreeMap(karbonator.numberComparator);
+        this._keyTokenMap = new TreeMap(karbonator.integerComparator);
         this._nameKeyMap = new ListMap(karbonator.stringComparator);
         this._regexVm = new RegexVm();
         
@@ -5514,7 +5514,7 @@
      */
     var LexerGenerator = function () {
         this._keySeq = 0;
-        this._keyTokenMap = new TreeMap(karbonator.numberComparator);
+        this._keyTokenMap = new TreeMap(karbonator.integerComparator);
         this._nameKeyMap = new ListMap(karbonator.stringComparator);
         this._regexParser = new RegexParser();
         this._bytecodeEmitter = new CodeEmitter();
