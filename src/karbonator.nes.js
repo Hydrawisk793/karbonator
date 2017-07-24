@@ -44,20 +44,6 @@
     var nes = karbonator.nes || {};
     karbonator.nes = nes;
     
-    var lg = new karbonator.string.LexerGenerator();
-    lg.defineToken("nz_digit", "[1-9]", true);
-    lg.defineToken("digit", "[0-9]", true);
-    lg.defineToken("blank", "[ \t]");
-    lg.defineToken("id", "[a-zA-Z_$][a-zA-Z_$0-9]*");
-    lg.defineToken("lit-string", "\".*?\"");
-    lg.defineToken("global_label", "{id}:");
-    lg.defineToken("local_label", "\\.{global_label}");
-    lg.defineToken("local_rel_label", "\\.(\\+|\\-)?[1-9][0-9]*");
-    lg.defineToken("imm_base2_int", "#%[0-1]{1,8}");
-    lg.defineToken("imm_base16_int", "#([a-zA-Z0-9]{2})+");
-    lg.defineToken("ows", "\\s*");
-    lg.defineToken("ws", "\\s+");
-    
     /**
      * @function
      * @param {Number} value
@@ -74,6 +60,749 @@
         
         return zeros + str;
     };
+    
+    /*////////////////////////////////*/
+    //Instruction
+    
+    /**
+     * @constructor
+     * @param {Number} actionCode
+     * @param {Number} addrMode
+     */
+    var Instruction = function (actionCode, addrMode) {
+        if(!karbonator.isNonNegativeSafeInteger(actionCode)) {
+            throw new TypeError("");
+        }
+        if(!karbonator.isNonNegativeSafeInteger(addrMode)) {
+            throw new TypeError("");
+        }
+        
+        this.actionCode = actionCode;
+        this.addressingMode = addrMode;
+    };
+    
+    /**
+     * @memberof Instruction
+     * @readonly
+     * @enum {Number}
+     */
+    Instruction.ActionCode = {
+        reserved00 : 0x00,
+        reserved01 : 0x01,
+        reserved02 : 0x02,
+        jmp : 0x03,
+        brk : 0x04,
+        jsr : 0x05,
+        rti : 0x06,
+        rts : 0x07,
+        bpl : 0x08,
+        bmi : 0x09,
+        bvc : 0x0A,
+        bvs : 0x0B,
+        bcc : 0x0C,
+        bcs : 0x0D,
+        bne : 0x0E,
+        beq : 0x0F,
+        
+        php : 0x10,
+        plp : 0x11,
+        pha : 0x12,
+        pla : 0x13,
+        ldx : 0x14,
+        stx : 0x15,
+        ldy : 0x16,
+        sty : 0x17,
+        lda : 0x18,
+        sta : 0x19,
+        txa : 0x1A,
+        tax : 0x1B,
+        tya : 0x1C,
+        tay : 0x1D,
+        tsx : 0x1E,
+        txs : 0x1F,
+        
+        clc : 0x20,
+        sec : 0x21,
+        cli : 0x22,
+        sei : 0x23,
+        clv : 0x24,
+        nop : 0x25,
+        cld : 0x26,
+        sed : 0x27,
+        and : 0x28,
+        bit : 0x29,
+        ora : 0x2A,
+        eor : 0x2B,
+        asl : 0x2C,
+        lsr : 0x2D,
+        rol : 0x2E,
+        ror : 0x2F,
+        
+        inx : 0x30,
+        iny : 0x31,
+        inc : 0x32,
+        adc : 0x33,
+        dex : 0x34,
+        dey : 0x35,
+        dec : 0x36,
+        sbc : 0x37,
+        cpx : 0x38,
+        cpy : 0x39,
+        cmp : 0x3A,
+        reserved3B : 0x3B,
+        reserved3C : 0x3C,
+        reserved3D : 0x3D,
+        reserved3E : 0x3E,
+        reserved3F : 0x3F
+    };
+    
+    /**
+     * @memberof Instruction
+     * @readonly
+     * @type {Array.<String>}
+     */
+    Instruction.mnemonics = [
+        "reserved00",
+        "reserved01",
+        "reserved02",
+        "jmp",
+        "brk",
+        "jsr",
+        "rti",
+        "rts",
+        "bpl",
+        "bmi",
+        "bvc",
+        "bvs",
+        "bcc",
+        "bcs",
+        "bne",
+        "beq",
+        
+        "php",
+        "plp",
+        "pha",
+        "pla",
+        "ldx",
+        "stx",
+        "ldy",
+        "sty",
+        "lda",
+        "sta",
+        "txa",
+        "tax",
+        "tya",
+        "tay",
+        "tsx",
+        "txs",
+        
+        "clc",
+        "sec",
+        "cli",
+        "sei",
+        "clv",
+        "nop",
+        "cld",
+        "sed",
+        "and",
+        "bit",
+        "ora",
+        "eor",
+        "asl",
+        "lsr",
+        "rol",
+        "ror",
+        
+        "inx",
+        "iny",
+        "inc",
+        "adc",
+        "dex",
+        "dey",
+        "dec",
+        "sbc",
+        "cpx",
+        "cpy",
+        "cmp",
+        "reserved3B",
+        "reserved3C",
+        "reserved3D",
+        "reserved3E",
+        "reserved3F"
+    ];
+    
+    /**
+     * @memberof Instruction
+     * @private
+     * @readonly
+     * @type {Array.<Number>}
+     */
+    Instruction._intSrActionCodes = [
+        Instruction.ActionCode.brk,
+        Instruction.ActionCode.jsr,
+        Instruction.ActionCode.rti,
+        Instruction.ActionCode.rts
+    ];
+    
+    /**
+     * @memberof Instruction
+     * @private
+     * @readonly
+     * @type {Array.<Number>}
+     */
+    Instruction._stackMoveIncDecActionCodes = [
+        Instruction.ActionCode.php,
+        Instruction.ActionCode.plp,
+        Instruction.ActionCode.pha,
+        Instruction.ActionCode.pla,
+        Instruction.ActionCode.dey,
+        Instruction.ActionCode.tay,
+        Instruction.ActionCode.iny,
+        Instruction.ActionCode.inx
+    ];
+    
+    /**
+     * @memberof Instruction
+     * @private
+     * @readonly
+     * @type {Array.<Number>}
+     */
+    Instruction._branchActionCodes = [
+        Instruction.ActionCode.bpl,
+        Instruction.ActionCode.bmi,
+        Instruction.ActionCode.bvc,
+        Instruction.ActionCode.bvs,
+        Instruction.ActionCode.bcc,
+        Instruction.ActionCode.bcs,
+        Instruction.ActionCode.bne,
+        Instruction.ActionCode.beq
+    ];
+    
+    /**
+     * @memberof Instruction
+     * @private
+     * @readonly
+     * @type {Array.<Number>}
+     */
+    Instruction._flagMoveActionCodes = [
+        Instruction.ActionCode.clc,
+        Instruction.ActionCode.sec,
+        Instruction.ActionCode.cli,
+        Instruction.ActionCode.sei,
+        Instruction.ActionCode.tya,
+        Instruction.ActionCode.clv,
+        Instruction.ActionCode.cld,
+        Instruction.ActionCode.sed
+    ];
+    
+    /**
+     * @memberof Instruction
+     * @private
+     * @readonly
+     * @type {Array.<Number>}
+     */
+    Instruction._moveDecNopActionCodes = [
+        Instruction.ActionCode.txa,
+        Instruction.ActionCode.tax,
+        Instruction.ActionCode.dex,
+        Instruction.ActionCode.nop
+    ];
+    
+    /**
+     * @memberof Instruction
+     * @private
+     * @readonly
+     * @type {Array.<Number>}
+     */
+    Instruction._stackPointerActionCodes = [
+        Instruction.ActionCode.txs,
+        Instruction.ActionCode.tsx
+    ];
+    
+    /**
+     * @memberof Instruction
+     * @private
+     * @readonly
+     * @type {Array.<Number>}
+     */
+    Instruction._groupActionCodeTable = [
+        [
+            Instruction.ActionCode.nop,
+            Instruction.ActionCode.bit,
+            Instruction.ActionCode.jmp,
+            Instruction.ActionCode.jmp,
+            Instruction.ActionCode.sty,
+            Instruction.ActionCode.ldy,
+            Instruction.ActionCode.cpy,
+            Instruction.ActionCode.cpx
+        ],
+        [
+            Instruction.ActionCode.ora,
+            Instruction.ActionCode.and,
+            Instruction.ActionCode.eor,
+            Instruction.ActionCode.adc,
+            Instruction.ActionCode.sta,
+            Instruction.ActionCode.lda,
+            Instruction.ActionCode.cmp,
+            Instruction.ActionCode.sbc
+        ],
+        [
+            Instruction.ActionCode.asl,
+            Instruction.ActionCode.rol,
+            Instruction.ActionCode.lsr,
+            Instruction.ActionCode.ror,
+            Instruction.ActionCode.stx,
+            Instruction.ActionCode.ldx,
+            Instruction.ActionCode.dec,
+            Instruction.ActionCode.inc
+        ]
+    ];
+    
+    /**
+     * @memberof Instruction
+     * @readonly
+     * @enum {Number}
+     */
+    Instruction.AddressingMode = {
+        imp : 0,
+        regA : 1,
+        imm : 2,
+        pcRel : 3,
+        absNdxX : 4,
+        absNdxY : 5,
+        absInd : 6,
+        abs : 7,
+        zpNdxX : 8,
+        zpNdxY : 9,
+        zpNdxXInd : 10,
+        zpIndNdxY : 11,
+        zp : 12
+    };
+    
+    /**
+     * @memberof Instruction
+     * @private
+     * @readonly
+     * @type {Array.<String>}
+     */
+    Instruction._addrModeNames = [
+        "imp",
+        "regA",
+        "imm",
+        "pcRel",
+        "absNdxX",
+        "absNdxY",
+        "absInd",
+        "abs",
+        "zpNdxY",
+        "zpNdxX",
+        "zpNdxXInd",
+        "zpIndNdxY",
+        "zp"
+    ];
+    
+    /**
+     * @memberof Instruction
+     * @private
+     * @readonly
+     * @type {Array.<Number>}
+     */
+    Instruction._operandTypeTable = [
+        0,
+        0,
+        1,
+        -1,
+        2,
+        2,
+        2,
+        2,
+        1,
+        1,
+        1,
+        1,
+        1
+    ];
+    
+    /**
+     * @memberof Instruction
+     * @private
+     * @readonly
+     * @type {Array.<Array.<Number>>}
+     */
+    Instruction._addrModeTable = [
+        [
+            Instruction.AddressingMode.imm,
+            Instruction.AddressingMode.zp,
+            Instruction.AddressingMode.regA,
+            Instruction.AddressingMode.abs,
+            Instruction.AddressingMode.imp,
+            Instruction.AddressingMode.zpNdxX,
+            Instruction.AddressingMode.imp,
+            Instruction.AddressingMode.absNdxX
+        ],
+        [
+            Instruction.AddressingMode.zpNdxXInd,
+            Instruction.AddressingMode.zp,
+            Instruction.AddressingMode.imm,
+            Instruction.AddressingMode.abs,
+            Instruction.AddressingMode.zpIndNdxY,
+            Instruction.AddressingMode.zpNdxX,
+            Instruction.AddressingMode.absNdxY,
+            Instruction.AddressingMode.absNdxX
+        ]
+    ];
+    
+    /**
+     * @memberof Instruction
+     * @function
+     * @param {Number} opCode
+     * @return {Instruction|null}
+     */
+    Instruction.fromOpCode = function (opCode) {
+        if(!karbonator.isNonNegativeSafeInteger(opCode)) {
+            throw new TypeError("");
+        }
+        
+        var groupNdx = opCode & 0x03;
+        var groupTblNdx = opCode & 0x01;
+        var addrModeNdx = (opCode & 0x1C) >>> 2;
+        var actionNdx = (opCode & 0xE0) >>> 5;
+        
+        var addrMode = 0;
+        var actionCode = 0;
+        
+        switch(groupNdx) {
+        case 0:
+            switch(addrModeNdx) {
+            case 0:
+                switch(actionNdx) {
+                case 0:
+                    actionCode = Instruction._intSrActionCodes[actionNdx];
+                    addrMode = Instruction.AddressingMode.imp;
+                break;
+                case 1:
+                    actionCode = Instruction._intSrActionCodes[actionNdx];
+                    addrMode = Instruction.AddressingMode.abs;
+                break;
+                case 2:
+                case 3:
+                    actionCode = Instruction._intSrActionCodes[actionNdx];
+                    addrMode = Instruction.AddressingMode.imp;
+                break;
+                case 4:
+                    //throw new Error("An invalid opcode has been detected.");
+                    return null;
+                //break;
+                case 5:
+                case 6:
+                case 7:
+                    actionCode = Instruction._groupActionCodeTable[0][actionNdx];
+                    addrMode = Instruction._addrModeTable[groupTblNdx][addrModeNdx];
+                break;
+                }
+            break;
+            case 1:
+                switch(actionNdx) {
+                case 0:
+                    //throw new Error("An invalid opcode has been detected.");
+                    return null;
+                //break;
+                case 1:
+                    actionCode = Instruction._groupActionCodeTable[0][actionNdx];
+                    addrMode = Instruction._addrModeTable[groupTblNdx][addrModeNdx];
+                break;
+                case 2:
+                case 3:
+                    //throw new Error("An invalid opcode has been detected.");
+                    return null;
+                //break;
+                case 4:
+                case 5:
+                case 6:
+                case 7:
+                    actionCode = Instruction._groupActionCodeTable[0][actionNdx];
+                    addrMode = Instruction._addrModeTable[groupTblNdx][addrModeNdx];
+                break;
+                }
+            break;
+            case 2:
+                actionCode = Instruction._stackMoveIncDecActionCodes[actionNdx];
+                addrMode = Instruction.AddressingMode.imp;
+            break;
+            case 3:
+                switch(actionNdx) {
+                case 0:
+                    //throw new Error("An invalid opcode has been detected.");
+                    return null;
+                //break;
+                case 1:
+                case 2:
+                    actionCode = Instruction._groupActionCodeTable[0][actionNdx];
+                    addrMode = Instruction._addrModeTable[groupTblNdx][addrModeNdx];
+                break;
+                case 3:
+                    actionCode = Instruction._groupActionCodeTable[0][actionNdx];
+                    addrMode = Instruction.AddressingMode.absInd;
+                break;
+                case 4:
+                case 5:
+                case 6:
+                case 7:
+                    actionCode = Instruction._groupActionCodeTable[0][actionNdx];
+                    addrMode = Instruction._addrModeTable[groupTblNdx][addrModeNdx];
+                break;
+                }
+            break;
+            case 4:
+                actionCode = Instruction._branchActionCodes[actionNdx];
+                addrMode = Instruction.AddressingMode.pcRel;
+            break;
+            case 5:
+                switch(actionNdx) {
+                case 0:
+                case 1:
+                case 2:
+                case 3:
+                    //throw new Error("An invalid opcode has been detected.");
+                    return null;
+                //break;
+                case 4:
+                case 5:
+                    actionCode = Instruction._groupActionCodeTable[0][actionNdx];
+                    addrMode = Instruction._addrModeTable[groupTblNdx][addrModeNdx];
+                break;
+                case 6:
+                case 7:
+                    //throw new Error("An invalid opcode has been detected.");
+                    return null;
+                //break;
+                }
+            break;
+            case 6:
+                actionCode = Instruction._flagMoveActionCodes[actionNdx];
+                addrMode = Instruction.AddressingMode.imp;
+            break;
+            case 7:
+                if(actionNdx === 5) {
+                    actionCode = Instruction._groupActionCodeTable[0][actionNdx];
+                    addrMode = Instruction._addrModeTable[groupTblNdx][addrModeNdx];
+                }
+                else {
+                    //4 : SHY
+                    //.throw new Error("An invalid opcode has been detected.");
+                    return null;
+                }
+            break;
+            }
+        break;
+        case 1:
+            if(opCode !== 0x89) {
+                actionCode = Instruction._groupActionCodeTable[1][actionNdx];
+                addrMode = Instruction._addrModeTable[groupTblNdx][addrModeNdx];
+            }
+            else {
+                //throw new Error("An invalid opcode has been detected.");
+                return null;
+            }
+        break;
+        case 2:
+            switch(addrModeNdx) {
+            case 0:
+                if(actionNdx === 5) {
+                    actionCode = Instruction._groupActionCodeTable[2][actionNdx];
+                    addrMode = Instruction._addrModeTable[groupTblNdx][addrModeNdx];
+                }
+                else {
+                    //throw new Error("An invalid opcode has been detected.");
+                    return null;
+                }
+            break;
+            case 1:
+                actionCode = Instruction._groupActionCodeTable[2][actionNdx];
+                addrMode = Instruction._addrModeTable[groupTblNdx][addrModeNdx];
+            break;
+            case 2:
+                switch((actionNdx & 0x04) >> 2) {
+                case 0:
+                    actionCode = Instruction._groupActionCodeTable[2][actionNdx];
+                    addrMode = Instruction._addrModeTable[groupTblNdx][addrModeNdx];
+                break;
+                case 1:
+                    actionCode = Instruction._moveDecNopActionCodes[actionNdx & 0x03];
+                    addrMode = Instruction.AddressingMode.imp;
+                break;
+                }
+            break;
+            case 3:
+                actionCode = Instruction._groupActionCodeTable[2][actionNdx];
+                addrMode = Instruction._addrModeTable[groupTblNdx][addrModeNdx];
+            break;
+            case 4:
+                //throw new Error("An invalid opcode has been detected.");
+                return null;
+            //break;
+            case 5:
+                actionCode = Instruction._groupActionCodeTable[2][actionNdx];
+                addrMode = Instruction._addrModeTable[groupTblNdx][addrModeNdx];
+            break;
+            case 6:
+                switch(actionNdx) {
+                case 0:
+                case 1:
+                case 2:
+                case 3:
+                    //throw new Error("An invalid opcode has been detected.");
+                    return null;
+                //break;
+                case 4:
+                case 5:
+                    actionCode = Instruction._stackPointerActionCodes[actionNdx - 4];
+                    addrMode = Instruction.AddressingMode.imp;
+                break;
+                case 6:
+                case 7:
+                    //throw new Error("An invalid opcode has been detected.");
+                    return null;
+                //break;
+                }
+            break;
+            case 7:
+                if(actionNdx !== 4) {
+                    actionCode = Instruction._groupActionCodeTable[2][actionNdx];
+                    addrMode = Instruction._addrModeTable[groupTblNdx][addrModeNdx];
+                }
+                else {
+                    //SHX
+                    //throw new Error("An invalid opcode has been detected.");
+                    return null;
+                }
+            break;
+            }
+        break;
+        case 3:
+            //throw new Error("An invalid opcode has been detected.");
+            return null;
+        //break;
+        }
+        
+        return new Instruction(
+            actionCode,
+            addrMode
+        );
+    };
+    
+    /**
+     * A minus sign means that the operand is signed.
+     * @function
+     * @return {Number}
+     */
+    Instruction.prototype.getSize = function () {
+        return 1 + Math.abs(this.getOperandType());
+    };
+    
+    /**
+     * A minus sign means that the operand is signed.
+     * @function
+     * @return {Number}
+     */
+    Instruction.prototype.getOperandType = function () {
+        return Instruction._operandTypeTable[this.addressingMode];
+    };
+    
+    /**
+     * @function
+     * @return {Boolean}
+     */
+    Instruction.prototype.doesMemoryWrite = function () {
+        var result = false;
+        
+        switch(this.actionCode) {
+        case Instruction.ActionCode.sta:
+        case Instruction.ActionCode.stx:
+        case Instruction.ActionCode.sty:
+            result = true;
+        break;
+        case Instruction.ActionCode.asl:
+        case Instruction.ActionCode.lsr:
+        case Instruction.ActionCode.rol:
+        case Instruction.ActionCode.ror:
+        case Instruction.ActionCode.inc:
+        case Instruction.ActionCode.dec:
+            switch(this.addressingMode) {
+            case Instruction.AddressingMode.imp:
+            case Instruction.AddressingMode.regA:
+            case Instruction.AddressingMode.imm:
+            case Instruction.AddressingMode.pcRel:
+                result = false;
+            break;
+            default:
+                result = true;
+            }
+        break;
+        }
+        
+        return result;
+    };
+    
+    /**
+     * @function
+     * @param {String} operandStr
+     * @return {String}
+     */
+    Instruction.prototype.format = function (operandStr) {
+        var str = "";
+        
+        switch(this.addressingMode) {
+        case Instruction.AddressingMode.imp:
+        break;
+        case Instruction.AddressingMode.regA:
+            str += 'A';
+        break;
+        case Instruction.AddressingMode.imm:
+            str += '#' + operandStr;
+        break;
+        case Instruction.AddressingMode.pcRel:
+            str += operandStr;
+        break;
+        case Instruction.AddressingMode.absNdxX:
+            str += operandStr + ',' + 'X';
+        break;
+        case Instruction.AddressingMode.absNdxY:
+            str += operandStr + ',' + 'Y';
+        break;
+        case Instruction.AddressingMode.absInd:
+            str += '(' + operandStr + ')';
+        break;
+        case Instruction.AddressingMode.abs:
+            str += operandStr;
+        break;
+        case Instruction.AddressingMode.zpNdxX:
+            str += '<' + operandStr + ',' + 'X';
+        break;
+        case Instruction.AddressingMode.zpNdxY:
+            str += '<' + operandStr + ',' + 'Y';
+        break;
+        case Instruction.AddressingMode.zpNdxXInd:
+            str += '(' + '<' + operandStr + ',' + 'X' + ')';
+        break;
+        case Instruction.AddressingMode.zpIndNdxY:
+            str += '(' + '<' + operandStr + ')' + ',' + 'Y';
+        break;
+        case Instruction.AddressingMode.zp:
+            str += '<' + operandStr;
+        break;
+        }
+        
+        if(str !== "") {
+            str = ' ' + str;
+        }
+        
+        str = Instruction.mnemonics[this.actionCode] + str;
+        
+        return str;
+    };
+    
+    /*////////////////////////////////*/
     
     /*////////////////////////////////*/
     //Label
@@ -124,22 +853,6 @@
         }
     };
     
-//    /**
-//     * @memberof Label
-//     * @readonly
-//     * @function
-//     * @param {Label} lhs
-//     * @param {Label} rhs
-//     * @return {Number}
-//     */
-//    Label.comparator = function (lhs, rhs) {
-//        if(!(lhs instanceof Label) || !(rhs instanceof Label)) {
-//            throw new Error("Both 'lhs' and 'rhs' must be an instnaceof 'Label'.");
-//        }
-//        
-//        return karbonator.stringComparator(lhs.name, rhs.name);
-//    };
-    
     /**
      * @function
      * @return {String}
@@ -174,6 +887,278 @@
     Label.Type = {
         code : 0,
         data : 1
+    };
+    
+    /*////////////////////////////////*/
+    
+    /*////////////////////////////////*/
+    //SrMeta
+    
+    /**
+     * @constructor
+     */
+    var SrMeta = function () {
+        this.valid = false;
+        this.startAddress = 0;
+        this.lines = [];
+        this.cursor = 0;
+        this.localJumpAddressSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
+        this.srAddressSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
+        this.dataAddressMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
+    };
+    
+    /**
+     * @memberof SrMeta
+     * @readonly
+     * @enum {Number}
+     */
+    SrMeta.DataAddressType = {
+        table : 0,
+        port : 1,
+        pointer : 2,
+        memory : 3
+    };
+    
+    /**
+     * @memberof SrMeta
+     * @readonly
+     * @type {Array.<String>}
+     */
+    SrMeta.DataAddressTypeNames = [
+        "table",
+        "port",
+        "pointer",
+        "memory"
+    ];
+    
+    /**
+     * @memberof SrMeta
+     * @function
+     * @param {Instruction} inst
+     * @param {Number} addr
+     * @return {Number}
+     */
+    SrMeta.getDataAddressTypeOf = function (inst, addr) {
+        var dataLabelType = SrMeta.DataAddressType.memory;
+        
+        if(addr >= 0x8000 && addr < 0x10000) {
+            if(!inst.doesMemoryWrite()) {
+                dataLabelType = SrMeta.DataAddressType.table;
+            }
+            else {
+                dataLabelType = SrMeta.DataAddressType.port;
+            }
+        }
+        else if(addr >= 0x4000 && addr < 0x6000) {
+            dataLabelType = SrMeta.DataAddressType.port;
+        }
+        else {
+            dataLabelType = SrMeta.DataAddressType.memory;
+        }
+
+        return dataLabelType;
+    };
+    
+    /**
+     * @memberof SrMeta
+     * @param {karbonator.ByteArray} bytes
+     * @param {Number} baseOffset
+     * @param {Number} startAddr
+     * @param {Number} endAddr
+     * @returns {SrMeta}
+     */
+    SrMeta.fromBytes = function (bytes, baseOffset, startAddr, endAddr) {
+        if(!(bytes instanceof karbonator.ByteArray)) {
+            throw new TypeError("");
+        }
+        if(!karbonator.isNonNegativeSafeInteger(baseOffset)) {
+            throw new TypeError("");
+        }
+        if(!karbonator.isNonNegativeSafeInteger(startAddr)) {
+            throw new TypeError("");
+        }
+        if(!karbonator.isNonNegativeSafeInteger(endAddr)) {
+            throw new TypeError("");
+        }
+        
+        var srMeta = new SrMeta();
+        srMeta.valid = true;
+        srMeta.startAddress = startAddr;
+        srMeta.cursor = startAddr - baseOffset;
+        
+        var tableAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
+        var longJumpAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
+        
+        var returnCount = 0;
+        for(var working = true; working && baseOffset + srMeta.cursor < endAddr; ) {
+            //Inhibit violating data tables.
+            var currentAddr = baseOffset + srMeta.cursor;
+            var nearestNextTableAddr = tableAddrSet.findNotLessThan(currentAddr);
+            if(
+                !karbonator.isUndefined(nearestNextTableAddr)
+                && currentAddr >= nearestNextTableAddr
+            ) {
+                break;
+            }
+            
+            var opCode = bytes.get(srMeta.cursor);
+            ++srMeta.cursor;
+            var inst = Instruction.fromOpCode(opCode);
+            if(null === inst) {
+                srMeta.valid = false;
+                break;
+            }
+            
+            var operandType = inst.getOperandType();
+            var operandSize = Math.abs(operandType);
+            var operand = 0;
+            if(operandSize > 0) {
+                operand = karbonator.bytesToInteger(
+                    bytes,
+                    operandSize, (operandType < 0), true,
+                    srMeta.cursor
+                );
+                srMeta.cursor += operandSize;
+            }
+            
+            var dataLabelType = 0;
+            currentAddr = baseOffset + srMeta.cursor;
+            if((inst.actionCode & 0x30) === 0) {
+                switch(inst.actionCode) {
+                case Instruction.ActionCode.rti:
+                case Instruction.ActionCode.rts:
+                    ++returnCount;
+                    
+                    if(karbonator.isUndefined(
+                        srMeta.localJumpAddressSet.findNotLessThan(currentAddr)
+                    )) {
+                        working = false;
+                    }
+                break;
+                case Instruction.ActionCode.bpl:
+                case Instruction.ActionCode.bmi:
+                case Instruction.ActionCode.bne:
+                case Instruction.ActionCode.beq:
+                case Instruction.ActionCode.bvc:
+                case Instruction.ActionCode.bvs:
+                case Instruction.ActionCode.bcc:
+                case Instruction.ActionCode.bcs:
+                    srMeta.localJumpAddressSet.add(currentAddr + operand);
+                    
+                    if(
+                        returnCount > 0
+                        && karbonator.isUndefined(
+                            srMeta.localJumpAddressSet.findNotLessThan(currentAddr)
+                        )
+                    ) {
+                        working = false;
+                    }
+                break;
+                case Instruction.ActionCode.jsr:
+                    srMeta.srAddressSet.add(operand);
+                break;
+                case Instruction.ActionCode.jmp:
+                    switch(inst.addressingMode) {
+                    case Instruction.AddressingMode.abs:
+                        if(srMeta.getAddressRange().contains(operand)) {
+                            srMeta.localJumpAddressSet.add(operand);
+                        }
+                        else {
+                            longJumpAddrSet.add(operand);
+                        }
+                        
+                        //서브루틴 범위 밖으로 점프해서
+                        //제어를 넘기는 서브루틴인 경우.
+                        if(
+                            operand < srMeta.startAddress
+                            && karbonator.isUndefined(
+                                srMeta.localJumpAddressSet.findNotLessThan(currentAddr)
+                            )
+                        ) {
+                            working = false;
+                        }
+                    break;
+                    case Instruction.AddressingMode.absInd:
+                        dataLabelType = SrMeta.getDataAddressTypeOf(inst, operand);
+                        srMeta.dataAddressMap.set(operand, dataLabelType);
+                        if(dataLabelType === SrMeta.DataAddressType.table) {
+                            tableAddrSet.add(operand);
+                        }
+                        
+                        //점프 테이블 주소로 간접 점프해서
+                        //제어를 넘기는 경우.
+                        if(karbonator.isUndefined(
+                            srMeta.localJumpAddressSet.findNotLessThan(currentAddr)
+                        )) {
+                            working = false;
+                        }
+                    break;
+                    default:
+                        throw new Error("An invalid opcode has been detected.");
+                    }
+                break;
+                }
+            }
+            else switch(inst.addressingMode) {
+            case Instruction.AddressingMode.absNdxX:
+            case Instruction.AddressingMode.absNdxY:
+            case Instruction.AddressingMode.absInd:
+            case Instruction.AddressingMode.abs:
+            case Instruction.AddressingMode.zp:
+            case Instruction.AddressingMode.zpNdxX:
+            case Instruction.AddressingMode.zpNdxY:
+            case Instruction.AddressingMode.zpIndNdxY:
+            case Instruction.AddressingMode.zpNdxXInd:
+                dataLabelType = SrMeta.getDataAddressTypeOf(inst, operand);
+                srMeta.dataAddressMap.set(operand, dataLabelType);
+                if(dataLabelType === SrMeta.DataAddressType.table) {
+                    tableAddrSet.add(operand);
+                }
+            break;
+            }
+            
+            srMeta.lines.push([inst, operand]);
+        }
+        
+        if(srMeta.valid) {
+            var range = srMeta.getAddressRange();
+            karbonator.forOf(longJumpAddrSet, function (addr) {
+                if(range.contains(addr)) {
+                    srMeta.localJumpAddressSet.add(addr);
+                }
+                else {
+                    srMeta.srAddressSet.add(addr);
+                }
+            });
+        }
+        
+        return srMeta;
+    };
+    
+    /**
+     * @function
+     * @return {karbonator.math.Interval}
+     */
+    SrMeta.prototype.getAddressRange = function () {
+        var lineCount = this.lines.length;
+        if(lineCount < 1) {
+            return new karbonator.math.Interval(
+                this.startAddress,
+                this.startAddress
+            );
+        }
+        else {
+            var max = this.startAddress;
+            for(var i = lineCount; i > 0; ) {
+                --i;
+                max += this.lines[i][0].getSize();
+            }
+            
+            return new karbonator.math.Interval(
+                this.startAddress,
+                max - 1
+            );
+        }
     };
     
     /*////////////////////////////////*/
@@ -217,12 +1202,16 @@
      * @memberof Disassembler
      * @private
      * @function
-     * @param {Label} l
-     * @param {Label} r
+     * @param {Label} lhs
+     * @param {Label} rhs
      * @return {Number}
      */
-    Disassembler._LabelComparator = function (l, r) {
-        return l.address - r.address;
+    Disassembler._LabelComparator = function (lhs, rhs) {
+        if(!(lhs instanceof Label) || !(rhs instanceof Label)) {
+            throw new Error("Both 'lhs' and 'rhs' must be an instnaceof 'Label'.");
+        }
+        
+        return lhs.address - rhs.address;
     };
     
     /**
@@ -306,8 +1295,9 @@
             throw new TypeError("");
         }
         this.startAddress = startAddress;
-        
         this._lines = [];
+        
+        this._localJumpAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
     };
     
     /**
@@ -320,16 +1310,25 @@
      * @return {karbonator.math.Interval}
      */
     Disassembler.LineList.prototype.getAddressRange = function () {
-        var max = this.startAddress;
-        for(var i = this._lines.length; i > 0; ) {
-            --i;
-            max += this._lines[i].getByteCount();
+        var lineCount = this._lines.length;
+        if(lineCount < 1) {
+            return new karbonator.math.Interval(
+                this.startAddress,
+                this.startAddress
+            );
         }
-        
-        return new karbonator.math.Interval(
-            this.startAddress,
-            max
-        );
+        else {
+            var max = this.startAddress;
+            for(var i = lineCount; i > 0; ) {
+                --i;
+                max += this._lines[i].getByteCount();
+            }
+            
+            return new karbonator.math.Interval(
+                this.startAddress,
+                max - 1
+            );
+        }
     };
     
     /**
@@ -440,32 +1439,6 @@
     
     /**
      * @function
-     * @param {Disassembler.Line} line
-     * @param {Number} byteOffset
-     */
-    Disassembler.LineList.prototype.insertAtNegativeOffset = function (
-        line, byteOffset
-    ) {
-        if(!(line instanceof Disassembler.Line)) {
-            throw new TypeError("");
-        }
-        if(!karbonator.isSafeInteger(byteOffset) || byteOffset > 0) {
-            throw new RangeError("'byteOffset' must be a non-positive safe integer.");
-        }
-        
-        var lineNdx = this.getCount();
-        var byteOffSum = 0;
-        var absOffset = Math.abs(byteOffset);
-        while(lineNdx > 0 && byteOffSum < absOffset) {
-            --lineNdx;
-            byteOffSum += this._lines[lineNdx].getByteCount();
-        }
-        
-        this._lines.splice(lineNdx, 0, line);
-    };
-    
-    /**
-     * @function
      */
     Disassembler.LineList.prototype.clear = function () {
         this._lines.length = 0;
@@ -473,9 +1446,40 @@
     
     /**
      * @function
+     * @param {Number} addr
+     */
+    Disassembler.LineList.prototype.addLocalJumpAddress = function (addr) {
+        if(!karbonator.isNonNegativeSafeInteger(addr)) {
+            throw new TypeError("");
+        }
+        
+        this._localJumpAddrSet.add(addr);
+    };
+    
+    /**
+     * @function
+     * @param {Number} addr
+     * @return {Boolean}
+     */
+    Disassembler.LineList.prototype.hasLocalJumpAddress = function (addr) {
+        if(!karbonator.isNonNegativeSafeInteger(addr)) {
+            throw new TypeError("");
+        }
+        
+        return this._localJumpAddrSet.has(addr);
+    };
+    
+    /**
+     * @function
      * @return {String}
      */
     Disassembler.LineList.prototype.toString = function () {
+        
+//            var operandStr = '$' + _formatHexadecimal(
+//                operand,
+//                (Math.abs(Disassembler._operandTypeTable[decodedOpCode.addressingMode]) << 1)
+//            );
+        
         return this._lines.reduce(
             function (acc, cur) {
                 return acc + cur + "\r\n";
@@ -489,481 +1493,25 @@
      * @readonly
      * @enum {Number}
      */
-    Disassembler.ActionCode = {
-        reserved00 : 0x00,
-        reserved01 : 0x01,
-        reserved02 : 0x02,
-        jmp : 0x03,
-        brk : 0x04,
-        jsr : 0x05,
-        rti : 0x06,
-        rts : 0x07,
-        bpl : 0x08,
-        bmi : 0x09,
-        bvc : 0x0A,
-        bvs : 0x0B,
-        bcc : 0x0C,
-        bcs : 0x0D,
-        bne : 0x0E,
-        beq : 0x0F,
-        
-        php : 0x10,
-        plp : 0x11,
-        pha : 0x12,
-        pla : 0x13,
-        ldx : 0x14,
-        stx : 0x15,
-        ldy : 0x16,
-        sty : 0x17,
-        lda : 0x18,
-        sta : 0x19,
-        txa : 0x1A,
-        tax : 0x1B,
-        tya : 0x1C,
-        tay : 0x1D,
-        tsx : 0x1E,
-        txs : 0x1F,
-        
-        clc : 0x20,
-        sec : 0x21,
-        cli : 0x22,
-        sei : 0x23,
-        clv : 0x24,
-        nop : 0x25,
-        cld : 0x26,
-        sed : 0x27,
-        and : 0x28,
-        bit : 0x29,
-        ora : 0x2A,
-        eor : 0x2B,
-        asl : 0x2C,
-        lsr : 0x2D,
-        rol : 0x2E,
-        ror : 0x2F,
-        
-        inx : 0x30,
-        iny : 0x31,
-        inc : 0x32,
-        adc : 0x33,
-        dex : 0x34,
-        dey : 0x35,
-        dec : 0x36,
-        sbc : 0x37,
-        cpx : 0x38,
-        cpy : 0x39,
-        cmp : 0x3A,
-        reserved3B : 0x3B,
-        reserved3C : 0x3C,
-        reserved3D : 0x3D,
-        reserved3E : 0x3E,
-        reserved3F : 0x3F
+    Disassembler.DataLabelType = {
+        table : 0,
+        port : 1,
+        pointer : 2,
+        memory : 3
     };
     
     /**
      * @memberof Disassembler
      * @private
-     * @readonly
-     * @type {Array.<Number>}
-     */
-    Disassembler._intSrActionCodes = [
-        Disassembler.ActionCode.brk,
-        Disassembler.ActionCode.jsr,
-        Disassembler.ActionCode.rti,
-        Disassembler.ActionCode.rts
-    ];
-    
-    /**
-     * @memberof Disassembler
-     * @private
-     * @readonly
-     * @type {Array.<Number>}
-     */
-    Disassembler._stackMoveIncDecActionCodes = [
-        Disassembler.ActionCode.php,
-        Disassembler.ActionCode.plp,
-        Disassembler.ActionCode.pha,
-        Disassembler.ActionCode.pla,
-        Disassembler.ActionCode.dey,
-        Disassembler.ActionCode.tay,
-        Disassembler.ActionCode.iny,
-        Disassembler.ActionCode.inx
-    ];
-    
-    /**
-     * @memberof Disassembler
-     * @private
-     * @readonly
-     * @type {Array.<Number>}
-     */
-    Disassembler._branchActionCodes = [
-        Disassembler.ActionCode.bpl,
-        Disassembler.ActionCode.bmi,
-        Disassembler.ActionCode.bvc,
-        Disassembler.ActionCode.bvs,
-        Disassembler.ActionCode.bcc,
-        Disassembler.ActionCode.bcs,
-        Disassembler.ActionCode.bne,
-        Disassembler.ActionCode.beq
-    ];
-    
-    /**
-     * @memberof Disassembler
-     * @private
-     * @readonly
-     * @type {Array.<Number>}
-     */
-    Disassembler._flagMoveActionCodes = [
-        Disassembler.ActionCode.clc,
-        Disassembler.ActionCode.sec,
-        Disassembler.ActionCode.cli,
-        Disassembler.ActionCode.sei,
-        Disassembler.ActionCode.tya,
-        Disassembler.ActionCode.clv,
-        Disassembler.ActionCode.cld,
-        Disassembler.ActionCode.sed
-    ];
-    
-    /**
-     * @memberof Disassembler
-     * @private
-     * @readonly
-     * @type {Array.<Number>}
-     */
-    Disassembler._moveDecNopActionCodes = [
-        Disassembler.ActionCode.txa,
-        Disassembler.ActionCode.tax,
-        Disassembler.ActionCode.dex,
-        Disassembler.ActionCode.nop
-    ];
-    
-    /**
-     * @memberof Disassembler
-     * @private
-     * @readonly
-     * @type {Array.<Number>}
-     */
-    Disassembler._stackPointerActionCodes = [
-        Disassembler.ActionCode.txs,
-        Disassembler.ActionCode.tsx
-    ];
-    
-    /**
-     * @memberof Disassembler
-     * @private
-     * @readonly
-     * @type {Array.<Number>}
-     */
-    Disassembler._groupActionCodeTable = [
-        [
-            Disassembler.ActionCode.nop,
-            Disassembler.ActionCode.bit,
-            Disassembler.ActionCode.jmp,
-            Disassembler.ActionCode.jmp,
-            Disassembler.ActionCode.sty,
-            Disassembler.ActionCode.ldy,
-            Disassembler.ActionCode.cpy,
-            Disassembler.ActionCode.cpx
-        ],
-        [
-            Disassembler.ActionCode.ora,
-            Disassembler.ActionCode.and,
-            Disassembler.ActionCode.eor,
-            Disassembler.ActionCode.adc,
-            Disassembler.ActionCode.sta,
-            Disassembler.ActionCode.lda,
-            Disassembler.ActionCode.cmp,
-            Disassembler.ActionCode.sbc
-        ],
-        [
-            Disassembler.ActionCode.asl,
-            Disassembler.ActionCode.rol,
-            Disassembler.ActionCode.lsr,
-            Disassembler.ActionCode.ror,
-            Disassembler.ActionCode.stx,
-            Disassembler.ActionCode.ldx,
-            Disassembler.ActionCode.dec,
-            Disassembler.ActionCode.inc
-        ]
-    ];
-    
-    /**
-     * @memberof Disassembler
-     * @readonly
-     * @type {Array.<String>}
-     */
-    Disassembler.mnemonics = [
-        "reserved00",
-        "reserved01",
-        "reserved02",
-        "jmp",
-        "brk",
-        "jsr",
-        "rti",
-        "rts",
-        "bpl",
-        "bmi",
-        "bvc",
-        "bvs",
-        "bcc",
-        "bcs",
-        "bne",
-        "beq",
-        
-        "php",
-        "plp",
-        "pha",
-        "pla",
-        "ldx",
-        "stx",
-        "ldy",
-        "sty",
-        "lda",
-        "sta",
-        "txa",
-        "tax",
-        "tya",
-        "tay",
-        "tsx",
-        "txs",
-        
-        "clc",
-        "sec",
-        "cli",
-        "sei",
-        "clv",
-        "nop",
-        "cld",
-        "sed",
-        "and",
-        "bit",
-        "ora",
-        "eor",
-        "asl",
-        "lsr",
-        "rol",
-        "ror",
-        
-        "inx",
-        "iny",
-        "inc",
-        "adc",
-        "dex",
-        "dey",
-        "dec",
-        "sbc",
-        "cpx",
-        "cpy",
-        "cmp",
-        "reserved3B",
-        "reserved3C",
-        "reserved3D",
-        "reserved3E",
-        "reserved3F"
-    ];
-    
-    /**
-     * @memberof Disassembler
-     * @readonly
-     * @enum {Number}
-     */
-    Disassembler.AddressingMode = {
-        imp : 0,
-        regA : 1,
-        imm : 2,
-        pcRel : 3,
-        absNdxX : 4,
-        absNdxY : 5,
-        absInd : 6,
-        abs : 7,
-        zpNdxX : 8,
-        zpNdxY : 9,
-        zpNdxXInd : 10,
-        zpIndNdxY : 11,
-        zp : 12
-    };
-    
-    /**
-     * @memberof Disassembler
-     * @private
-     * @readonly
-     * @type {Array.<Array.<Number>>}
-     */
-    Disassembler._addrModeTable = [
-        [
-            Disassembler.AddressingMode.imm,
-            Disassembler.AddressingMode.zp,
-            Disassembler.AddressingMode.regA,
-            Disassembler.AddressingMode.abs,
-            Disassembler.AddressingMode.imp,
-            Disassembler.AddressingMode.zpNdxX,
-            Disassembler.AddressingMode.imp,
-            Disassembler.AddressingMode.absNdxX
-        ],
-        [
-            Disassembler.AddressingMode.zpNdxXInd,
-            Disassembler.AddressingMode.zp,
-            Disassembler.AddressingMode.imm,
-            Disassembler.AddressingMode.abs,
-            Disassembler.AddressingMode.zpIndNdxY,
-            Disassembler.AddressingMode.zpNdxX,
-            Disassembler.AddressingMode.absNdxY,
-            Disassembler.AddressingMode.absNdxX
-        ]
-    ];
-    
-    /**
-     * @memberof Disassembler
-     * @private
-     * @readonly
-     * @type {Array.<Number>}
-     */
-    Disassembler._operandTypeTable = [
-        0,
-        0,
-        1,
-        -1,
-        2,
-        2,
-        2,
-        2,
-        1,
-        1,
-        1,
-        1,
-        1
-    ];
-    
-    /**
-     * @memberof Disassembler
-     * @readonly
-     * @type {Array.<String>}
-     */
-    Disassembler._addrModeNames = [
-        "imp",
-        "regA",
-        "imm",
-        "pcRel",
-        "absNdxX",
-        "absNdxY",
-        "absInd",
-        "abs",
-        "zpNdxY",
-        "zpNdxX",
-        "zpNdxXInd",
-        "zpIndNdxY",
-        "zp"
-    ];
-    
-    /**
-     * @memberof Disassembler
      * @constructor
-     * @param {Number} actionCode
-     * @param {Number} addrMode
+     * @param {Number} startAddress
      */
-    Disassembler.DecodedOpCode = function (actionCode, addrMode) {
-        if(!karbonator.isNonNegativeSafeInteger(actionCode)) {
-            throw new TypeError("");
-        }
-        if(!karbonator.isNonNegativeSafeInteger(addrMode)) {
-            throw new TypeError("");
-        }
-        
-        this.actionCode = actionCode;
-        this.addressingMode = addrMode;
-    };
-    
-    /**
-     * TODO : Write some proper code...
-     * @function
-     * @return {Boolean}
-     */
-    Disassembler.DecodedOpCode.prototype.doesMemoryWrite = function () {
-        var result = false;
-        
-        switch(this.actionCode) {
-        case Disassembler.ActionCode.sta:
-        case Disassembler.ActionCode.stx:
-        case Disassembler.ActionCode.sty:
-            result = true;
-        break;
-        case Disassembler.ActionCode.asl:
-        case Disassembler.ActionCode.lsr:
-        case Disassembler.ActionCode.rol:
-        case Disassembler.ActionCode.ror:
-        case Disassembler.ActionCode.inc:
-        case Disassembler.ActionCode.dec:
-            switch(this.addressingMode) {
-            case Disassembler.AddressingMode.imp:
-            case Disassembler.AddressingMode.regA:
-            case Disassembler.AddressingMode.imm:
-            case Disassembler.AddressingMode.pcRel:
-                result = false;
-            break;
-            default:
-                result = true;
-            }
-        break;
-        }
-        
-        return result;
-    };
-    
-    /**
-     * @function
-     * @param {String} operandStr
-     * @return {String}
-     */
-    Disassembler.DecodedOpCode.prototype.format = function (operandStr) {
-        var str = "";
-        
-        switch(this.addressingMode) {
-        case Disassembler.AddressingMode.imp:
-        break;
-        case Disassembler.AddressingMode.regA:
-            str += 'A';
-        break;
-        case Disassembler.AddressingMode.imm:
-            str += '#' + operandStr;
-        break;
-        case Disassembler.AddressingMode.pcRel:
-            str += operandStr;
-        break;
-        case Disassembler.AddressingMode.absNdxX:
-            str += operandStr + ',' + 'X';
-        break;
-        case Disassembler.AddressingMode.absNdxY:
-            str += operandStr + ',' + 'Y';
-        break;
-        case Disassembler.AddressingMode.absInd:
-            str += '(' + operandStr + ')';
-        break;
-        case Disassembler.AddressingMode.abs:
-            str += operandStr;
-        break;
-        case Disassembler.AddressingMode.zpNdxX:
-            str += '<' + operandStr + ',' + 'X';
-        break;
-        case Disassembler.AddressingMode.zpNdxY:
-            str += '<' + operandStr + ',' + 'Y';
-        break;
-        case Disassembler.AddressingMode.zpNdxXInd:
-            str += '(' + '<' + operandStr + ',' + 'X' + ')';
-        break;
-        case Disassembler.AddressingMode.zpIndNdxY:
-            str += '(' + '<' + operandStr + ')' + ',' + 'Y';
-        break;
-        case Disassembler.AddressingMode.zp:
-            str += '<' + operandStr;
-        break;
-        }
-        
-        if(str !== "") {
-            str = ' ' + str;
-        }
-        
-        str = Disassembler.mnemonics[this.actionCode] + str;
-        
-        return str;
+    Disassembler._SrDisasmResult = function (startAddress) {
+        this.succeeded = false;
+        this.lineList = new Disassembler.LineList(startAddress);
+        this.srAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
+        this.dataAddrMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
+        this.cursor = 0;
     };
     
     /**
@@ -980,110 +1528,501 @@
     /**
      * @function
      * @param {karbonator.ByteArray} bytes
-     * @param {Number} [startIndex=0]
-     * @param {Number} [baseOffset=0]
+     * @param {Number} baseOffset
+     * @param {Number} [startAddr]
      * @param {Object} [options]
      * @return {Array.<String>}
      */
-    Disassembler.prototype.disassemble = function (bytes) {
+    Disassembler.prototype.disassemble = function (bytes, baseOffset) {
         if(karbonator.isUndefinedOrNull(bytes)) {
             throw new TypeError("");
         }
+        this._bytes = bytes;
         
-        var startIndex = arguments[1];
-        if(karbonator.isUndefined(startIndex)) {
-            startIndex = 0;
-        }
-        else if(!karbonator.isNonNegativeSafeInteger(startIndex)) {
-            throw new TypeError("'startIndex' must be a non-negative safe integer.");
-        }
-        
-        this._baseOff = arguments[2];
-        if(karbonator.isUndefined(this._baseOff)) {
-            this._baseOff = 0;
-        }
-        else if(!karbonator.isNonNegativeSafeInteger(this._baseOff)) {
+        if(!karbonator.isNonNegativeSafeInteger(baseOffset)) {
             throw new TypeError("'baseOffset' must be a non-negative safe integer.");
         }
+        this._baseOff = baseOffset;
         
-        this._bytes = bytes;
-        var byteCount = bytes.getElementCount();
-        var endOfBytes = this._baseOff + byteCount;
+        var startAddr = arguments[2];
+        if(karbonator.isUndefined(startAddr)) {
+            startAddr = this._baseOff;
+        }
+        else if(!karbonator.isNonNegativeSafeInteger(startAddr)) {
+            throw new TypeError("'startAddr' must be a non-negative safe integer.");
+        }
+        else if(startAddr < baseOffset) {
+            throw new RangeError("'startAddr' cannot be less than 'baseOffset'.");
+        }
+        
+        var tableMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
+        var srMetaMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
+        var failedAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
         
         this._initialize();
-        this._acceptOptions(arguments[3]);
+        var byteCount = bytes.getElementCount();
+        var endOfBytes = this._baseOff + byteCount;
+        var options = arguments[3];
+        if(karbonator.isObjectOrFunction(options)) {
+            if(karbonator.isEsIterable(options.predefinedDataLabels)) {
+                karbonator.forOf(options.predefinedDataLabels, function (pair) {
+                    if(
+                        !karbonator.isArray(pair)
+                        || pair.length < 2
+                        || !karbonator.isNonNegativeSafeInteger(pair[0])
+                        || !karbonator.isNonNegativeSafeInteger(pair[1])
+                    ) {
+                        throw new TypeError("[addr, byteCount]");
+                    }
+                    
+                    tableMap.set(pair[0], pair[1]);
+                }, this);
+            }
+        }
         
-        this._enqueueGcLabel(this._addGcLabel(this._baseOff));
-        while(!this._cLabelQ.isEmpty()) {
-            var gcLabel = this._cLabelQ.dequeue();
-            
-            var nextAddr = gcLabel.address;
-            var found = false;
-            do {
-                var nearestPair = this._dLabelMap.findNotLessThan(nextAddr);
-                if(!karbonator.isUndefined(nearestPair)) {
-                    var nearsetDLabel = nearestPair.value;
-                    var range = new karbonator.math.Interval(
-                        nearsetDLabel.address,
-                        nearsetDLabel.address + nearsetDLabel.byteCount
-                    );
-                    if(range.contains(nextAddr)) {
-                        nextAddr = range.getMaximum();
-                        
-                        if(nextAddr === range.getMinimum()) {
-                            ++nextAddr;
-                        }
-                    }
-                    else {
-                        found = true;
-                    }
-                }
-                else {
-                    found = true;
-                }
-            }
-            while(nextAddr < endOfBytes && !found);
-            
-            if(nextAddr !== gcLabel.address) {
-                if(found) {
-                    this._enqueueGcLabel(this._addGcLabel(nextAddr));
-                }
-                
-                continue;
-            }
+        var srAddrQ = new karbonator.collection.PriorityQueue(karbonator.integerComparator);
+        srAddrQ.enqueue(startAddr);
+        while(!srAddrQ.isEmpty()) {
+            var srAddr = srAddrQ.dequeue();
             
             //TODO : 코드 검증
             //레이블 주소가 어떤 서브루틴의 지역 레이블인 경우
-            var nearestPair = this._srMap.findNearestLessThan(gcLabel.address);
-            if(!karbonator.isUndefined(nearestPair)) {
-                debugger;
-                var nearestSrLineList = nearestPair.value;
-                //TODO : 코드 범위 최대치를 -1 해야하는지 확인.
-                //만약 그렇다면 코드 리팩토링.
-                var range = nearestSrLineList.getAddressRange();
-                range = new karbonator.math.Interval(
-                    range.getMinimum(),
-                    range.getMaximum() - 1
-                );
-                if(range.contains(gcLabel.address)) {
+            var mapPair = srMetaMap.findNearestLessThan(srAddr);
+            if(!karbonator.isUndefined(mapPair)) {
+                if(mapPair.value.getAddressRange().contains(srAddr)) {
                     continue;
                 }
             }
             
-            var lineList = this._disassembleSubroutine(gcLabel);
-            if(lineList !== null && lineList.getCountOf(Disassembler.Line.Type.instruction) > 0) {
-                this._srMap.set(gcLabel.address, lineList);
+            var endAddr = endOfBytes;
+            mapPair = tableMap.findNotLessThan(srAddr);
+            if(!karbonator.isUndefined(mapPair)) {
+                endAddr = mapPair.key;
             }
             
-            if(this._cursor < byteCount) {
-                var nextAddr = this._getCurrentAddress();
-                this._enqueueGcLabel(this._addGcLabel(nextAddr));
+            var srMeta = SrMeta.fromBytes(
+                this._bytes,
+                this._baseOff, srAddr, endAddr
+            );
+            
+            if(srMeta.valid) {
+                karbonator.forOf(srMeta.srAddressSet, function (addr) {
+                    if(addr >= this._baseOff && addr < endOfBytes && !srMetaMap.has(addr)) {
+                        srAddrQ.enqueue(addr);
+                    }
+                }, this);
+                
+                karbonator.forOf(srMeta.dataAddressMap, function (pair) {
+                    if(
+                        pair[1] === SrMeta.DataAddressType.table
+                        && !tableMap.has(pair[0])
+                    ) {
+                        tableMap.set(pair[0], 0);
+                    }
+                }, this);
+                
+                //TODO : 코드 검증
+                //방금 처리된 서브루틴이
+                //다른 서브루틴을 지역레이블로서 포함하는 경우
+                var srRange = srMeta.getAddressRange();
+                var srAddrsToBeRemoved = new karbonator.collection.TreeSet(karbonator.integerComparator);
+                karbonator.forOf(srMetaMap, function (pair) {
+                    var addr = pair[0];
+                    
+                    if(srAddr !== addr && srRange.contains(addr)) {
+                        srAddrsToBeRemoved.add(addr);
+                    }
+                }, this);
+                karbonator.forOf(srAddrsToBeRemoved, function (addr) {
+                    srMetaMap.remove(addr);
+                }, this);
+                
+                srMetaMap.set(srAddr, srMeta);
+            }
+            else {
+                failedAddrSet.add(srAddr);
+            }
+            this._cursor = srMeta.cursor;
+            
+            if(this._cursor < byteCount && !srMetaMap.has(this._baseOff + this._cursor)) {
+                srAddrQ.enqueue(this._baseOff + this._cursor);
             }
         }
         
+        //Estimate the size of tables.
+        karbonator.forOf(tableMap, function (pair) {
+            var tableAddr = pair[0];
+            if(tableAddr >= this._baseOff) {
+                var tableSize = pair[1];
+                if(tableSize < 1) {
+                    var byteCount = endOfBytes - tableAddr;
+                    var mapPair = srMetaMap.findGreaterThan(tableAddr);
+                    if(!karbonator.isUndefined(mapPair)) {
+                        byteCount = mapPair.key - tableAddr;
+                    }
+                    mapPair = tableMap.findGreaterThan(tableAddr);
+                    if(
+                        !karbonator.isUndefined(mapPair)
+                        && byteCount > mapPair.key - tableAddr
+                    ) {
+                        byteCount = mapPair.key - tableAddr;
+                    }
+                    
+                    tableMap.set(tableAddr, byteCount);
+                }
+            }
+        }, this);
+        
+        //Format and output the results.
+        var textMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
+        karbonator.forOf(srMetaMap, function (pair) {
+            var srAddr = pair[0];
+            var srMeta = pair[1];
+            
+            var textLines = [];
+            
+            textLines.push('\t' + '#' + "org" + ' ' + '$' + _formatHexadecimal(srAddr, 4));
+            textLines.push("global" + _formatHexadecimal(srAddr, 4) + ':');
+            
+            var offset = 0;
+            for(var i = 0; i < srMeta.lines.length; ++i) {
+                var line = srMeta.lines[i];
+                var textLine = '\t';
+                var inst = line[0];
+                var operand = line[1];
+                var effectiveAddr = 0;
+                
+                if(
+                    srAddr + offset !== srAddr
+                    && srMeta.localJumpAddressSet.has(srAddr + offset)
+                ) {
+                    textLines.push('.' + "local" + _formatHexadecimal(srAddr + offset, 4) + ':');
+                }
+                
+                offset += inst.getSize();
+                
+                textLine += Instruction.mnemonics[inst.actionCode];
+                textLine += ' ';
+                
+                switch(inst.actionCode) {
+                case Instruction.ActionCode.jsr:
+                    textLine += "global" + _formatHexadecimal(operand, 4);
+                break;
+                case Instruction.ActionCode.jmp:
+                    switch(inst.addressingMode) {
+                    case Instruction.AddressingMode.abs:
+                        textLine += "global" + _formatHexadecimal(operand, 4);
+                    break;
+                    case Instruction.AddressingMode.absInd:
+                        textLine += '(';
+                        
+                        textLine += SrMeta.DataAddressTypeNames[SrMeta.getDataAddressTypeOf(inst, operand)];
+                        textLine += _formatHexadecimal(operand, 4);
+                        
+                        textLine += ')';
+                    break;
+                    }
+                break;
+                case Instruction.ActionCode.bpl:
+                case Instruction.ActionCode.bmi:
+                case Instruction.ActionCode.bne:
+                case Instruction.ActionCode.beq:
+                case Instruction.ActionCode.bvc:
+                case Instruction.ActionCode.bvs:
+                case Instruction.ActionCode.bcc:
+                case Instruction.ActionCode.bcs:
+                    effectiveAddr = srAddr + offset + operand;
+                    
+                    if(srMeta.localJumpAddressSet.has(effectiveAddr)) {
+                        if(effectiveAddr >= srAddr) {
+                            textLine += '.' + "local" + _formatHexadecimal(effectiveAddr, 4);
+                        }
+                        else {
+                            //TODO : 다른 전역 레이블 안에 있는 지역 레이블 참조
+                            textLine += operand;//'$' + _formatHexadecimal(effectiveAddr, 2);
+                        }
+                    }
+                    else {
+                        throw new Error("What the fuck?");
+                    }
+                break;
+                default:
+                    switch(inst.addressingMode) {
+                    case Instruction.AddressingMode.regA:
+                        textLine += 'A';
+                    break;
+                    case Instruction.AddressingMode.imm:
+                        textLine += '#' + '$' + _formatHexadecimal(operand, 2);
+                    break;
+                    case Instruction.AddressingMode.abs:
+                        textLine += SrMeta.DataAddressTypeNames[SrMeta.getDataAddressTypeOf(inst, operand)];
+                        textLine += _formatHexadecimal(operand, 4);
+                    break;
+                    case Instruction.AddressingMode.absNdxX:
+                        textLine += SrMeta.DataAddressTypeNames[SrMeta.getDataAddressTypeOf(inst, operand)];
+                        textLine += _formatHexadecimal(operand, 4);
+                        textLine += ',' + 'X';
+                    break;
+                    case Instruction.AddressingMode.absNdxY:
+                        textLine += SrMeta.DataAddressTypeNames[SrMeta.getDataAddressTypeOf(inst, operand)];
+                        textLine += _formatHexadecimal(operand, 4);
+                        textLine += ',' + 'Y';
+                    break;
+                    case Instruction.AddressingMode.zp:
+                        textLine += '<';
+                        textLine += SrMeta.DataAddressTypeNames[SrMeta.getDataAddressTypeOf(inst, operand)];
+                        textLine += _formatHexadecimal(operand, 2);
+                    break;
+                    case Instruction.AddressingMode.zpNdxX:
+                        textLine += '<';
+                        textLine += SrMeta.DataAddressTypeNames[SrMeta.getDataAddressTypeOf(inst, operand)];
+                        textLine += _formatHexadecimal(operand, 2);
+                        textLine += ',' + 'X';
+                    break;
+                    case Instruction.AddressingMode.zpNdxY:
+                        textLine += '<';
+                        textLine += SrMeta.DataAddressTypeNames[SrMeta.getDataAddressTypeOf(inst, operand)];
+                        textLine += _formatHexadecimal(operand, 2);
+                        textLine += ',' + 'Y';
+                    break;
+                    case Instruction.AddressingMode.zpNdxXInd:
+                        textLine += '(';
+                        textLine += '<';
+                        textLine += SrMeta.DataAddressTypeNames[SrMeta.getDataAddressTypeOf(inst, operand)];
+                        textLine += _formatHexadecimal(operand, 2);
+                        textLine += ',' + 'X';
+                        textLine += ')';
+                    break;
+                    case Instruction.AddressingMode.zpIndNdxY:
+                        textLine += '(';
+                        textLine += '<';
+                        textLine += SrMeta.DataAddressTypeNames[SrMeta.getDataAddressTypeOf(inst, operand)];
+                        textLine += _formatHexadecimal(operand, 2);
+                        textLine += ')';
+                        textLine += ',' + 'Y';
+                    break;
+                    }
+                }
+                
+                textLines.push(textLine);
+            }
+            
+            textMap.set(pair[0], textLines.join("\r\n"));
+        }, this);
+        
+        karbonator.forOf(tableMap, function (pair) {
+            var tableAddr = pair[0];
+            if(tableAddr >= this._baseOff) {
+                var tableSize = pair[1];
+                var textLines = [];
+                
+                textLines.push('\t' + '#' + "org" + ' ' + '$' + _formatHexadecimal(tableAddr, 4));
+                textLines.push("table" + _formatHexadecimal(tableAddr, 4) + ':');
+                
+                var textLine = "";
+                var startIndex = tableAddr - this._baseOff;
+                var endIndex = startIndex + tableSize;
+                var bytesPerLineExp = 3;
+                var lineCount = tableSize >> bytesPerLineExp;
+                var l = 0;
+                for(; l < lineCount; ++l) {
+                    textLine = '\t';
+                    textLine += '#' + "db";
+                    textLine += ' ';
+                    textLine += Array.from(this._bytes.slice(
+                            startIndex + (l << bytesPerLineExp),
+                            startIndex + ((l + 1) << bytesPerLineExp)
+                        ))
+                        .reduce(function (strArr, val) {
+                            strArr.push('$' + _formatHexadecimal(val, 2));
+                            return strArr;
+                        }, [])
+                        .join(", ")
+                    ;
+                    
+                    textLines.push(textLine);
+                }
+                
+                if(startIndex + (l << bytesPerLineExp) < endIndex) {
+                    textLine = '\t';
+                    textLine += '#' + "db";
+                    textLine += ' ';
+                    textLine += Array.from(this._bytes.slice(
+                            startIndex + (l << bytesPerLineExp),
+                            endIndex
+                        ))
+                        .reduce(function (strArr, val) {
+                            strArr.push('$' + _formatHexadecimal(val, 2));
+                            return strArr;
+                        }, [])
+                        .join(", ")
+                    ;
+                    
+                    textLines.push(textLine);
+                }
+                
+                textMap.set(tableAddr, textLines.join("\r\n"));
+            }
+        }, this);
         
         
-        return this._createResult();
+        
+        return [
+            "",
+            Array.from(textMap).reduce(function (str, pair) {
+                return str + pair[1] + "\r\n" + "\r\n";
+            }, ""),
+            Array.from(failedAddrSet).reduce(function (str, addr) {
+                return str + _formatHexadecimal(addr, 4) + "\r\n";
+            }, "")
+        ];
+        
+//        this._enqueueGcLabel(this._addGcLabel(this._baseOff));
+//        while(!this._cLabelQ.isEmpty()) {
+//            var gcLabel = this._cLabelQ.dequeue();
+//            
+//            var nextAddr = gcLabel.address;
+//            var found = false;
+//            do {
+//                var nearestPair = this._dLabelMap.findNotLessThan(nextAddr);
+//                if(!karbonator.isUndefined(nearestPair)) {
+//                    var nearestDLabel = nearestPair.value;
+//                    var range = new karbonator.math.Interval(
+//                        nearestDLabel.address,
+//                        nearestDLabel.address + nearestDLabel.byteCount
+//                    );
+//                    if(range.contains(nextAddr)) {
+//                        nextAddr = range.getMaximum();
+//                        
+//                        if(nextAddr === range.getMinimum()) {
+//                            ++nextAddr;
+//                        }
+//                    }
+//                    else {
+//                        found = true;
+//                    }
+//                }
+//                else {
+//                    found = true;
+//                }
+//            }
+//            while(nextAddr < endOfBytes && !found);
+//            if(nextAddr !== gcLabel.address) {
+//                if(found) {
+//                    this._enqueueGcLabel(this._addGcLabel(nextAddr));
+//                }
+//                
+//                continue;
+//            }
+//            
+//            //TODO : 코드 검증
+//            //레이블 주소가 어떤 서브루틴의 지역 레이블인 경우
+//            var nearestPair = this._srMap.findNearestLessThan(gcLabel.address);
+//            if(!karbonator.isUndefined(nearestPair)) {
+//                if(nearestPair.value.getAddressRange().contains(gcLabel.address)) {
+//                    continue;
+//                }
+//            }
+//            
+//            console.clear();
+//            
+//            var endAddr = this._bytes.getElementCount();
+//            var mapPair = this._dLabelMap.findNotLessThan(gcLabel.address);
+//            if(!karbonator.isUndefined(mapPair)) {
+//                endAddr = mapPair.key;
+//            }
+//            var srResult = this._disassembleSubroutine(gcLabel.address, endAddr);
+//            if(srResult.succeeded) {
+//                karbonator.forOf(srResult.srAddrSet, function (addr) {
+//                    this._enqueueGcLabel(this._addGcLabel(addr));
+//                }, this);
+//                
+//                karbonator.forOf(srResult.dataAddrMap, function (pair) {
+//                    if(pair[1] === Disassembler.DataLabelType.table) {
+//                        this._addGdLabel(pair[0]);
+//                    }
+//                }, this);
+//                
+//                console.log(srResult.lineList.toString());
+//                
+//                //TODO : 코드 검증
+//                //방금 처리된 서브루틴이
+//                //다른 서브루틴을 지역레이블로서 포함하는 경우
+//                var cLabelAddrsToRemove = new karbonator.collection.TreeSet(karbonator.integerComparator);
+//                karbonator.forOf(this._cLabelMap, function (pair) {
+//                    var addr = pair[0];
+//                    
+//                    if(
+//                        gcLabel.address !== addr
+//                        && range.contains(addr)
+//                    ) {
+//                        cLabelAddrsToRemove.add(addr);
+//                    }
+//                }, this);
+//                karbonator.forOf(cLabelAddrsToRemove, function (addr) {
+//                    this._cLabelMap.remove(addr);
+//                    this._labelMap.get(addr).parent = gcLabel;
+//                }, this);
+//                
+//                this._srMap.set(gcLabel.address, srResult.lineList);
+//            }
+//            else {
+//                if(srResult.lineList.getCountOf(Disassembler.Line.Type.instruction) > 0) {
+//                    this._failedLineListMap.set(gcLabel.address, srResult.lineList);
+//                }
+//                
+//                console.log("Failed to disassemble : 0x" + _formatHexadecimal(gcLabel.address) + "\r\n");
+//            }
+//            this._cursor = srResult.cursor;
+//            
+//            if(this._cursor < byteCount) {
+//                var nextAddr = this._getCurrentAddress();
+//                this._enqueueGcLabel(this._addGcLabel(nextAddr));
+//            }
+//        }
+        
+        
+//        /**
+//         * @function
+//         * @param {karbonator.collection.TreeMap} lineListMap
+//         */
+//        Disassembler.LineList.prototype.addPpSymbols = function (lineListMap) {
+//            this.insert(
+//                new Disassembler.Line(
+//                    Disassembler.Line.Type.label,
+//                    this.startAddress
+//                ),
+//                0
+//            );
+//
+//            this.insert(
+//                new Disassembler.Line(
+//                    Disassembler.Line.Type.directive,
+//                    ["ORG", this.startAddress]
+//                ),
+//                0
+//            );
+//
+//            karbonator.forOf(this._localJumpAddrSet, function (addr) {
+//                if(addr >= this.startAddress) {
+//                    this.insert(
+//                        new Disassembler.Line(
+//                            Disassembler.Line.Type.label,
+//                            this._addLcLabel(srLabel, addr)
+//                        ),
+//                        this.findInstructionIndex(
+//                            this.findIndexOfAddress(addr)
+//                        )
+//                    );
+//                }
+//                else {
+//                    //TODO : 전역 레이블의 자식 레이블 참조 코드 작성
+//                    debugger;
+//                }
+//            }, this);
+//        };
+//        
+//        return this._createResult();
     };
     
     /**
@@ -1123,122 +2062,118 @@
             if(!karbonator.isEsIterable(options.predefinedDataLabels)) {
                 throw new TypeError("");
             }
-
-            for(
-                var iter = options.predefinedDataLabels[Symbol.iterator](), iP = iter.next();
-                !iP.done;
-                iP = iter.next()
-            ) {
+            
+            karbonator.forOf(options.predefinedDataLabels, function (pair) {
                 if(
-                    !karbonator.isArray(iP.value)
-                    || iP.value.length < 2
-                    || !karbonator.isNonNegativeSafeInteger(iP.value[0])
-                    || !karbonator.isNonNegativeSafeInteger(iP.value[1])
+                    !karbonator.isArray(pair)
+                    || pair.length < 2
+                    || !karbonator.isNonNegativeSafeInteger(pair[0])
+                    || !karbonator.isNonNegativeSafeInteger(pair[1])
                 ) {
                     throw new TypeError("[addr, byteCount]");
                 }
-
-                this._addGdLabel(iP.value[0], iP.value[1]);
-            }
+                
+                this._addGdLabel(pair[0], pair[1]);
+            }, this);
         }
     };
     
     /**
      * @private
      * @function
-     * @param {Label} srLabel
-     * @return {Disassembler.LineList|null}
+     * @param {Number} startAddr
+     * @param {Number} endAddr
+     * @return {Disassembler._SrDisasmResult}
      */
-    Disassembler.prototype._disassembleSubroutine = function (srLabel) {
-        this._cursor = srLabel.address - this._baseOff;
+    Disassembler.prototype._disassembleSubroutine = function (startAddr, endAddr) {
+        if(!karbonator.isNonNegativeSafeInteger(startAddr)) {
+            throw new TypeError("");
+        }
+        if(!karbonator.isNonNegativeSafeInteger(endAddr)) {
+            throw new TypeError("");
+        }
         
-        var lineList = new Disassembler.LineList(srLabel.address);
-        lineList.add(
-            new Disassembler.Line(
-                Disassembler.Line.Type.directive,
-                ["ORG", srLabel.address]
-            )
-        );
-        lineList.add(
-            new Disassembler.Line(
-                Disassembler.Line.Type.label,
-                srLabel
-            )
-        );
+        var result = new Disassembler._SrDisasmResult(startAddr);
+        result.succeeded = true;
+        result.cursor = startAddr - this._baseOff;
         
-        var portAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
-        var dataAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
-        var memoryAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
-        
-        var jsrAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
+        var tableAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
         var longJumpAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
-        var lcLabelAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
+        var lcJumpAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
         
         var returnCount = 0;
-        var byteCount = this._bytes.getElementCount();
-        for(var working = true; working && this._cursor < byteCount; ) {
+        for(var working = true; working && result.cursor < endAddr; ) {
             //Inhibit violating data tables.
-            var currentAddr = this._getCurrentAddress();
-            var mapPair = this._dLabelMap.findNotLessThan(currentAddr);
+            var currentAddr = this._baseOff + result.cursor;
+            var nearestNextTableAddr = tableAddrSet.findNotLessThan(currentAddr);
             if(
-                !karbonator.isUndefined(mapPair)
-                && (currentAddr >= mapPair.value.address)
+                !karbonator.isUndefined(nearestNextTableAddr)
+                && currentAddr >= nearestNextTableAddr
             ) {
                 break;
             }
             
-            var opCode = this._readOpCode();
-            var decodedOpCode = this._decodeOpCode(opCode);
+            var opCode = this._bytes.get(result.cursor);
+            ++result.cursor;
+            var decodedOpCode = Instruction.fromOpCode(opCode);
             if(null === decodedOpCode) {
-                if(lineList.getCountOf(Disassembler.Line.Type.instruction) > 0) {
-                    this._failedLineListMap.set(srLabel.address, lineList);
-                }
-                
-                lineList = null;
+                result.succeeded = false;
                 break;
             }
-            var operand = this._readOperand(decodedOpCode.addressingMode);
             
-            currentAddr = this._getCurrentAddress();
+            var operandType = decodedOpCode.getOperandType();
+            var operandSize = Math.abs(operandType);
+            var operand = 0;
+            if(operandSize > 0) {
+                operand = karbonator.bytesToInteger(
+                    this._bytes,
+                    operandSize, (operandType < 0), true,
+                    result.cursor
+                );
+                result.cursor += operandSize;
+            }
+            
+            var dataLabelType = 0;
+            currentAddr = this._baseOff + result.cursor;
             if((decodedOpCode.actionCode & 0x30) === 0) {
                 switch(decodedOpCode.actionCode) {
-                case Disassembler.ActionCode.rti:
-                case Disassembler.ActionCode.rts:
+                case Instruction.ActionCode.rti:
+                case Instruction.ActionCode.rts:
                     ++returnCount;
                     
                     if(karbonator.isUndefined(
-                        lcLabelAddrSet.findNotLessThan(currentAddr)
+                        lcJumpAddrSet.findNotLessThan(currentAddr)
                     )) {
                         working = false;
                     }
                 break;
-                case Disassembler.ActionCode.bpl:
-                case Disassembler.ActionCode.bmi:
-                case Disassembler.ActionCode.bne:
-                case Disassembler.ActionCode.beq:
-                case Disassembler.ActionCode.bvc:
-                case Disassembler.ActionCode.bvs:
-                case Disassembler.ActionCode.bcc:
-                case Disassembler.ActionCode.bcs:
-                    lcLabelAddrSet.add(currentAddr + operand);
+                case Instruction.ActionCode.bpl:
+                case Instruction.ActionCode.bmi:
+                case Instruction.ActionCode.bne:
+                case Instruction.ActionCode.beq:
+                case Instruction.ActionCode.bvc:
+                case Instruction.ActionCode.bvs:
+                case Instruction.ActionCode.bcc:
+                case Instruction.ActionCode.bcs:
+                    lcJumpAddrSet.add(currentAddr + operand);
                     
                     if(
                         returnCount > 0
                         && karbonator.isUndefined(
-                            lcLabelAddrSet.findNotLessThan(currentAddr)
+                            lcJumpAddrSet.findNotLessThan(currentAddr)
                         )
                     ) {
                         working = false;
                     }
                 break;
-                case Disassembler.ActionCode.jsr:
-                    jsrAddrSet.add(operand);
+                case Instruction.ActionCode.jsr:
+                    result.srAddrSet.add(operand);
                 break;
-                case Disassembler.ActionCode.jmp:
+                case Instruction.ActionCode.jmp:
                     switch(decodedOpCode.addressingMode) {
-                    case Disassembler.AddressingMode.abs:
-                        if(lineList.getAddressRange().contains(operand)) {
-                            lcLabelAddrSet.add(operand);
+                    case Instruction.AddressingMode.abs:
+                        if(result.lineList.getAddressRange().contains(operand)) {
+                            lcJumpAddrSet.add(operand);
                         }
                         else {
                             longJumpAddrSet.add(operand);
@@ -1247,21 +2182,25 @@
                         //서브루틴 범위 밖으로 점프해서
                         //제어를 넘기는 서브루틴인 경우.
                         if(
-                            operand < lineList.startAddress
+                            operand < result.lineList.startAddress
                             && karbonator.isUndefined(
-                                lcLabelAddrSet.findNotLessThan(currentAddr)
+                                lcJumpAddrSet.findNotLessThan(currentAddr)
                             )
                         ) {
                             working = false;
                         }
                     break;
-                    case Disassembler.AddressingMode.absInd:
-                        dataAddrSet.add(operand);
+                    case Instruction.AddressingMode.absInd:
+                        dataLabelType = this._getDataLabelTypeOf(decodedOpCode, operand);
+                        result.dataAddrMap.set(operand, dataLabelType);
+                        if(dataLabelType === Disassembler.DataLabelType.table) {
+                            tableAddrSet.add(operand);
+                        }
                         
                         //점프 테이블 주소로 간접 점프해서
                         //제어를 넘기는 경우.
                         if(karbonator.isUndefined(
-                            lcLabelAddrSet.findNotLessThan(currentAddr)
+                            lcJumpAddrSet.findNotLessThan(currentAddr)
                         )) {
                             working = false;
                         }
@@ -1273,128 +2212,46 @@
                 }
             }
             else switch(decodedOpCode.addressingMode) {
-            case Disassembler.AddressingMode.absNdxX:
-            case Disassembler.AddressingMode.absNdxY:
-            case Disassembler.AddressingMode.abs:
-                if(!this._addressIsInPortArea(operand)) {
-                    memoryAddrSet.add(operand);
-                }
-                else if(
-                    this._addressIsInCodeArea(operand)
-                    && !decodedOpCode.doesMemoryWrite()
-                ) {
-                    dataAddrSet.add(operand);
-                }
-                else {
-                    portAddrSet.add(operand);
+            case Instruction.AddressingMode.absNdxX:
+            case Instruction.AddressingMode.absNdxY:
+            case Instruction.AddressingMode.absInd:
+            case Instruction.AddressingMode.abs:
+            case Instruction.AddressingMode.zp:
+            case Instruction.AddressingMode.zpNdxX:
+            case Instruction.AddressingMode.zpNdxY:
+            case Instruction.AddressingMode.zpIndNdxY:
+            case Instruction.AddressingMode.zpNdxXInd:
+                dataLabelType = this._getDataLabelTypeOf(decodedOpCode, operand);
+                result.dataAddrMap.set(operand, dataLabelType);
+                if(dataLabelType === Disassembler.DataLabelType.table) {
+                    tableAddrSet.add(operand);
                 }
             break;
             }
             
-//            var operandStr = '$' + _formatHexadecimal(
-//                operand,
-//                (Math.abs(Disassembler._operandTypeTable[decodedOpCode.addressingMode]) << 1)
-//            );
-            lineList.add(new Disassembler.Line(
+            result.lineList.add(new Disassembler.Line(
                 Disassembler.Line.Type.instruction,
                 [decodedOpCode, operand]
             ));
         }
         
-        console.clear();
-        
-        if(null !== lineList && lineList.getCount > 0) {
-            console.log(lineList.toString());
-            
-            var filteredLongJumpAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
-            //TODO : 코드 범위 최대치를 -1 해야하는지 확인.
-            //만약 그렇다면 코드 리팩토링.
-            var range = lineList.getAddressRange();
-            range = new karbonator.math.Interval(
-                range.getMinimum(),
-                range.getMaximum() - 1
-            );
+        if(result.succeeded) {
+            var range = result.lineList.getAddressRange();
             karbonator.forOf(longJumpAddrSet, function (addr) {
                 if(range.contains(addr)) {
-                    lcLabelAddrSet.add(addr);
+                    lcJumpAddrSet.add(addr);
                 }
                 else {
-                    filteredLongJumpAddrSet.add(addr);
+                    result.srAddrSet.add(addr);
                 }
             }, this);
             
-            //TODO : 코드 검증
-            //방금 처리된 서브루틴이
-            //다른 서브루틴을 지역레이블로서 포함하는 경우
-            var cLabelAddrsToRemove = new karbonator.collection.TreeSet(karbonator.integerComparator);
-            karbonator.forOf(this._cLabelMap, function (pair) {
-                if(
-                    srLabel.address !== pair[1].address
-                    && range.contains(pair[1].address)
-                ) {
-                    cLabelAddrsToRemove.add(pair[1].address);
-                }
-            }, this);
-            if(cLabelAddrsToRemove.getElementCount() > 0) {
-                debugger;
-            }
-            karbonator.forOf(cLabelAddrsToRemove, function (addr) {
-                this._cLabelMap.remove(addr);
-                this._labelMap.get(addr).parent = srLabel;
-            }, this);
-            
-            karbonator.forOf(filteredLongJumpAddrSet, function (addr) {
-                this._enqueueGcLabel(this._addGcLabel(addr));
-            }, this);
-            
-            karbonator.forOf(lcLabelAddrSet, function (addr) {
-                if(addr >= lineList.startAddress) {
-                    lineList.insert(
-                        new Disassembler.Line(
-                            Disassembler.Line.Type.label,
-                            this._addLcLabel(srLabel, addr)
-                        ),
-                        lineList.findInstructionIndex(
-                            lineList.findIndexOfAddress(addr)
-                        )
-                    );
-                }
-                else {
-                    //TODO : 전역 레이블의 자식 레이블 참조 코드 작성
-                    debugger;
-                }
-            }, this);
-            
-            
-            
-            karbonator.forOf(jsrAddrSet, function (addr) {
-                var label = this._addGcLabel(addr);
-                this._enqueueGcLabel(label);
-            }, this);
-            
-            
-            
-            karbonator.forOf(portAddrSet, function (addr) {
-                this._addPortLabel(addr);
-            }, this);
-            
-            karbonator.forOf(memoryAddrSet, function (addr) {
-                this._addMemoryLabel(addr);
-            }, this);
-            
-            karbonator.forOf(dataAddrSet, function (addr) {
-                this._addGdLabel(addr);
-            }, this);
-            
-            console.clear();
-            console.log(lineList.toString());
+            karbonator.forOf(lcJumpAddrSet, function (addr) {
+                result.lineList.addLocalJumpAddress(addr);
+            });
         }
         
-        if(null === lineList) {
-            console.log("Failed to disassemble : 0x" + _formatHexadecimal(srLabel.address) + "\r\n");
-        }
-        
-        return lineList;
+        return result;
     };
     
     /**
@@ -1430,317 +2287,35 @@
      * @function
      * @return {Number}
      */
-    Disassembler.prototype._readOpCode = function () {
-        var opCode = this._bytes.get(this._cursor);
-        ++this._cursor;
-        
-        return opCode;
-    };
-    
-    /**
-     * @private
-     * @function
-     * @param {Number} addrMode
-     * @return {Number}
-     */
-    Disassembler.prototype._readOperand = function (addrMode) {
-        var operandType = Disassembler._operandTypeTable[addrMode];
-        
-        var operand = 0;
-        var size = Math.abs(operandType);
-        if(size > 0) {
-            operand = karbonator.bytesToInteger(
-                this._bytes,
-                size, (operandType < 0), true,
-                this._cursor
-            );
-            
-            this._cursor += size;
-        }
-        
-        return operand;
-    };
-    
-    /**
-     * @private
-     * @function
-     * @param {Number} addrMode
-     * @return {Number}
-     */
-    Disassembler.prototype._getOperandSize = function (addrMode) {
-        var operandType = Disassembler._operandTypeTable[addrMode];
-        
-        return Math.abs(operandType);
-    };
-    
-    /**
-     * @private
-     * @function
-     * @return {Number}
-     */
     Disassembler.prototype._getCurrentAddress = function () {
         return this._baseOff + this._cursor;
     };
     
     /**
      * @private
-     * @function
-     * @param {Number} opCode
-     * @return {Disassembler.DecodedOpCode|null}
+     * @param {Instruction} decodedOpCode
+     * @param {Number} addr
+     * @returns {Number}
      */
-    Disassembler.prototype._decodeOpCode = function (opCode) {
-        var groupNdx = opCode & 0x03;
-        var groupTblNdx = opCode & 0x01;
-        var addrModeNdx = (opCode & 0x1C) >>> 2;
-        var actionNdx = (opCode & 0xE0) >>> 5;
+    Disassembler.prototype._getDataLabelTypeOf = function (decodedOpCode, addr) {
+        var dataLabelType = Disassembler.DataLabelType.memory;
         
-        var addrMode = 0;
-        var actionCode = 0;
-        
-        switch(groupNdx) {
-        case 0:
-            switch(addrModeNdx) {
-            case 0:
-                switch(actionNdx) {
-                case 0:
-                    actionCode = Disassembler._intSrActionCodes[actionNdx];
-                    addrMode = Disassembler.AddressingMode.imp;
-                break;
-                case 1:
-                    actionCode = Disassembler._intSrActionCodes[actionNdx];
-                    addrMode = Disassembler.AddressingMode.abs;
-                break;
-                case 2:
-                case 3:
-                    actionCode = Disassembler._intSrActionCodes[actionNdx];
-                    addrMode = Disassembler.AddressingMode.imp;
-                break;
-                case 4:
-                    //throw new Error("An invalid opcode has been detected.");
-                    return null;
-                //break;
-                case 5:
-                case 6:
-                case 7:
-                    actionCode = Disassembler._groupActionCodeTable[0][actionNdx];
-                    addrMode = Disassembler._addrModeTable[groupTblNdx][addrModeNdx];
-                break;
-                }
-            break;
-            case 1:
-                switch(actionNdx) {
-                case 0:
-                    //throw new Error("An invalid opcode has been detected.");
-                    return null;
-                //break;
-                case 1:
-                    actionCode = Disassembler._groupActionCodeTable[0][actionNdx];
-                    addrMode = Disassembler._addrModeTable[groupTblNdx][addrModeNdx];
-                break;
-                case 2:
-                case 3:
-                    //throw new Error("An invalid opcode has been detected.");
-                    return null;
-                //break;
-                case 4:
-                case 5:
-                case 6:
-                case 7:
-                    actionCode = Disassembler._groupActionCodeTable[0][actionNdx];
-                    addrMode = Disassembler._addrModeTable[groupTblNdx][addrModeNdx];
-                break;
-                }
-            break;
-            case 2:
-                actionCode = Disassembler._stackMoveIncDecActionCodes[actionNdx];
-                addrMode = Disassembler.AddressingMode.imp;
-            break;
-            case 3:
-                switch(actionNdx) {
-                case 0:
-                    //throw new Error("An invalid opcode has been detected.");
-                    return null;
-                //break;
-                case 1:
-                case 2:
-                    actionCode = Disassembler._groupActionCodeTable[0][actionNdx];
-                    addrMode = Disassembler._addrModeTable[groupTblNdx][addrModeNdx];
-                break;
-                case 3:
-                    actionCode = Disassembler._groupActionCodeTable[0][actionNdx];
-                    addrMode = Disassembler.AddressingMode.absInd;
-                break;
-                case 4:
-                case 5:
-                case 6:
-                case 7:
-                    actionCode = Disassembler._groupActionCodeTable[0][actionNdx];
-                    addrMode = Disassembler._addrModeTable[groupTblNdx][addrModeNdx];
-                break;
-                }
-            break;
-            case 4:
-                actionCode = Disassembler._branchActionCodes[actionNdx];
-                addrMode = Disassembler.AddressingMode.pcRel;
-            break;
-            case 5:
-                switch(actionNdx) {
-                case 0:
-                case 1:
-                case 2:
-                case 3:
-                    //throw new Error("An invalid opcode has been detected.");
-                    return null;
-                //break;
-                case 4:
-                case 5:
-                    actionCode = Disassembler._groupActionCodeTable[0][actionNdx];
-                    addrMode = Disassembler._addrModeTable[groupTblNdx][addrModeNdx];
-                break;
-                case 6:
-                case 7:
-                    //throw new Error("An invalid opcode has been detected.");
-                    return null;
-                //break;
-                }
-            break;
-            case 6:
-                actionCode = Disassembler._flagMoveActionCodes[actionNdx];
-                addrMode = Disassembler.AddressingMode.imp;
-            break;
-            case 7:
-                if(actionNdx === 5) {
-                    actionCode = Disassembler._groupActionCodeTable[0][actionNdx];
-                    addrMode = Disassembler._addrModeTable[groupTblNdx][addrModeNdx];
-                }
-                else {
-                    //4 : SHY
-                    //.throw new Error("An invalid opcode has been detected.");
-                    return null;
-                }
-            break;
-            }
-        break;
-        case 1:
-            if(opCode !== 0x89) {
-                actionCode = Disassembler._groupActionCodeTable[1][actionNdx];
-                addrMode = Disassembler._addrModeTable[groupTblNdx][addrModeNdx];
+        if(addr >= 0x8000 && addr < 0x10000) {
+            if(!decodedOpCode.doesMemoryWrite()) {
+                dataLabelType = Disassembler.DataLabelType.table;
             }
             else {
-                //throw new Error("An invalid opcode has been detected.");
-                return null;
+                dataLabelType = Disassembler.DataLabelType.port;
             }
-        break;
-        case 2:
-            switch(addrModeNdx) {
-            case 0:
-                if(actionNdx === 5) {
-                    actionCode = Disassembler._groupActionCodeTable[2][actionNdx];
-                    addrMode = Disassembler._addrModeTable[groupTblNdx][addrModeNdx];
-                }
-                else {
-                    //throw new Error("An invalid opcode has been detected.");
-                    return null;
-                }
-            break;
-            case 1:
-                actionCode = Disassembler._groupActionCodeTable[2][actionNdx];
-                addrMode = Disassembler._addrModeTable[groupTblNdx][addrModeNdx];
-            break;
-            case 2:
-                switch((actionNdx & 0x04) >> 2) {
-                case 0:
-                    actionCode = Disassembler._groupActionCodeTable[2][actionNdx];
-                    addrMode = Disassembler._addrModeTable[groupTblNdx][addrModeNdx];
-                break;
-                case 1:
-                    actionCode = Disassembler._moveDecNopActionCodes[actionNdx & 0x03];
-                    addrMode = Disassembler.AddressingMode.imp;
-                break;
-                }
-            break;
-            case 3:
-                actionCode = Disassembler._groupActionCodeTable[2][actionNdx];
-                addrMode = Disassembler._addrModeTable[groupTblNdx][addrModeNdx];
-            break;
-            case 4:
-                //throw new Error("An invalid opcode has been detected.");
-                return null;
-            //break;
-            case 5:
-                actionCode = Disassembler._groupActionCodeTable[2][actionNdx];
-                addrMode = Disassembler._addrModeTable[groupTblNdx][addrModeNdx];
-            break;
-            case 6:
-                switch(actionNdx) {
-                case 0:
-                case 1:
-                case 2:
-                case 3:
-                    //throw new Error("An invalid opcode has been detected.");
-                    return null;
-                //break;
-                case 4:
-                case 5:
-                    actionCode = Disassembler._stackPointerActionCodes[actionNdx - 4];
-                    addrMode = Disassembler.AddressingMode.imp;
-                break;
-                case 6:
-                case 7:
-                    //throw new Error("An invalid opcode has been detected.");
-                    return null;
-                //break;
-                }
-            break;
-            case 7:
-                if(actionNdx !== 4) {
-                    actionCode = Disassembler._groupActionCodeTable[2][actionNdx];
-                    addrMode = Disassembler._addrModeTable[groupTblNdx][addrModeNdx];
-                }
-                else {
-                    //SHX
-                    //throw new Error("An invalid opcode has been detected.");
-                    return null;
-                }
-            break;
-            }
-        break;
-        case 3:
-            //throw new Error("An invalid opcode has been detected.");
-            return null;
-        //break;
         }
-        
-        return new Disassembler.DecodedOpCode(
-            actionCode,
-            addrMode
-        );
-    };
-    
-    /**
-     * @private
-     * @function
-     * @param {Number} addr
-     * @return {Boolean}
-     */
-    Disassembler.prototype._addressIsInPortArea = function (addr) {
-        return this._addressIsInCodeArea(addr)
-            || (addr >= 0x5000 && addr < 0x6000)
-        ;
-    };
-    
-    /**
-     * @private
-     * @function
-     * @param {Number} addr
-     * @return {Boolean}
-     */
-    Disassembler.prototype._addressIsInCodeArea = function (addr) {
-        if(!karbonator.isNonNegativeSafeInteger(addr)) {
-            throw new TypeError("");
+        else if(addr >= 0x4000 && addr < 0x6000) {
+            dataLabelType = Disassembler.DataLabelType.port;
         }
-        
-        return addr >= 0x8000 && addr < 0x10000;
+        else {
+            dataLabelType = Disassembler.DataLabelType.memory;
+        }
+
+        return dataLabelType;
     };
     
     /**
@@ -1882,7 +2457,7 @@
             );
             
             this._labelMap.set(label.address, label);
-            this._dLabelMap.set(label.address, label);
+            //this._dLabelMap.set(label.address, label);
         }
         
         return label;
@@ -1923,7 +2498,7 @@
             );
             
             this._labelMap.set(label.address, label);
-            this._dLabelMap.set(label.address, label);
+            //this._dLabelMap.set(label.address, label);
         }
         
         return label;
@@ -1974,19 +2549,114 @@
     
     /*////////////////////////////////*/
     
+    /*////////////////////////////////*/
+    //Assembler
+    
+    var lg = new karbonator.string.LexerGenerator();
+    lg.defineToken("nz_digit", "[1-9]", true);
+    lg.defineToken("digit", "[0-9]", true);
+    lg.defineToken("id", "[a-zA-Z_$][a-zA-Z_$0-9]*");
+    lg.defineToken("lit-string", "\".*?\"");
+    lg.defineToken("global_label", "{id}:");
+    lg.defineToken("local_label", "\\.{global_label}");
+    lg.defineToken("local_rel_label", "\\.(\\+|\\-)?[1-9][0-9]*");
+    lg.defineToken("base2_int", "[0-1]{1,8}");
+    lg.defineToken("base10_int", "{nz_digit}{digit}*");
+    lg.defineToken("base16_int", "([a-zA-Z0-9]{2})+");
+    
     /**
      * @memberof karbonator.nes
      * @constructor
      */
-    var Assembler = function () {
-
-        
+    var Assembler = function () {        
         this._lexer = lg.generate();
+        this._strLines = null;
+        
+        this._includeSet = new karbonator.collection.TreeSet(karbonator.stringComparator);
+        this._moduleMap = new karbonator.collection.TreeMap(karbonator.stringComparator);
+        this._labelSetMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
+        this._macroMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
     };
     
-    karbonator.Disassembler = Disassembler;
+    /**
+     * @function
+     * @param {String} str
+     */
+    Assembler.prototype.assemble = function (str) {
+        //Resolve include & require directives.
+        
+        
+        //Read and process other macro symbols.
+        
+        
+        //Translate
+        
+        
+    };
     
-    karbonator.Assembler = Assembler;
+    /**
+     * @private
+     * @function
+     * @param {String} str
+     * @param {Number} startIndex
+     */
+    Assembler.prototype._processPp = function (str, startIndex) {
+        var state = 0;
+        for(var i = startIndex; ; ) {
+            var ch = str.charAt(i);
+            
+            switch(state) {
+            case 0://find a pre-processor command.
+                switch(ch) {
+                case ' ':
+                case '\v':
+                case '\f':
+                case '\t':
+                    ++i;
+                break;
+                case '\r':
+                case '\n':
+                    state = 1;
+                break;
+                case '#':
+                    ++i;
+                    state = 2;
+                break;
+                default:
+                    //try scan global or local label.
+                    //if failed, then go to end of line.
+                    //
+                }
+            break;
+            case 1://end of line.
+                
+            break;
+            case 2://determine directive.
+                //scan id.
+                //switch by id.
+            break;
+            case 3://data literal
+                
+            break;
+            case 4://include / require
+                
+            break;
+            case 5://define
+                
+            break;
+            case 6://bank
+                
+            break;
+            case 7://org
+                
+            break;
+            }
+        }
+    };
+    
+    nes.Assembler = Assembler;
+    
+    /*////////////////////////////////*/
     
     return karbonator;
 })

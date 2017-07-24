@@ -512,7 +512,7 @@
     }());
     
     if(!Object.create) {
-        Object.create = (function (proto) {
+        Object.create = function (proto) {
             if(null === proto) {
                 throw new Error("This polyfill doesn't support null argument for the 'proto' parameter.");
             }
@@ -531,7 +531,7 @@
             }
             
             return newObject;
-        });
+        };
     }
     
     if(!Object.getPrototypeOf) {

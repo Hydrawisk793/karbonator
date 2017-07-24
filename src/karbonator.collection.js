@@ -1360,30 +1360,71 @@
                 }
             }
             
-            var pFoundNode = null;
-            if(
-                searchTarget >= RbTreeSetBase.SearchTarget.greater
-                && pPrevious !== null
-                && !pPrevious.isNil()
-                && this._comparator(this._keyGetter(pPrevious._element), pElementKey) < 0
-            ) {
-                pPrevious = pPrevious.getGreater();
-            }
             switch(searchTarget) {
             case RbTreeSetBase.SearchTarget.equal:
-                pFoundNode = (pCurrent !== null && !pCurrent.isNil() ? pCurrent : null);
-            break;
+                return (pCurrent !== null && !pCurrent.isNil() ? pCurrent : null);
+            //break;
             case RbTreeSetBase.SearchTarget.greater:
-                pFoundNode = (pPrevious !== null && !pPrevious.isNil() ? pPrevious : null);
-            break;
+                if(null === pCurrent || pCurrent.isNil()) {
+                    pCurrent = pPrevious;
+                }
+                
+                while(
+                    null !== pCurrent && !pCurrent.isNil()
+                    && this._comparator(pElementKey, this._keyGetter(pCurrent._element)) >= 0
+                ) {
+                    pCurrent = pCurrent.getGreater();
+                }
+                
+                return (pCurrent !== null && !pCurrent.isNil() ? pCurrent : null);
+            //break;
             case RbTreeSetBase.SearchTarget.greaterOrEqual:
-                pFoundNode = (pCurrent !== null && !pCurrent.isNil() ? pCurrent : pPrevious);
-            break;
+                if(null !== pCurrent && !pCurrent.isNil()) {
+                    return pCurrent;
+                }
+                else {
+                    if(null === pCurrent || pCurrent.isNil()) {
+                        pCurrent = pPrevious;
+                    }
+                    
+                    while(
+                        null !== pCurrent && !pCurrent.isNil()
+                        && this._comparator(pElementKey, this._keyGetter(pCurrent._element)) >= 0
+                    ) {
+                        pCurrent = pCurrent.getGreater();
+                    }
+                    
+                    return (pCurrent !== null && !pCurrent.isNil() ? pCurrent : null);
+                }
+            //break;
             default:
-                throw new Error("An unknown search target has been specified.");
+                throw new Error("An unknown search target has been detected.");
             }
             
-            return pFoundNode;
+//            var pFoundNode = null;
+//            if(
+//                searchTarget >= RbTreeSetBase.SearchTarget.greater
+//                && pPrevious !== null
+//                && !pPrevious.isNil()
+//                && this._comparator(this._keyGetter(pPrevious._element), pElementKey) < 0
+//            ) {
+//                pPrevious = pPrevious.getGreater();
+//            }
+//            switch(searchTarget) {
+//            case RbTreeSetBase.SearchTarget.equal:
+//                pFoundNode = (pCurrent !== null && !pCurrent.isNil() ? pCurrent : null);
+//            break;
+//            case RbTreeSetBase.SearchTarget.greater:
+//                pFoundNode = (pPrevious !== null && !pPrevious.isNil() ? pPrevious : null);
+//            break;
+//            case RbTreeSetBase.SearchTarget.greaterOrEqual:
+//                pFoundNode = (pCurrent !== null && !pCurrent.isNil() ? pCurrent : pPrevious);
+//            break;
+//            default:
+//                throw new Error("An unknown search target has been detected.");
+//            }
+//            
+//            return pFoundNode;
         };
         
         /**
@@ -2328,7 +2369,7 @@
      * @return {Boolean}
      */
     TreeMap.prototype.remove = function (key) {
-        return this._rbTreeSet.remove(key);
+        return this._rbTreeSet.remove({key : key});
     };
     
     /**

@@ -1689,7 +1689,49 @@
 
         return this;
     };
-
+    
+    /**
+     * @function
+     * @param {Number} [startIndex]
+     * @param {Number} [endIndex]
+     * @return {karbonator.ByteArray}
+     */
+    ByteArray.prototype.slice = function () {
+        var byteCount = this.getElementCount();
+        var startIndex = arguments[0];
+        if(karbonator.isUndefined(startIndex)) {
+            startIndex = 0;
+        }
+        else if(!karbonator.isNonNegativeSafeInteger(startIndex)) {
+            throw new TypeError("");
+        }
+        else if(startIndex >= byteCount) {
+            throw new RangeError("");
+        }
+        
+        var endIndex = arguments[1];
+        if(karbonator.isUndefined(endIndex)) {
+            endIndex = byteCount;
+        }
+        else if(!karbonator.isNonNegativeSafeInteger(endIndex)) {
+            throw new TypeError("");
+        }
+        else if(endIndex > byteCount) {
+            endIndex = byteCount;
+        }
+        
+        var slicedByteCount = endIndex - startIndex;
+        var newByteArray = new ByteArray(slicedByteCount);
+        for(var i = slicedByteCount, j = endIndex; j > startIndex; ) {
+            --j;
+            --i;
+            
+            newByteArray.set(i, this.get(j));
+        }
+        
+        return newByteArray;
+    };
+    
     /**
      * @function
      * @param {karbonator.ByteArray} rhs
