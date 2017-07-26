@@ -80,11 +80,11 @@
     };
     
     /**
-     * 
+     * @memberof karbonator.collection.ListQueue
      * @param {Object} iterable
      * @param {Function} [mapFunc]
      * @param {Object} [thisArg]
-     * @returns {karbonator.collection.ListQueue}
+     * @return {karbonator.collection.ListQueue}
      */
     ListQueue.from = function (iterable) {
         if(!karbonator.isEsIterable(iterable)) {
@@ -150,7 +150,7 @@
      * @return {iterator}
      */
     ListQueue.prototype[Symbol.iterator] = function () {
-        return {
+        return ({
             next : function () {
                 var out = {
                     done : null === this._current
@@ -164,7 +164,7 @@
                 return out;
             },
             _current : this._head
-        };
+        });
     };
     
     /**
@@ -806,7 +806,9 @@
          * @return {Boolean}
          */
         _Node.prototype.isNonNilLeaf = function () {
-            return !this.hasNonNilLeftChild() && !this.hasNonNilRightChild();
+            return !this.hasNonNilLeftChild()
+                && !this.hasNonNilRightChild()
+            ;
         };
 
         /**
@@ -894,30 +896,30 @@
                 pLeftChildOfRightChild._parent = this;
             }
         };
-
+        
         /**
          * @function
          */
         _Node.prototype.rotateRight = function () {
             var pChildSlot = this.getChildSlot();
-
+            
             var pParent = this._parent;
             var pRightChildOfLeftChild = this._leftChild._rightChild;
-
+            
             this._leftChild._rightChild = this;
             this._parent = this._leftChild;
-
+            
             this._leftChild._parent = pParent;
             if(pChildSlot !== null) {
                 pChildSlot.call(pParent, this._leftChild);
             }
-
+            
             this._leftChild = pRightChildOfLeftChild;
             if(pRightChildOfLeftChild !== _Node.nil) {
                 pRightChildOfLeftChild._parent = this;
             }
         };
-
+        
         /**
          * @function
          * @return {_Node}
@@ -1054,7 +1056,7 @@
          */
         _Node.prototype.getLesser = function () {
             var pLesser = null;
-
+            
             if(this.isNonNilLeaf()) {
                 if(this._parent !== null) {
                     if(this === this._parent._leftChild) {
@@ -1068,10 +1070,17 @@
             else if(!this._leftChild.isNil()) {
                 pLesser = this._leftChild.findRightMostNode();
             }
-            else {
-                pLesser = this._parent;
+            else for(
+                var pCurrent = this._parent;
+                pCurrent !== null && pCurrent._parent !== null;
+                pCurrent = pCurrent._parent
+            ) {
+                if(pCurrent._parent._rightChild === pCurrent) {
+                    pLesser = pCurrent._parent;
+                    break;
+                }
             }
-
+            
             return pLesser;
         };
 
@@ -1085,9 +1094,11 @@
          * @enum {Number}
          */
         RbTreeSetBase.SearchTarget = {
-            equal : 0,
-            greater : 1,
-            greaterOrEqual : 2
+            less : 0,
+            lessOrEqual : 1,
+            greater : 2,
+            greaterOrEqual : 3,
+            equal : 4
         };
         
         /**
@@ -1361,9 +1372,35 @@
             }
             
             switch(searchTarget) {
-            case RbTreeSetBase.SearchTarget.equal:
-                return (pCurrent !== null && !pCurrent.isNil() ? pCurrent : null);
-            //break;
+            case RbTreeSetBase.SearchTarget.less:
+                if(null === pCurrent || pCurrent.isNil()) {
+                    pCurrent = pPrevious;
+                }
+                
+                while(
+                    null !== pCurrent && !pCurrent.isNil()
+                    && this._comparator(this._keyGetter(pCurrent._element), pElementKey) >= 0
+                ) {
+                    pCurrent = pCurrent.getLesser();
+                }
+            break;
+            case RbTreeSetBase.SearchTarget.lessOrEqual:
+                if(null !== pCurrent && !pCurrent.isNil()) {
+                    return pCurrent;
+                }
+                else {
+                    if(null === pCurrent || pCurrent.isNil()) {
+                        pCurrent = pPrevious;
+                    }
+                    
+                    while(
+                        null !== pCurrent && !pCurrent.isNil()
+                        && this._comparator(this._keyGetter(pCurrent._element), pElementKey) >= 0
+                    ) {
+                        pCurrent = pCurrent.getLesser();
+                    }
+                }
+            break;
             case RbTreeSetBase.SearchTarget.greater:
                 if(null === pCurrent || pCurrent.isNil()) {
                     pCurrent = pPrevious;
@@ -1375,9 +1412,7 @@
                 ) {
                     pCurrent = pCurrent.getGreater();
                 }
-                
-                return (pCurrent !== null && !pCurrent.isNil() ? pCurrent : null);
-            //break;
+            break;
             case RbTreeSetBase.SearchTarget.greaterOrEqual:
                 if(null !== pCurrent && !pCurrent.isNil()) {
                     return pCurrent;
@@ -1393,13 +1428,15 @@
                     ) {
                         pCurrent = pCurrent.getGreater();
                     }
-                    
-                    return (pCurrent !== null && !pCurrent.isNil() ? pCurrent : null);
                 }
-            //break;
+            break;
+            case RbTreeSetBase.SearchTarget.equal:
+            break;
             default:
                 throw new Error("An unknown search target has been detected.");
             }
+            
+            return (pCurrent !== null && !pCurrent.isNil() ? pCurrent : null);
             
 //            var pFoundNode = null;
 //            if(
@@ -1546,65 +1583,63 @@
             if(insertedNode.isNonNilRoot()) {
                 insertedNode._red = false;
             }
-            else {
-                for(
-                    var pCurrent = insertedNode;
-                    pCurrent !== null;
-                ) {
-                    var pParent = pCurrent._parent;
-                    if(pParent._red) {
-                        var pUncle = pParent.getSibling();
-                        if(pUncle !== _Node.nil && pUncle._red) {
-                            pParent._red = false;
-                            pUncle._red = false;
+            else for(
+                var pCurrent = insertedNode;
+                pCurrent !== null;
+            ) {
+                var pParent = pCurrent._parent;
+                if(pParent._red) {
+                    var pUncle = pParent.getSibling();
+                    if(pUncle !== _Node.nil && pUncle._red) {
+                        pParent._red = false;
+                        pUncle._red = false;
 
-                            var pGrandParent = pParent._parent;
-                            if(!pGrandParent.isNonNilRoot()) {
-                                pGrandParent._red = true;
-                                pCurrent = pGrandParent;
-                            }
-                            else {
-                                pCurrent = null;
-                            }
+                        var pGrandParent = pParent._parent;
+                        if(!pGrandParent.isNonNilRoot()) {
+                            pGrandParent._red = true;
+                            pCurrent = pGrandParent;
                         }
                         else {
-                            var pGrandParent = pParent._parent;
-                            var pTarget = pCurrent;
-                            if(
-                                pTarget === pParent._rightChild
-                                && pParent === pGrandParent._leftChild
-                            ) {
-                                pParent.rotateLeft();
-                                pTarget = pTarget._leftChild;
-                            }
-                            else if(
-                                pTarget === pParent._leftChild
-                                && pParent === pGrandParent._rightChild
-                            ) {
-                                pParent.rotateRight();
-                                pTarget = pTarget._rightChild;
-                            }
-                            
-                            var pGrandParentOfTarget = pTarget.getGrandParent();
-                            pTarget._parent._red = false;
-                            pGrandParentOfTarget._red = true;
-                            var isGrandParentRoot = pGrandParentOfTarget.isNonNilRoot();
-                            if(pTarget === pTarget._parent._leftChild) {
-                                pGrandParentOfTarget.rotateRight();
-                            }
-                            else {
-                                pGrandParentOfTarget.rotateLeft();
-                            }
-                            if(isGrandParentRoot) {
-                                this._root = pGrandParentOfTarget._parent;
-                            }
-                            
                             pCurrent = null;
                         }
                     }
                     else {
+                        var pGrandParent = pParent._parent;
+                        var pTarget = pCurrent;
+                        if(
+                            pTarget === pParent._rightChild
+                            && pParent === pGrandParent._leftChild
+                        ) {
+                            pParent.rotateLeft();
+                            pTarget = pTarget._leftChild;
+                        }
+                        else if(
+                            pTarget === pParent._leftChild
+                            && pParent === pGrandParent._rightChild
+                        ) {
+                            pParent.rotateRight();
+                            pTarget = pTarget._rightChild;
+                        }
+
+                        var pGrandParentOfTarget = pTarget.getGrandParent();
+                        pTarget._parent._red = false;
+                        pGrandParentOfTarget._red = true;
+                        var isGrandParentRoot = pGrandParentOfTarget.isNonNilRoot();
+                        if(pTarget === pTarget._parent._leftChild) {
+                            pGrandParentOfTarget.rotateRight();
+                        }
+                        else {
+                            pGrandParentOfTarget.rotateLeft();
+                        }
+                        if(isGrandParentRoot) {
+                            this._root = pGrandParentOfTarget._parent;
+                        }
+
                         pCurrent = null;
                     }
+                }
+                else {
+                    pCurrent = null;
                 }
             }
         };
@@ -1619,99 +1654,97 @@
             if(replacement._red) {
                 replacement._red = false;
             }
-            else {
-                for(
-                    var pCurrent = replacement, pParentOfCurrent = pParentOfReplacement;
-                    pCurrent !== null;
-                ) {
-                    if(pParentOfCurrent === null) {
-                        this._root = pCurrent;
+            else for(
+                var pCurrent = replacement, pParentOfCurrent = pParentOfReplacement;
+                pCurrent !== null;
+            ) {
+                if(pParentOfCurrent === null) {
+                    this._root = pCurrent;
+                    
+                    pCurrent = null;
+                }
+                else {
+                    var pSiblingOfCurrent = pCurrent.getSibling();
+                    if(pSiblingOfCurrent._red) {
+                        pParentOfCurrent._red = true;
+                        pSiblingOfCurrent._red = false;
                         
-                        pCurrent = null;
+                        if(pSiblingOfCurrent === pParentOfCurrent._rightChild) {
+                            pParentOfCurrent.rotateLeft();
+                        }
+                        else {
+                            pParentOfCurrent.rotateRight();
+                        }
+                    }
+                    
+                    pSiblingOfCurrent = pCurrent.getSibling();
+                    if(
+                        !pParentOfCurrent._red
+                        && !pSiblingOfCurrent._red
+                        && !pSiblingOfCurrent._leftChild._red
+                        && !pSiblingOfCurrent._rightChild._red
+                    ) {
+                        pSiblingOfCurrent._red = true;
+                        
+                        pCurrent = pParentOfCurrent;
+                        pParentOfCurrent = pCurrent._parent;
                     }
                     else {
-                        var pSiblingOfCurrent = pCurrent.getSibling();
-                        if(pSiblingOfCurrent._red) {
-                            pParentOfCurrent._red = true;
-                            pSiblingOfCurrent._red = false;
-                            
-                            if(pSiblingOfCurrent === pParentOfCurrent._rightChild) {
-                                pParentOfCurrent.rotateLeft();
-                            }
-                            else {
-                                pParentOfCurrent.rotateRight();
-                            }
-                        }
-                        
-                        pSiblingOfCurrent = pCurrent.getSibling();
                         if(
-                            !pParentOfCurrent._red
+                            pParentOfCurrent._red
                             && !pSiblingOfCurrent._red
                             && !pSiblingOfCurrent._leftChild._red
                             && !pSiblingOfCurrent._rightChild._red
                         ) {
+                            pParentOfCurrent._red = false;
                             pSiblingOfCurrent._red = true;
-                            
-                            pCurrent = pParentOfCurrent;
-                            pParentOfCurrent = pCurrent._parent;
                         }
-                        else {
+                        else if(!pSiblingOfCurrent._red) {
                             if(
-                                pParentOfCurrent._red
-                                && !pSiblingOfCurrent._red
-                                && !pSiblingOfCurrent._leftChild._red
+                                pCurrent === pParentOfCurrent._leftChild
+                                && pSiblingOfCurrent._leftChild._red
                                 && !pSiblingOfCurrent._rightChild._red
                             ) {
-                                pParentOfCurrent._red = false;
                                 pSiblingOfCurrent._red = true;
+                                pSiblingOfCurrent._leftChild._red = false;
+
+                                pSiblingOfCurrent.rotateRight();
                             }
-                            else if(!pSiblingOfCurrent._red) {
-                                if(
-                                    pCurrent === pParentOfCurrent._leftChild
-                                    && pSiblingOfCurrent._leftChild._red
-                                    && !pSiblingOfCurrent._rightChild._red
-                                ) {
-                                    pSiblingOfCurrent._red = true;
-                                    pSiblingOfCurrent._leftChild._red = false;
-                                    
-                                    pSiblingOfCurrent.rotateRight();
-                                }
-                                else if(
-                                    pCurrent === pParentOfCurrent._rightChild
-                                    && pSiblingOfCurrent._rightChild._red
-                                    && !pSiblingOfCurrent._leftChild._red
-                                ) {
-                                    pSiblingOfCurrent._red = true;
-                                    pSiblingOfCurrent._rightChild._red = false;
-                                    
-                                    pSiblingOfCurrent.rotateLeft();
-                                }
+                            else if(
+                                pCurrent === pParentOfCurrent._rightChild
+                                && pSiblingOfCurrent._rightChild._red
+                                && !pSiblingOfCurrent._leftChild._red
+                            ) {
+                                pSiblingOfCurrent._red = true;
+                                pSiblingOfCurrent._rightChild._red = false;
+
+                                pSiblingOfCurrent.rotateLeft();
                             }
-                            
-                            pSiblingOfCurrent = pCurrent.getSibling();
-                            if(!pSiblingOfCurrent._red) {
-                                var isParentRed = pParentOfCurrent._red;
-                                pParentOfCurrent._red = pSiblingOfCurrent._red;
-                                pSiblingOfCurrent._red = isParentRed;
-                                
-                                if(
-                                    pCurrent === pParentOfCurrent._leftChild
-                                    && pSiblingOfCurrent._rightChild._red
-                                ) {
-                                    pSiblingOfCurrent._rightChild._red = false;
-                                    pParentOfCurrent.rotateLeft();
-                                }
-                                else if(
-                                    pCurrent === pParentOfCurrent._rightChild
-                                    && pSiblingOfCurrent._leftChild._red
-                                ) {
-                                    pSiblingOfCurrent._leftChild._red = false;
-                                    pParentOfCurrent.rotateRight();
-                                }
-                            }
-                            
-                            pCurrent = null;
                         }
+
+                        pSiblingOfCurrent = pCurrent.getSibling();
+                        if(!pSiblingOfCurrent._red) {
+                            var isParentRed = pParentOfCurrent._red;
+                            pParentOfCurrent._red = pSiblingOfCurrent._red;
+                            pSiblingOfCurrent._red = isParentRed;
+
+                            if(
+                                pCurrent === pParentOfCurrent._leftChild
+                                && pSiblingOfCurrent._rightChild._red
+                            ) {
+                                pSiblingOfCurrent._rightChild._red = false;
+                                pParentOfCurrent.rotateLeft();
+                            }
+                            else if(
+                                pCurrent === pParentOfCurrent._rightChild
+                                && pSiblingOfCurrent._leftChild._red
+                            ) {
+                                pSiblingOfCurrent._leftChild._red = false;
+                                pParentOfCurrent.rotateRight();
+                            }
+                        }
+
+                        pCurrent = null;
                     }
                 }
             }
@@ -1734,7 +1767,7 @@
     var TreeSet = function (comparator) {
         this._comparator = comparator;
         this._rbTreeSet = new RbTreeSetBase(comparator);
-
+        
         if(!karbonator.isUndefined(arguments[1])) {
             _setConcatenateAssign(this, arguments[1]);
         }
@@ -1824,26 +1857,23 @@
      * @param {Object} value
      * @return {Object|undefined}
      */
-    TreeSet.prototype.findNearestLessThan = function (value) {
+    TreeSet.prototype.findLessThan = function (value) {
         var endIter = this._rbTreeSet.end();
-        var iter = this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.greaterOrEqual);
+        var iter = this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.less);
         if(!iter[karbonator.equals](endIter)) {
-            iter.moveToPrevious();
-            
-            if(!iter[karbonator.equals](endIter)) {
-                return iter.dereference();
-            }
+            return iter.dereference();
         }
     };
     
     /**
+     * TODO : 코드 검증
      * @function
      * @param {Object} value
      * @return {Object|undefined}
      */
-    TreeSet.prototype.findNotLessThan = function (value) {
+    TreeSet.prototype.findNotGreaterThan = function (value) {
         var endIter = this._rbTreeSet.end();
-        var iter = this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.greaterOrEqual);
+        var iter = this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.lessOrEqual);
         if(!iter[karbonator.equals](endIter)) {
             return iter.dereference();
         }
@@ -1857,6 +1887,20 @@
     TreeSet.prototype.findGreaterThan = function (value) {
         var endIter = this._rbTreeSet.end();
         var iter = this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.greater);
+        if(!iter[karbonator.equals](endIter)) {
+            return iter.dereference();
+        }
+    };
+    
+
+    /**
+     * @function
+     * @param {Object} value
+     * @return {Object|undefined}
+     */
+    TreeSet.prototype.findNotLessThan = function (value) {
+        var endIter = this._rbTreeSet.end();
+        var iter = this._rbTreeSet.find(value, RbTreeSetBase.SearchTarget.greaterOrEqual);
         if(!iter[karbonator.equals](endIter)) {
             return iter.dereference();
         }
@@ -2239,32 +2283,32 @@
      * @param {Object} key
      * @return {Object|undefined}
      */
-    TreeMap.prototype.findNearestLessThan = function (key) {
+    TreeMap.prototype.findLessThan = function (key) {
         var endIter = this._rbTreeSet.end();
-        var iter = this._rbTreeSet.find({key : key}, RbTreeSetBase.SearchTarget.greaterOrEqual);
+        var iter = this._rbTreeSet.find(
+            {key : key},
+            RbTreeSetBase.SearchTarget.less
+        );
         if(!iter[karbonator.equals](endIter)) {
-            iter.moveToPrevious();
-            
-            if(!iter[karbonator.equals](endIter)) {
-                var pair = iter.dereference();
-                return {
-                    key : pair.key,
-                    value : pair.value
-                };
-            }
+            var pair = iter.dereference();
+            return {
+                key : pair.key,
+                value : pair.value
+            };
         }
     };
     
     /**
+     * TODO : 코드 검증
      * @function
      * @param {Object} key
      * @return {Object|undefined}
      */
-    TreeMap.prototype.findNotLessThan = function (key) {
+    TreeMap.prototype.findNotGreaterThan = function (key) {
         var endIter = this._rbTreeSet.end();
         var iter = this._rbTreeSet.find(
             {key : key},
-            RbTreeSetBase.SearchTarget.greaterOrEqual
+            RbTreeSetBase.SearchTarget.lessOrEqual
         );
         if(!iter[karbonator.equals](endIter)) {
             var pair = iter.dereference();
@@ -2285,6 +2329,27 @@
         var iter = this._rbTreeSet.find(
             {key : key},
             RbTreeSetBase.SearchTarget.greater
+        );
+        if(!iter[karbonator.equals](endIter)) {
+            var pair = iter.dereference();
+            return {
+                key : pair.key,
+                value : pair.value
+            };
+        }
+    };
+    
+
+    /**
+     * @function
+     * @param {Object} key
+     * @return {Object|undefined}
+     */
+    TreeMap.prototype.findNotLessThan = function (key) {
+        var endIter = this._rbTreeSet.end();
+        var iter = this._rbTreeSet.find(
+            {key : key},
+            RbTreeSetBase.SearchTarget.greaterOrEqual
         );
         if(!iter[karbonator.equals](endIter)) {
             var pair = iter.dereference();

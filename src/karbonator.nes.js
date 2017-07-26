@@ -45,6 +45,12 @@
     karbonator.nes = nes;
     
     /**
+     * @readonly
+     * @type {String}
+     */
+    var _directivePrefix = '#';
+    
+    /**
      * @function
      * @param {Number} value
      * @param {Number} figure
@@ -60,6 +66,50 @@
         
         return zeros + str;
     };
+    
+    /*////////////////////////////////*/
+    //PpSymbol
+    
+    var PpSymbol = function () {
+        this.name = "";
+        this.parent = null;
+        this.children = [];
+    };
+    
+    var PpLabel = function () {
+        this.address = 0;
+        this.size = 0;
+    };
+    PpLabel.prototype = Object.create(PpSymbol.prototype);
+    
+    var PpFunction = function (expr) {
+        this.expression = expr;
+    };
+    PpFunction.prototype = Object.create(PpSymbol.prototype);
+    
+    /**
+     * @function
+     * @param {Array.<Number>} args
+     * @return {Number}
+     */
+    PpFunction.prototype.call = function (args) {
+        return 0;
+    };
+    
+    var PpMacro = function () {
+        this.lines = [];
+    };
+    PpMacro.prototype = Object.create(PpSymbol.prototype);
+    
+    /**
+     * @function
+     * @return {Array}
+     */
+    PpMacro.prototype.expand = function () {
+        return [];
+    };
+    
+    /*////////////////////////////////*/
     
     /*////////////////////////////////*/
     //Instruction
@@ -104,20 +154,20 @@
         bne : 0x0E,
         beq : 0x0F,
         
-        php : 0x10,
-        plp : 0x11,
-        pha : 0x12,
-        pla : 0x13,
-        ldx : 0x14,
-        stx : 0x15,
+        pha : 0x10,
+        php : 0x11,
+        pla : 0x12,
+        plp : 0x13,
+        lda : 0x14,
+        ldx : 0x15,
         ldy : 0x16,
-        sty : 0x17,
-        lda : 0x18,
-        sta : 0x19,
-        txa : 0x1A,
-        tax : 0x1B,
-        tya : 0x1C,
-        tay : 0x1D,
+        sta : 0x17,
+        stx : 0x18,
+        sty : 0x19,
+        tax : 0x1A,
+        tay : 0x1B,
+        txa : 0x1C,
+        tya : 0x1D,
         tsx : 0x1E,
         txs : 0x1F,
         
@@ -759,7 +809,7 @@
             str += 'A';
         break;
         case Instruction.AddressingMode.imm:
-            str += '#' + operandStr;
+            str += _directivePrefix + operandStr;
         break;
         case Instruction.AddressingMode.pcRel:
             str += operandStr;
@@ -905,6 +955,7 @@
         this.localJumpAddressSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
         this.srAddressSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
         this.dataAddressMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
+        this.outOfRangeAddressMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
     };
     
     /**
@@ -912,11 +963,12 @@
      * @readonly
      * @enum {Number}
      */
-    SrMeta.DataAddressType = {
-        table : 0,
-        port : 1,
-        pointer : 2,
-        memory : 3
+    SrMeta.AddressType = {
+        subroutine : 0,
+        global : 1,
+        table : 2,
+        port : 3,
+        memory : 4
     };
     
     /**
@@ -924,10 +976,11 @@
      * @readonly
      * @type {Array.<String>}
      */
-    SrMeta.DataAddressTypeNames = [
+    SrMeta.addressTypeNames = [
+        "sub",
+        "global",
         "table",
         "port",
-        "pointer",
         "memory"
     ];
     
@@ -938,25 +991,136 @@
      * @param {Number} addr
      * @return {Number}
      */
-    SrMeta.getDataAddressTypeOf = function (inst, addr) {
-        var dataLabelType = SrMeta.DataAddressType.memory;
+    SrMeta.getAddressTypeOf = function (inst, addr) {
+        var dataLabelType = SrMeta.AddressType.memory;
         
         if(addr >= 0x8000 && addr < 0x10000) {
             if(!inst.doesMemoryWrite()) {
-                dataLabelType = SrMeta.DataAddressType.table;
+                dataLabelType = SrMeta.AddressType.table;
             }
             else {
-                dataLabelType = SrMeta.DataAddressType.port;
+                dataLabelType = SrMeta.AddressType.port;
             }
         }
-        else if(addr >= 0x4000 && addr < 0x6000) {
-            dataLabelType = SrMeta.DataAddressType.port;
+        else if(addr >= 0x2000 && addr < 0x6000) {
+            dataLabelType = SrMeta.AddressType.port;
         }
         else {
-            dataLabelType = SrMeta.DataAddressType.memory;
+            dataLabelType = SrMeta.AddressType.memory;
         }
 
         return dataLabelType;
+    };
+    
+    /**
+     * @memberof SrMeta
+     * @private
+     * @param {karbonator.ByteArray} bytes
+     * @param {Number} baseOffset
+     * @param {Array} lines
+     * @param {Number} pointerAddr
+     * @return {Array.<Number>}
+     */
+    SrMeta._findJumpTable = function (bytes, baseOffset, lines, pointerAddr) {
+        var jumpAddrs = [];
+        
+        //Jump table detection.
+        if(lines.length >= 4) {
+            var ptrLow = pointerAddr;
+            var ptrHigh = pointerAddr + 1;
+            
+            var tableLow = 0;
+            var tableHigh = 0;
+            
+            var lineNdx = lines.length - 1;
+            var state = 0;
+            for(var loop = true; loop && state < 4; ) {
+                var line = lines[lineNdx];
+                switch(state) {
+                case 0:
+                    switch(line[0].actionCode) {
+                    case Instruction.ActionCode.sta:
+                    case Instruction.ActionCode.stx:
+                    case Instruction.ActionCode.sty:
+                        if(line[1] === ptrHigh) {
+                            --lineNdx;
+                            ++state;
+                        }
+                        else {
+                            loop = false;
+                        }
+                    break;
+                    }
+                break;
+                case 1:
+                    switch(line[0].actionCode) {
+                    case Instruction.ActionCode.lda:
+                    case Instruction.ActionCode.ldx:
+                    case Instruction.ActionCode.ldy:
+                        tableHigh = line[1];
+                        
+                        --lineNdx;
+                        ++state;
+                    break;
+                    }
+                break;
+                case 2:
+                    switch(line[0].actionCode) {
+                    case Instruction.ActionCode.sta:
+                    case Instruction.ActionCode.stx:
+                    case Instruction.ActionCode.sty:
+                        if(line[1] === ptrLow) {
+                            --lineNdx;
+                            ++state;
+                        }
+                        else {
+                            loop = false;
+                        }
+                    break;
+                    }
+                break;
+                case 3:
+                    switch(line[0].actionCode) {
+                    case Instruction.ActionCode.lda:
+                    case Instruction.ActionCode.ldx:
+                    case Instruction.ActionCode.ldy:
+                        tableLow = line[1];
+                        
+                        --lineNdx;
+                        ++state;
+                    break;
+                    }
+                break;
+                }
+            }
+            
+            if(state >= 4) {
+                var estimatedTableSize = tableHigh - tableLow;
+                
+                var tableHighOffset = tableHigh - baseOffset;
+                var tableLowOffset = tableLow - baseOffset;
+                for(var i = 0; i < estimatedTableSize; ) {
+                    jumpAddrs.push((bytes.get(tableHighOffset) << 8) | bytes.get(tableLowOffset));
+                    
+                    ++i;
+                    ++tableHighOffset;
+                    ++tableLowOffset;
+                }
+            }
+        }
+        
+        return jumpAddrs;
+    };
+    
+    /**
+     * @memberof SrMeta
+     * @private
+     * @param {Number} addr
+     * @param {Number} baseOffset
+     * @return {Boolean}
+     */
+    SrMeta._addressIsInRange = function (addr, baseOffset) {
+        return addr >= baseOffset && addr < 0x10000;
     };
     
     /**
@@ -984,12 +1148,12 @@
         var srMeta = new SrMeta();
         srMeta.valid = true;
         srMeta.startAddress = startAddr;
-        srMeta.cursor = startAddr - baseOffset;
         
+        var returnInstAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
         var tableAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
         var longJumpAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
         
-        var returnCount = 0;
+        srMeta.cursor = startAddr - baseOffset;
         for(var working = true; working && baseOffset + srMeta.cursor < endAddr; ) {
             //Inhibit violating data tables.
             var currentAddr = baseOffset + srMeta.cursor;
@@ -1027,13 +1191,11 @@
                 switch(inst.actionCode) {
                 case Instruction.ActionCode.rti:
                 case Instruction.ActionCode.rts:
-                    ++returnCount;
+                    returnInstAddrSet.add(currentAddr - inst.getSize());
                     
-                    if(karbonator.isUndefined(
+                    working = !karbonator.isUndefined(
                         srMeta.localJumpAddressSet.findNotLessThan(currentAddr)
-                    )) {
-                        working = false;
-                    }
+                    );
                 break;
                 case Instruction.ActionCode.bpl:
                 case Instruction.ActionCode.bmi:
@@ -1045,17 +1207,22 @@
                 case Instruction.ActionCode.bcs:
                     srMeta.localJumpAddressSet.add(currentAddr + operand);
                     
-                    if(
-                        returnCount > 0
-                        && karbonator.isUndefined(
+                    working = !karbonator.isUndefined(
                             srMeta.localJumpAddressSet.findNotLessThan(currentAddr)
                         )
-                    ) {
-                        working = false;
-                    }
+                        || (operand < 0 && karbonator.isUndefined(returnInstAddrSet.findNotLessThan(currentAddr + operand)))
+                    ;
                 break;
                 case Instruction.ActionCode.jsr:
-                    srMeta.srAddressSet.add(operand);
+                    if(SrMeta._addressIsInRange(operand, baseOffset)) {
+                        srMeta.srAddressSet.add(operand);
+                    }
+                    else {
+                        srMeta.outOfRangeAddressMap.set(
+                            operand,
+                            SrMeta.AddressType.subroutine
+                        );
+                    }
                 break;
                 case Instruction.ActionCode.jmp:
                     switch(inst.addressingMode) {
@@ -1064,34 +1231,58 @@
                             srMeta.localJumpAddressSet.add(operand);
                         }
                         else {
-                            longJumpAddrSet.add(operand);
-                        }
-                        
-                        //서브루틴 범위 밖으로 점프해서
-                        //제어를 넘기는 서브루틴인 경우.
-                        if(
-                            operand < srMeta.startAddress
-                            && karbonator.isUndefined(
+                            if(SrMeta._addressIsInRange(operand, baseOffset)) {
+                                longJumpAddrSet.add(operand);
+                            }
+                            else {
+                                srMeta.outOfRangeAddressMap.set(
+                                    operand,
+                                    SrMeta.AddressType.global
+                                );
+                            }
+                            
+                            //서브루틴 범위 밖으로 점프해서
+                            //제어를 넘기는 서브루틴인 경우.
+                            working = !karbonator.isUndefined(
                                 srMeta.localJumpAddressSet.findNotLessThan(currentAddr)
-                            )
-                        ) {
-                            working = false;
+                            );
                         }
                     break;
                     case Instruction.AddressingMode.absInd:
-                        dataLabelType = SrMeta.getDataAddressTypeOf(inst, operand);
+                        dataLabelType = SrMeta.getAddressTypeOf(inst, operand);
                         srMeta.dataAddressMap.set(operand, dataLabelType);
-                        if(dataLabelType === SrMeta.DataAddressType.table) {
-                            tableAddrSet.add(operand);
+                        
+                        switch(dataLabelType) {
+                        case SrMeta.AddressType.table:
+                            if(SrMeta._addressIsInRange(operand, baseOffset)) {
+                                tableAddrSet.add(operand);
+                            }
+                            else {
+                                srMeta.outOfRangeAddressMap.set(
+                                    operand,
+                                    SrMeta.AddressType.table
+                                );
+                            }
+                        break;
+                        case SrMeta.AddressType.memory:
+                            karbonator.forOf(
+                                SrMeta._findJumpTable(
+                                    bytes, baseOffset,
+                                    srMeta.lines, operand
+                                ),
+                                function (jumpAddr) {
+                                    srMeta.srAddressSet.add(jumpAddr);
+                                },
+                                this
+                            );
+                        break;
                         }
                         
                         //점프 테이블 주소로 간접 점프해서
                         //제어를 넘기는 경우.
-                        if(karbonator.isUndefined(
+                        working = !karbonator.isUndefined(
                             srMeta.localJumpAddressSet.findNotLessThan(currentAddr)
-                        )) {
-                            working = false;
-                        }
+                        );
                     break;
                     default:
                         throw new Error("An invalid opcode has been detected.");
@@ -1109,10 +1300,41 @@
             case Instruction.AddressingMode.zpNdxY:
             case Instruction.AddressingMode.zpIndNdxY:
             case Instruction.AddressingMode.zpNdxXInd:
-                dataLabelType = SrMeta.getDataAddressTypeOf(inst, operand);
-                srMeta.dataAddressMap.set(operand, dataLabelType);
-                if(dataLabelType === SrMeta.DataAddressType.table) {
-                    tableAddrSet.add(operand);
+                dataLabelType = SrMeta.getAddressTypeOf(inst, operand);
+                switch(dataLabelType) {
+                case SrMeta.AddressType.table:
+                    if(SrMeta._addressIsInRange(operand, baseOffset)) {
+                        srMeta.dataAddressMap.set(operand, dataLabelType);
+                        tableAddrSet.add(operand);
+                    }
+                    else {
+                        srMeta.outOfRangeAddressMap.set(
+                            operand,
+                            dataLabelType
+                        );
+                    }
+                break;
+                case SrMeta.AddressType.global:
+                case SrMeta.AddressType.subroutine:
+                    if(SrMeta._addressIsInRange(operand, baseOffset)) {
+                        srMeta.dataAddressMap.set(operand, dataLabelType);
+                    }
+                    else {
+                        srMeta.outOfRangeAddressMap.set(
+                            operand,
+                            dataLabelType
+                        );
+                    }
+
+                    if(!SrMeta._addressIsInRange(operand, baseOffset)) {
+                        srMeta.outOfRangeAddressMap.set(
+                            operand,
+                            dataLabelType
+                        );
+                    }
+                break;
+                default:
+                    srMeta.dataAddressMap.set(operand, dataLabelType);
                 }
             break;
             }
@@ -1129,7 +1351,7 @@
                 else {
                     srMeta.srAddressSet.add(addr);
                 }
-            });
+            }, this);
         }
         
         return srMeta;
@@ -1143,8 +1365,8 @@
         var lineCount = this.lines.length;
         if(lineCount < 1) {
             return new karbonator.math.Interval(
-                this.startAddress,
-                this.startAddress
+                -1,
+                -1
             );
         }
         else {
@@ -1172,346 +1394,16 @@
      */
     var Disassembler = function () {
         this._bytes = null;
-        this._baseOff = 0;
+        this._baseOffset = 0;
         this._endAddr = 0;
-        this._cursor = 0;
+        this._firstSrAddr = 0;
         
-        this._srMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
-        this._failedLineListMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
-        
-        this._visitedGcAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
-        this._visitedAddrRangeSet = new karbonator.collection.TreeSet(
-            /**
-             * @readonly
-             * @param {karbonator.math.Interval} l
-             * @param {karbonator.math.Interval} r
-             */
-            function (l, r) {
-                return l[karbonator.compareTo](r);
-            }
-        );
-        this._cLabelQ = new karbonator.collection.PriorityQueue(Disassembler._LabelComparator);
-        
-        this._labelIdSeq = 0;
-        this._labelMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
-        this._cLabelMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
-        this._dLabelMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
-    };
-    
-    /**
-     * @memberof Disassembler
-     * @private
-     * @function
-     * @param {Label} lhs
-     * @param {Label} rhs
-     * @return {Number}
-     */
-    Disassembler._LabelComparator = function (lhs, rhs) {
-        if(!(lhs instanceof Label) || !(rhs instanceof Label)) {
-            throw new Error("Both 'lhs' and 'rhs' must be an instnaceof 'Label'.");
-        }
-        
-        return lhs.address - rhs.address;
-    };
-    
-    /**
-     * @memberof Disassembler
-     * @constructor
-     * @param {Number} type
-     * @param {Object} value
-     */
-    Disassembler.Line = function (type, value) {
-        if(!karbonator.isNonNegativeSafeInteger(type)) {
-            throw new TypeError("");
-        }
-        if(karbonator.isUndefinedOrNull(value)) {
-            throw new TypeError("");
-        }
-        
-        this.type = type;
-        this.value = value;
-    };
-    
-    /**
-     * @memberof Disassembler.Line
-     * @readonly
-     * @enum {Number}
-     */
-    Disassembler.Line.Type = {
-        instruction : 0,
-        directive : 1,
-        label : 2
-    };
-    
-    /**
-     * @function
-     * @return {Number}
-     */
-    Disassembler.Line.prototype.getByteCount = function () {
-        var byteCount = 0;
-        
-        if(this.type === Disassembler.Line.Type.instruction) {
-            byteCount = 1 + (Math.abs(Disassembler._operandTypeTable[this.value[0].addressingMode]));
-        }
-        
-        return byteCount;
-    };
-    
-    /**
-     * @function
-     * @return {String}
-     */
-    Disassembler.Line.prototype.toString = function () {
-        var str = "";
-        
-        switch(this.type) {
-        case Disassembler.Line.Type.instruction:
-            str = '\t' + this.value[0].format(this.value[1]);
-        break;
-        case Disassembler.Line.Type.directive:
-            str = '\t' + '.' + this.value[0];
-            for(var i = 1; i < this.value.length; ++i) {
-                str += ' ';
-                str += this.value[i];
-            }
-        break;
-        case Disassembler.Line.Type.label:
-            str = (this.value.parent === null ? '' : '@') + this.value.name + ':';
-        break;
-        default:
-            throw new Error("An unknown line type has been detected.");
-        }
-        
-        return str;
-    };
-    
-    /**
-     * @memberof Disassembler
-     * @param {Number} startAddress
-     * @constructor
-     */
-    Disassembler.LineList = function (startAddress) {
-        if(!karbonator.isNonNegativeSafeInteger(startAddress)) {
-            throw new TypeError("");
-        }
-        this.startAddress = startAddress;
-        this._lines = [];
-        
-        this._localJumpAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
-    };
-    
-    /**
-     * @readonly
-     */
-    Disassembler.LineList.prototype.startAddress = 0;
-    
-    /**
-     * @function
-     * @return {karbonator.math.Interval}
-     */
-    Disassembler.LineList.prototype.getAddressRange = function () {
-        var lineCount = this._lines.length;
-        if(lineCount < 1) {
-            return new karbonator.math.Interval(
-                this.startAddress,
-                this.startAddress
-            );
-        }
-        else {
-            var max = this.startAddress;
-            for(var i = lineCount; i > 0; ) {
-                --i;
-                max += this._lines[i].getByteCount();
-            }
-            
-            return new karbonator.math.Interval(
-                this.startAddress,
-                max - 1
-            );
-        }
-    };
-    
-    /**
-     * @function
-     * @return {Number}
-     */
-    Disassembler.LineList.prototype.getCount = function () {
-        return this._lines.length;
-    };
-    
-    /**
-     * @function
-     * @param {Number} type
-     * @return {Number}
-     */
-    Disassembler.LineList.prototype.getCountOf = function (type) {
-        if(!karbonator.isNonNegativeSafeInteger(type)) {
-            throw new TypeError("");
-        }
-        
-        var count = 0;
-        for(var i = this._lines.length; i > 0; ) {
-            --i;
-            
-            if(this._lines[i].type === type) {
-                ++count;
-            }
-        }
-        
-        return count;
-    };
-    
-    /**
-     * @function
-     * @param {Number} address
-     * @return {Number}
-     */
-    Disassembler.LineList.prototype.findIndexOfAddress = function (address) {
-        if(!karbonator.isNonNegativeSafeInteger(address)) {
-            throw new RangeError("'address' must be a non-negative safe integer.");
-        }
-        var offset = address - this.startAddress;
-        if(offset < 0) {
-            throw new RangeError("address out of range.");
-        }
-        
-        var lineNdx = 0;
-        for(
-            var offSum = 0, lineCount = this._lines.length;
-            lineNdx < lineCount && offSum < offset;
-            ++lineNdx
-        ) {
-            offSum += this._lines[lineNdx].getByteCount();
-        }
-        
-        return lineNdx;
-    };
-    
-    /**
-     * @function
-     * @param {Number} startIndex
-     * @return {Number}
-     */
-    Disassembler.LineList.prototype.findInstructionIndex = function (startIndex) {
-        if(!karbonator.isNonNegativeSafeInteger(startIndex)) {
-            throw new RangeError("'startIndex' must be a non-negative safe integer.");
-        }
-        
-        for(
-            var lineCount = this._lines.length;
-            startIndex < lineCount
-            && this._lines[startIndex].type !== Disassembler.Line.Type.instruction;
-            ++startIndex
-        );
-        
-        return startIndex;
-    };
-    
-    /**
-     * @function
-     * @param {Disassembler.Line} line
-     */
-    Disassembler.LineList.prototype.add = function (line) {
-        if(!(line instanceof Disassembler.Line)) {
-            throw new TypeError("");
-        }
-        
-        this._lines.push(line);
-    };
-    
-    /**
-     * This function ignore directives.
-     * @function
-     * @param {Disassembler.Line} line
-     * @param {Number} index
-     */
-    Disassembler.LineList.prototype.insert = function(line, index) {
-        if(!(line instanceof Disassembler.Line)) {
-            throw new TypeError("");
-        }
-        
-        if(!karbonator.isNonNegativeSafeInteger(index)) {
-            throw new RangeError("'index' must be a non-negative safe integer.");
-        }
-        
-        this._lines.splice(index, 0, line);
-    };
-    
-    /**
-     * @function
-     */
-    Disassembler.LineList.prototype.clear = function () {
-        this._lines.length = 0;
-    };
-    
-    /**
-     * @function
-     * @param {Number} addr
-     */
-    Disassembler.LineList.prototype.addLocalJumpAddress = function (addr) {
-        if(!karbonator.isNonNegativeSafeInteger(addr)) {
-            throw new TypeError("");
-        }
-        
-        this._localJumpAddrSet.add(addr);
-    };
-    
-    /**
-     * @function
-     * @param {Number} addr
-     * @return {Boolean}
-     */
-    Disassembler.LineList.prototype.hasLocalJumpAddress = function (addr) {
-        if(!karbonator.isNonNegativeSafeInteger(addr)) {
-            throw new TypeError("");
-        }
-        
-        return this._localJumpAddrSet.has(addr);
-    };
-    
-    /**
-     * @function
-     * @return {String}
-     */
-    Disassembler.LineList.prototype.toString = function () {
-        
-//            var operandStr = '$' + _formatHexadecimal(
-//                operand,
-//                (Math.abs(Disassembler._operandTypeTable[decodedOpCode.addressingMode]) << 1)
-//            );
-        
-        return this._lines.reduce(
-            function (acc, cur) {
-                return acc + cur + "\r\n";
-            },
-            ""
-        );
-    };
-    
-    /**
-     * @memberof Disassembler
-     * @readonly
-     * @enum {Number}
-     */
-    Disassembler.DataLabelType = {
-        table : 0,
-        port : 1,
-        pointer : 2,
-        memory : 3
-    };
-    
-    /**
-     * @memberof Disassembler
-     * @private
-     * @constructor
-     * @param {Number} startAddress
-     */
-    Disassembler._SrDisasmResult = function (startAddress) {
-        this.succeeded = false;
-        this.lineList = new Disassembler.LineList(startAddress);
-        this.srAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
-        this.dataAddrMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
-        this.cursor = 0;
+        this._tableMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
+        this._srMetaMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
+        this._outOfRangeAddrMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
+        this._memoryAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
+        this._portAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
+        this._failedAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
     };
     
     /**
@@ -1526,107 +1418,229 @@
     };
     
     /**
+     * TODO : Refactor this fucking piece of fat, stupid and evil function.
      * @function
      * @param {karbonator.ByteArray} bytes
-     * @param {Number} baseOffset
-     * @param {Number} [startAddr]
      * @param {Object} [options]
      * @return {Array.<String>}
      */
-    Disassembler.prototype.disassemble = function (bytes, baseOffset) {
+    Disassembler.prototype.disassemble = function (bytes) {
+        this._initialize(bytes, arguments[1]);
+        
+        this._findSubroutines();
+        this._estimateTableSizes();
+        
+        var textMap = this._formatCodes();
+        
+        var srsText = [];
+        srsText.push(";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;");
+        srsText.push(';' + "Subroutines." + ' ' + '(' + this._srMetaMap.getElementCount() + ')');
+        srsText.push("\r\n");
+        karbonator.forOf(this._srMetaMap, function (pair) {
+            srsText.push(';' + "sub" + _formatHexadecimal(pair[0], 4));
+        }, this);
+        srsText.push("\r\n");
+        srsText.push(";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;");
+        srsText.push("\r\n");
+        
+        var tablesText = [];
+        tablesText.push(";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;");
+        tablesText.push(';' + "Tables." + ' ' + '(' + this._tableMap.getElementCount() + ')');
+        tablesText.push("\r\n");
+        karbonator.forOf(this._tableMap, function (pair) {
+            tablesText.push(';' + "table" + _formatHexadecimal(pair[0], 4) + ' ' + pair[1] + ' ' + "bytes.");
+        }, this);
+        tablesText.push("\r\n");
+        tablesText.push(";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;");
+        tablesText.push("\r\n");
+        
+        var memoryLabelsText = [];
+        memoryLabelsText.push(";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;");
+        memoryLabelsText.push(';' + "Memory labels." + ' ' + '(' + this._memoryAddrSet.getElementCount() + ')');
+        memoryLabelsText.push("\r\n");
+        karbonator.forOf(this._memoryAddrSet, function (addr) {
+            var minLen = (addr < 0x0100 ? 2 : 4);
+            memoryLabelsText.push("memory" + _formatHexadecimal(addr, minLen) + ' ' + '=' + ' ' + '$' + _formatHexadecimal(addr, minLen));
+        }, this);
+        memoryLabelsText.push("\r\n");
+        memoryLabelsText.push(";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;");
+        memoryLabelsText.push("\r\n");
+        
+        var portLabelsText = [];
+        portLabelsText.push(";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;");
+        portLabelsText.push(';' + "Port labels." + ' ' + '(' + this._portAddrSet.getElementCount() + ')');
+        portLabelsText.push("\r\n");
+        karbonator.forOf(this._portAddrSet, function (addr) {
+            portLabelsText.push("port" + _formatHexadecimal(addr, 4) + ' ' + '=' + ' ' + '$' + _formatHexadecimal(addr, 4));
+        }, this);
+        portLabelsText.push("\r\n");
+        portLabelsText.push(";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;");
+        portLabelsText.push("\r\n");
+        
+        var outOfRangeAddrsText = [];
+        outOfRangeAddrsText.push(";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;");
+        outOfRangeAddrsText.push(';' + "Out of range address labels." + ' ' + '(' + this._outOfRangeAddrMap.getElementCount() + ')');
+        outOfRangeAddrsText.push("\r\n");
+        karbonator.forOf(this._outOfRangeAddrMap, function (pair) {
+            var addr = pair[0];
+            var addrType = pair[1];
+            
+            var textLine = SrMeta.addressTypeNames[addrType];
+            textLine += _formatHexadecimal(addr, 4);
+            textLine += ' ' + '=' + ' ';
+            textLine += '$' + _formatHexadecimal(addr, 4);
+            
+            outOfRangeAddrsText.push(textLine);
+        }, this);
+        outOfRangeAddrsText.push("\r\n");
+        outOfRangeAddrsText.push(";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;");
+        outOfRangeAddrsText.push("\r\n");
+        
+        return [
+            [
+                srsText.join("\r\n"),
+                tablesText.join("\r\n"),
+                memoryLabelsText.join("\r\n"),
+                portLabelsText.join("\r\n"),
+                outOfRangeAddrsText.join("\r\n")
+            ].join("\r\n"),
+            Array.from(textMap).reduce(function (str, pair) {
+                return str + pair[1] + "\r\n" + "\r\n";
+            }, ""),
+            Array.from(this._failedAddrSet).reduce(function (str, addr) {
+                return str + _formatHexadecimal(addr, 4) + "\r\n";
+            }, "")
+        ];
+    };
+    
+    /**
+     * @private
+     * @function
+     * @param {karbonator.ByteArray} bytes
+     * @param {Object} options
+     */
+    Disassembler.prototype._initialize = function (bytes, options) {
         if(karbonator.isUndefinedOrNull(bytes)) {
             throw new TypeError("");
         }
         this._bytes = bytes;
         
-        if(!karbonator.isNonNegativeSafeInteger(baseOffset)) {
-            throw new TypeError("'baseOffset' must be a non-negative safe integer.");
-        }
-        this._baseOff = baseOffset;
+        this._tableMap.clear();
+        this._srMetaMap.clear();
+        this._outOfRangeAddrMap.clear();
+        this._memoryAddrSet.clear();
+        this._portAddrSet.clear();
+        this._failedAddrSet.clear();
         
-        var startAddr = arguments[2];
-        if(karbonator.isUndefined(startAddr)) {
-            startAddr = this._baseOff;
-        }
-        else if(!karbonator.isNonNegativeSafeInteger(startAddr)) {
-            throw new TypeError("'startAddr' must be a non-negative safe integer.");
-        }
-        else if(startAddr < baseOffset) {
-            throw new RangeError("'startAddr' cannot be less than 'baseOffset'.");
-        }
-        
-        var tableMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
-        var srMetaMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
-        var failedAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
-        
-        this._initialize();
-        var byteCount = bytes.getElementCount();
-        var endOfBytes = this._baseOff + byteCount;
-        var options = arguments[3];
-        if(karbonator.isObjectOrFunction(options)) {
-            if(karbonator.isEsIterable(options.predefinedDataLabels)) {
-                karbonator.forOf(options.predefinedDataLabels, function (pair) {
-                    if(
-                        !karbonator.isArray(pair)
-                        || pair.length < 2
-                        || !karbonator.isNonNegativeSafeInteger(pair[0])
-                        || !karbonator.isNonNegativeSafeInteger(pair[1])
-                    ) {
-                        throw new TypeError("[addr, byteCount]");
+        if(karbonator.isObjectOrFunction(options)) {        
+            this._baseOffset = 0;
+            if(karbonator.isNonNegativeSafeInteger(options.baseOffset)) {
+                this._baseOffset = options.baseOffset;
+            }
+            this._endAddr = this._baseOffset + bytes.getElementCount();
+            
+            this._firstSrAddr = this._baseOffset;
+            if(karbonator.isNonNegativeSafeInteger(options.firstSubroutine)) {
+                this._firstSrAddr = options.firstSubroutine;
+            }
+            
+            if(karbonator.isEsIterable(options.tables)) {
+                karbonator.forOf(options.tables, function (hint) {
+                    if(karbonator.isObjectOrFunction(hint)) {
+                        if(karbonator.isNonNegativeSafeInteger(hint.address)) {
+                            var size = hint.size;
+                            if(!karbonator.isNonNegativeSafeInteger(size)) {
+                                size = 0;
+                            }
+                            
+                            this._tableMap.set(hint.address, size);
+                        }
                     }
-                    
-                    tableMap.set(pair[0], pair[1]);
                 }, this);
             }
         }
-        
+    };
+    
+    /**
+     * @private
+     * @function
+     */
+    Disassembler.prototype._findSubroutines = function () {
         var srAddrQ = new karbonator.collection.PriorityQueue(karbonator.integerComparator);
-        srAddrQ.enqueue(startAddr);
+        srAddrQ.enqueue(this._firstSrAddr);
+        
         while(!srAddrQ.isEmpty()) {
             var srAddr = srAddrQ.dequeue();
             
-            //TODO : 코드 검증
-            //레이블 주소가 어떤 서브루틴의 지역 레이블인 경우
-            var mapPair = srMetaMap.findNearestLessThan(srAddr);
-            if(!karbonator.isUndefined(mapPair)) {
-                if(mapPair.value.getAddressRange().contains(srAddr)) {
-                    continue;
-                }
+            //레이블 주소가 어떤 테이블에 포함되어 있는 경우
+            var mapPair = this._tableMap.findNotGreaterThan(srAddr);
+            if(
+                !karbonator.isUndefined(mapPair)
+                && (
+                    (mapPair.value === 0 && srAddr === mapPair.key)
+                    || (srAddr >= mapPair.key && srAddr < mapPair.key + mapPair.value)
+                )
+            ) {
+                continue;
             }
             
-            var endAddr = endOfBytes;
-            mapPair = tableMap.findNotLessThan(srAddr);
+            //레이블 주소가 어떤 서브루틴의 지역 레이블인 경우
+            mapPair = this._srMetaMap.findLessThan(srAddr);
+            if(
+                !karbonator.isUndefined(mapPair)
+                && mapPair.value.getAddressRange().contains(srAddr)
+            ) {
+                continue;
+            }
+            
+            var endAddr = this._endAddr;
+            mapPair = this._tableMap.findNotLessThan(srAddr);
             if(!karbonator.isUndefined(mapPair)) {
                 endAddr = mapPair.key;
             }
             
             var srMeta = SrMeta.fromBytes(
                 this._bytes,
-                this._baseOff, srAddr, endAddr
+                this._baseOffset, srAddr, endAddr
             );
-            
             if(srMeta.valid) {
                 karbonator.forOf(srMeta.srAddressSet, function (addr) {
-                    if(addr >= this._baseOff && addr < endOfBytes && !srMetaMap.has(addr)) {
+                    if(
+                        (addr >= this._baseOffset && addr < this._endAddr)
+                        && !this._srMetaMap.has(addr)
+                    ) {
                         srAddrQ.enqueue(addr);
                     }
                 }, this);
                 
                 karbonator.forOf(srMeta.dataAddressMap, function (pair) {
-                    if(
-                        pair[1] === SrMeta.DataAddressType.table
-                        && !tableMap.has(pair[0])
-                    ) {
-                        tableMap.set(pair[0], 0);
+                    var addr = pair[0];
+                    var addrType = pair[1];
+                    
+                    switch(addrType) {
+                    case SrMeta.AddressType.table:
+                        if(!this._tableMap.has(addr)) {
+                            this._tableMap.set(addr, 0);
+                        }
+                    break;
+                    case SrMeta.AddressType.memory:
+                        this._memoryAddrSet.add(addr);
+                    break;
+                    case SrMeta.AddressType.port:
+                        this._portAddrSet.add(addr);
+                    break;
                     }
                 }, this);
                 
-                //TODO : 코드 검증
+                karbonator.forOf(srMeta.outOfRangeAddressMap, function (pair) {
+                    this._outOfRangeAddrMap.set(pair[0], pair[1]);
+                }, this);
+                
                 //방금 처리된 서브루틴이
                 //다른 서브루틴을 지역레이블로서 포함하는 경우
                 var srRange = srMeta.getAddressRange();
                 var srAddrsToBeRemoved = new karbonator.collection.TreeSet(karbonator.integerComparator);
-                karbonator.forOf(srMetaMap, function (pair) {
+                karbonator.forOf(this._srMetaMap, function (pair) {
                     var addr = pair[0];
                     
                     if(srAddr !== addr && srRange.contains(addr)) {
@@ -1634,33 +1648,112 @@
                     }
                 }, this);
                 karbonator.forOf(srAddrsToBeRemoved, function (addr) {
-                    srMetaMap.remove(addr);
+                    this._srMetaMap.remove(addr);
                 }, this);
                 
-                srMetaMap.set(srAddr, srMeta);
+                this._srMetaMap.set(srAddr, srMeta);
             }
             else {
-                failedAddrSet.add(srAddr);
+                this._failedAddrSet.add(srAddr);
             }
-            this._cursor = srMeta.cursor;
             
-            if(this._cursor < byteCount && !srMetaMap.has(this._baseOff + this._cursor)) {
-                srAddrQ.enqueue(this._baseOff + this._cursor);
+            var nextTargetAddr = this._baseOffset + srMeta.cursor;
+//            if(srMeta.getAddressRange().getMaximum() + (srMeta.lines.length > 0 ? 1 : 0) !== this._baseOffset + srMeta.cursor) {
+//                debugger;
+//            }
+            if(
+                nextTargetAddr < this._endAddr
+                && !this._srMetaMap.has(nextTargetAddr)
+            ) {
+                srAddrQ.enqueue(nextTargetAddr);
             }
         }
         
-        //Estimate the size of tables.
-        karbonator.forOf(tableMap, function (pair) {
+//        karbonator.forOf(this._srMetaMap, function (pair) {
+//            var srAddr = pair[0];
+//            var srMeta = pair[1];
+//            var srRange = srMeta.getAddressRange();
+//            
+//            var offset = 0;
+//            for(var i = 0; i < srMeta.lines.length; ++i) {
+//                var line = srMeta.lines[i];
+//                var inst = line[0];
+//                var operand = line[1];
+//                offset += inst.getSize();
+//                
+//                var isBranchInstruction = false;
+//                var isJumpInstruction = false;
+//                var effectiveAddr = 0;
+//                switch(inst.actionCode) {
+//                case Instruction.ActionCode.jsr:
+//                    effectiveAddr = operand;
+//                    
+//                    if(!srRange.contains(effectiveAddr)) {
+//                        
+//                    }
+//                break;
+//                case Instruction.ActionCode.jmp:
+//                    switch(inst.addressingMode) {
+//                    case Instruction.AddressingMode.abs:
+//                        effectiveAddr = operand;
+//                        
+//                        isJumpInstruction = true;
+//                    break;
+//                    }
+//                break;
+//                case Instruction.ActionCode.bpl:
+//                case Instruction.ActionCode.bmi:
+//                case Instruction.ActionCode.bne:
+//                case Instruction.ActionCode.beq:
+//                case Instruction.ActionCode.bvc:
+//                case Instruction.ActionCode.bvs:
+//                case Instruction.ActionCode.bcc:
+//                case Instruction.ActionCode.bcs:
+//                    effectiveAddr = srAddr + offset + operand;
+//                    
+//                    isJumpInstruction = true;
+//                    isBranchInstruction = true;
+//                break;
+//                }
+//                
+//                if(isJumpInstruction) {
+//                    if(!srRange.contains(effectiveAddr)) {
+//                        var mapPair = this._srMetaMap.findNotGreaterThan(effectiveAddr);
+//                        if(!karbonator.isUndefined(mapPair)) {
+//                            mapPair.value.localJumpAddressSet.add(effectiveAddr);
+//                        }
+//                        else if(!isBranchInstruction) {
+//                            //this._outOfRangeAddrMap.set(effectiveAddr, "global");
+//                        }
+//                        else {
+//                            throw new Error(
+//                                "Cannot find the local branch address label "
+//                                + _formatHexadecimal(effectiveAddr, 4)
+//                                + '.'
+//                            );
+//                        }
+//                    }
+//                }
+//            }
+//        }, this);
+    };
+    
+    /**
+     * @private
+     * @function
+     */
+    Disassembler.prototype._estimateTableSizes = function () {
+        karbonator.forOf(this._tableMap, function (pair) {
             var tableAddr = pair[0];
-            if(tableAddr >= this._baseOff) {
+            if(tableAddr >= this._baseOffset) {
                 var tableSize = pair[1];
                 if(tableSize < 1) {
-                    var byteCount = endOfBytes - tableAddr;
-                    var mapPair = srMetaMap.findGreaterThan(tableAddr);
+                    var byteCount = this._endAddr - tableAddr;
+                    var mapPair = this._srMetaMap.findGreaterThan(tableAddr);
                     if(!karbonator.isUndefined(mapPair)) {
                         byteCount = mapPair.key - tableAddr;
                     }
-                    mapPair = tableMap.findGreaterThan(tableAddr);
+                    mapPair = this._tableMap.findGreaterThan(tableAddr);
                     if(
                         !karbonator.isUndefined(mapPair)
                         && byteCount > mapPair.key - tableAddr
@@ -1668,21 +1761,61 @@
                         byteCount = mapPair.key - tableAddr;
                     }
                     
-                    tableMap.set(tableAddr, byteCount);
+                    this._tableMap.set(tableAddr, byteCount);
                 }
             }
         }, this);
+    };
+    
+    /**
+     * @private
+     * @function
+     * @returns {karbonator.collection.TreeMap}
+     */
+    Disassembler.prototype._formatCodes = function () {
+        var createJumpLabelPath = function (srMetaMap, srMeta, effectiveAddr) {
+            var pathStr = "";
+            
+            var srRange = srMeta.getAddressRange();
+            if(srRange.contains(effectiveAddr)) {
+                pathStr += '.' + "branch" + _formatHexadecimal(effectiveAddr, 4);
+            }
+            else {
+                var mapPair = srMetaMap.findNotGreaterThan(effectiveAddr);
+                if(!karbonator.isUndefined(mapPair)) {
+                    var otherSrMeta = mapPair.value;
+                    if(otherSrMeta.startAddress === effectiveAddr) {
+                        pathStr += "sub" + _formatHexadecimal(otherSrMeta.startAddress, 4);
+                    }
+                    else if(otherSrMeta.localJumpAddressSet.has(effectiveAddr)) {
+                        pathStr += "sub" + _formatHexadecimal(otherSrMeta.startAddress, 4);
+                        pathStr += '.' + "branch" + _formatHexadecimal(effectiveAddr, 4);
+                    }
+                    else {
+                        pathStr += "EXPR(";
+                        pathStr += "sub" + _formatHexadecimal(otherSrMeta.startAddress, 4);
+                        pathStr += ' ' + '+' + ' ' + (effectiveAddr - otherSrMeta.startAddress);
+                        pathStr += ')';
+                    }
+                }
+                else {
+                    pathStr += "global" + _formatHexadecimal(effectiveAddr, 4);
+                }
+            }
+            
+            return pathStr;
+        };
         
-        //Format and output the results.
         var textMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
-        karbonator.forOf(srMetaMap, function (pair) {
+        karbonator.forOf(this._srMetaMap, function (pair) {
             var srAddr = pair[0];
             var srMeta = pair[1];
+            var srRange = srMeta.getAddressRange();
             
             var textLines = [];
             
-            textLines.push('\t' + '#' + "org" + ' ' + '$' + _formatHexadecimal(srAddr, 4));
-            textLines.push("global" + _formatHexadecimal(srAddr, 4) + ':');
+            textLines.push('\t' + _directivePrefix + "org" + ' ' + '$' + _formatHexadecimal(srAddr, 4));
+            textLines.push("sub" + _formatHexadecimal(srAddr, 4) + ':');
             
             var offset = 0;
             for(var i = 0; i < srMeta.lines.length; ++i) {
@@ -1692,11 +1825,8 @@
                 var operand = line[1];
                 var effectiveAddr = 0;
                 
-                if(
-                    srAddr + offset !== srAddr
-                    && srMeta.localJumpAddressSet.has(srAddr + offset)
-                ) {
-                    textLines.push('.' + "local" + _formatHexadecimal(srAddr + offset, 4) + ':');
+                if(srMeta.localJumpAddressSet.has(srAddr + offset)) {
+                    textLines.push('.' + "branch" + _formatHexadecimal(srAddr + offset, 4) + ':');
                 }
                 
                 offset += inst.getSize();
@@ -1706,17 +1836,17 @@
                 
                 switch(inst.actionCode) {
                 case Instruction.ActionCode.jsr:
-                    textLine += "global" + _formatHexadecimal(operand, 4);
+                    textLine += "sub" + _formatHexadecimal(operand, 4);
                 break;
                 case Instruction.ActionCode.jmp:
                     switch(inst.addressingMode) {
                     case Instruction.AddressingMode.abs:
-                        textLine += "global" + _formatHexadecimal(operand, 4);
+                        textLine += createJumpLabelPath(this._srMetaMap, srMeta, operand);
                     break;
                     case Instruction.AddressingMode.absInd:
                         textLine += '(';
                         
-                        textLine += SrMeta.DataAddressTypeNames[SrMeta.getDataAddressTypeOf(inst, operand)];
+                        textLine += SrMeta.addressTypeNames[SrMeta.getAddressTypeOf(inst, operand)];
                         textLine += _formatHexadecimal(operand, 4);
                         
                         textLine += ')';
@@ -1732,18 +1862,37 @@
                 case Instruction.ActionCode.bcc:
                 case Instruction.ActionCode.bcs:
                     effectiveAddr = srAddr + offset + operand;
+                    if(!srMeta.localJumpAddressSet.has(effectiveAddr)) {
+                        throw new Error("What the fuck?");
+                    }
                     
-                    if(srMeta.localJumpAddressSet.has(effectiveAddr)) {
-                        if(effectiveAddr >= srAddr) {
-                            textLine += '.' + "local" + _formatHexadecimal(effectiveAddr, 4);
-                        }
-                        else {
-                            //TODO : 다른 전역 레이블 안에 있는 지역 레이블 참조
-                            textLine += operand;//'$' + _formatHexadecimal(effectiveAddr, 2);
-                        }
+                    if(srRange.contains(effectiveAddr)) {
+                        textLine += '.' + "branch" + _formatHexadecimal(effectiveAddr, 4);
                     }
                     else {
-                        throw new Error("What the fuck?");
+                        var mapPair = this._srMetaMap.findNotGreaterThan(effectiveAddr);
+                        if(karbonator.isUndefined(mapPair)) {
+                            throw new Error(
+                                "Cannot find the local label of "
+                                + _formatHexadecimal(effectiveAddr, 4) 
+                                + '.'
+                            );
+                        }
+                        
+                        var otherSrMeta = mapPair.value;
+                        if(otherSrMeta.startAddress === effectiveAddr) {
+                            textLine += "sub" + _formatHexadecimal(otherSrMeta.startAddress, 4);
+                        }
+                        else if(otherSrMeta.localJumpAddressSet.has(effectiveAddr)) {
+                            textLine += "sub" + _formatHexadecimal(otherSrMeta.startAddress, 4);
+                            textLine += '.' + "branch" + _formatHexadecimal(effectiveAddr, 4);
+                        }
+                        else {
+                            textLine += "EXPR(";
+                            textLine += "sub" + _formatHexadecimal(otherSrMeta.startAddress, 4);
+                            textLine += ' ' + '+' + ' ' + (effectiveAddr - otherSrMeta.startAddress);
+                            textLine += ')';
+                        }
                     }
                 break;
                 default:
@@ -1752,43 +1901,43 @@
                         textLine += 'A';
                     break;
                     case Instruction.AddressingMode.imm:
-                        textLine += '#' + '$' + _formatHexadecimal(operand, 2);
+                        textLine += _directivePrefix + '$' + _formatHexadecimal(operand, 2);
                     break;
                     case Instruction.AddressingMode.abs:
-                        textLine += SrMeta.DataAddressTypeNames[SrMeta.getDataAddressTypeOf(inst, operand)];
+                        textLine += SrMeta.addressTypeNames[SrMeta.getAddressTypeOf(inst, operand)];
                         textLine += _formatHexadecimal(operand, 4);
                     break;
                     case Instruction.AddressingMode.absNdxX:
-                        textLine += SrMeta.DataAddressTypeNames[SrMeta.getDataAddressTypeOf(inst, operand)];
+                        textLine += SrMeta.addressTypeNames[SrMeta.getAddressTypeOf(inst, operand)];
                         textLine += _formatHexadecimal(operand, 4);
                         textLine += ',' + 'X';
                     break;
                     case Instruction.AddressingMode.absNdxY:
-                        textLine += SrMeta.DataAddressTypeNames[SrMeta.getDataAddressTypeOf(inst, operand)];
+                        textLine += SrMeta.addressTypeNames[SrMeta.getAddressTypeOf(inst, operand)];
                         textLine += _formatHexadecimal(operand, 4);
                         textLine += ',' + 'Y';
                     break;
                     case Instruction.AddressingMode.zp:
                         textLine += '<';
-                        textLine += SrMeta.DataAddressTypeNames[SrMeta.getDataAddressTypeOf(inst, operand)];
+                        textLine += SrMeta.addressTypeNames[SrMeta.getAddressTypeOf(inst, operand)];
                         textLine += _formatHexadecimal(operand, 2);
                     break;
                     case Instruction.AddressingMode.zpNdxX:
                         textLine += '<';
-                        textLine += SrMeta.DataAddressTypeNames[SrMeta.getDataAddressTypeOf(inst, operand)];
+                        textLine += SrMeta.addressTypeNames[SrMeta.getAddressTypeOf(inst, operand)];
                         textLine += _formatHexadecimal(operand, 2);
                         textLine += ',' + 'X';
                     break;
                     case Instruction.AddressingMode.zpNdxY:
                         textLine += '<';
-                        textLine += SrMeta.DataAddressTypeNames[SrMeta.getDataAddressTypeOf(inst, operand)];
+                        textLine += SrMeta.addressTypeNames[SrMeta.getAddressTypeOf(inst, operand)];
                         textLine += _formatHexadecimal(operand, 2);
                         textLine += ',' + 'Y';
                     break;
                     case Instruction.AddressingMode.zpNdxXInd:
                         textLine += '(';
                         textLine += '<';
-                        textLine += SrMeta.DataAddressTypeNames[SrMeta.getDataAddressTypeOf(inst, operand)];
+                        textLine += SrMeta.addressTypeNames[SrMeta.getAddressTypeOf(inst, operand)];
                         textLine += _formatHexadecimal(operand, 2);
                         textLine += ',' + 'X';
                         textLine += ')';
@@ -1796,7 +1945,7 @@
                     case Instruction.AddressingMode.zpIndNdxY:
                         textLine += '(';
                         textLine += '<';
-                        textLine += SrMeta.DataAddressTypeNames[SrMeta.getDataAddressTypeOf(inst, operand)];
+                        textLine += SrMeta.addressTypeNames[SrMeta.getAddressTypeOf(inst, operand)];
                         textLine += _formatHexadecimal(operand, 2);
                         textLine += ')';
                         textLine += ',' + 'Y';
@@ -1810,24 +1959,25 @@
             textMap.set(pair[0], textLines.join("\r\n"));
         }, this);
         
-        karbonator.forOf(tableMap, function (pair) {
+        karbonator.forOf(this._tableMap, function (pair) {
             var tableAddr = pair[0];
-            if(tableAddr >= this._baseOff) {
+            if(tableAddr >= this._baseOffset) {
                 var tableSize = pair[1];
                 var textLines = [];
                 
-                textLines.push('\t' + '#' + "org" + ' ' + '$' + _formatHexadecimal(tableAddr, 4));
+                textLines.push('\t' + _directivePrefix + "org" + ' ' + '$' + _formatHexadecimal(tableAddr, 4));
                 textLines.push("table" + _formatHexadecimal(tableAddr, 4) + ':');
+                textLines.push(";" + tableSize + ' ' + "bytes.");
                 
                 var textLine = "";
-                var startIndex = tableAddr - this._baseOff;
+                var startIndex = tableAddr - this._baseOffset;
                 var endIndex = startIndex + tableSize;
                 var bytesPerLineExp = 3;
                 var lineCount = tableSize >> bytesPerLineExp;
                 var l = 0;
                 for(; l < lineCount; ++l) {
                     textLine = '\t';
-                    textLine += '#' + "db";
+                    textLine += _directivePrefix + "dc.1";
                     textLine += ' ';
                     textLine += Array.from(this._bytes.slice(
                             startIndex + (l << bytesPerLineExp),
@@ -1845,7 +1995,7 @@
                 
                 if(startIndex + (l << bytesPerLineExp) < endIndex) {
                     textLine = '\t';
-                    textLine += '#' + "db";
+                    textLine += _directivePrefix + "dc.1";
                     textLine += ' ';
                     textLine += Array.from(this._bytes.slice(
                             startIndex + (l << bytesPerLineExp),
@@ -1865,687 +2015,39 @@
             }
         }, this);
         
-        
-        
-        return [
-            "",
-            Array.from(textMap).reduce(function (str, pair) {
-                return str + pair[1] + "\r\n" + "\r\n";
-            }, ""),
-            Array.from(failedAddrSet).reduce(function (str, addr) {
-                return str + _formatHexadecimal(addr, 4) + "\r\n";
-            }, "")
-        ];
-        
-//        this._enqueueGcLabel(this._addGcLabel(this._baseOff));
-//        while(!this._cLabelQ.isEmpty()) {
-//            var gcLabel = this._cLabelQ.dequeue();
-//            
-//            var nextAddr = gcLabel.address;
-//            var found = false;
-//            do {
-//                var nearestPair = this._dLabelMap.findNotLessThan(nextAddr);
-//                if(!karbonator.isUndefined(nearestPair)) {
-//                    var nearestDLabel = nearestPair.value;
-//                    var range = new karbonator.math.Interval(
-//                        nearestDLabel.address,
-//                        nearestDLabel.address + nearestDLabel.byteCount
-//                    );
-//                    if(range.contains(nextAddr)) {
-//                        nextAddr = range.getMaximum();
-//                        
-//                        if(nextAddr === range.getMinimum()) {
-//                            ++nextAddr;
-//                        }
-//                    }
-//                    else {
-//                        found = true;
-//                    }
-//                }
-//                else {
-//                    found = true;
-//                }
-//            }
-//            while(nextAddr < endOfBytes && !found);
-//            if(nextAddr !== gcLabel.address) {
-//                if(found) {
-//                    this._enqueueGcLabel(this._addGcLabel(nextAddr));
-//                }
-//                
-//                continue;
-//            }
-//            
-//            //TODO : 코드 검증
-//            //레이블 주소가 어떤 서브루틴의 지역 레이블인 경우
-//            var nearestPair = this._srMap.findNearestLessThan(gcLabel.address);
-//            if(!karbonator.isUndefined(nearestPair)) {
-//                if(nearestPair.value.getAddressRange().contains(gcLabel.address)) {
-//                    continue;
-//                }
-//            }
-//            
-//            console.clear();
-//            
-//            var endAddr = this._bytes.getElementCount();
-//            var mapPair = this._dLabelMap.findNotLessThan(gcLabel.address);
-//            if(!karbonator.isUndefined(mapPair)) {
-//                endAddr = mapPair.key;
-//            }
-//            var srResult = this._disassembleSubroutine(gcLabel.address, endAddr);
-//            if(srResult.succeeded) {
-//                karbonator.forOf(srResult.srAddrSet, function (addr) {
-//                    this._enqueueGcLabel(this._addGcLabel(addr));
-//                }, this);
-//                
-//                karbonator.forOf(srResult.dataAddrMap, function (pair) {
-//                    if(pair[1] === Disassembler.DataLabelType.table) {
-//                        this._addGdLabel(pair[0]);
-//                    }
-//                }, this);
-//                
-//                console.log(srResult.lineList.toString());
-//                
-//                //TODO : 코드 검증
-//                //방금 처리된 서브루틴이
-//                //다른 서브루틴을 지역레이블로서 포함하는 경우
-//                var cLabelAddrsToRemove = new karbonator.collection.TreeSet(karbonator.integerComparator);
-//                karbonator.forOf(this._cLabelMap, function (pair) {
-//                    var addr = pair[0];
-//                    
-//                    if(
-//                        gcLabel.address !== addr
-//                        && range.contains(addr)
-//                    ) {
-//                        cLabelAddrsToRemove.add(addr);
-//                    }
-//                }, this);
-//                karbonator.forOf(cLabelAddrsToRemove, function (addr) {
-//                    this._cLabelMap.remove(addr);
-//                    this._labelMap.get(addr).parent = gcLabel;
-//                }, this);
-//                
-//                this._srMap.set(gcLabel.address, srResult.lineList);
-//            }
-//            else {
-//                if(srResult.lineList.getCountOf(Disassembler.Line.Type.instruction) > 0) {
-//                    this._failedLineListMap.set(gcLabel.address, srResult.lineList);
-//                }
-//                
-//                console.log("Failed to disassemble : 0x" + _formatHexadecimal(gcLabel.address) + "\r\n");
-//            }
-//            this._cursor = srResult.cursor;
-//            
-//            if(this._cursor < byteCount) {
-//                var nextAddr = this._getCurrentAddress();
-//                this._enqueueGcLabel(this._addGcLabel(nextAddr));
-//            }
-//        }
-        
-        
-//        /**
-//         * @function
-//         * @param {karbonator.collection.TreeMap} lineListMap
-//         */
-//        Disassembler.LineList.prototype.addPpSymbols = function (lineListMap) {
-//            this.insert(
-//                new Disassembler.Line(
-//                    Disassembler.Line.Type.label,
-//                    this.startAddress
-//                ),
-//                0
-//            );
-//
-//            this.insert(
-//                new Disassembler.Line(
-//                    Disassembler.Line.Type.directive,
-//                    ["ORG", this.startAddress]
-//                ),
-//                0
-//            );
-//
-//            karbonator.forOf(this._localJumpAddrSet, function (addr) {
-//                if(addr >= this.startAddress) {
-//                    this.insert(
-//                        new Disassembler.Line(
-//                            Disassembler.Line.Type.label,
-//                            this._addLcLabel(srLabel, addr)
-//                        ),
-//                        this.findInstructionIndex(
-//                            this.findIndexOfAddress(addr)
-//                        )
-//                    );
-//                }
-//                else {
-//                    //TODO : 전역 레이블의 자식 레이블 참조 코드 작성
-//                    debugger;
-//                }
-//            }, this);
-//        };
-//        
-//        return this._createResult();
-    };
-    
-    /**
-     * @private
-     * @function
-     */
-    Disassembler.prototype._initialize = function () {
-        this._endAddr = this._baseOff + this._bytes.getElementCount();
-        this._cursor = 0;
-        
-        this._srMap.clear();
-        this._failedLineListMap.clear();
-        
-        this._visitedGcAddrSet.clear();
-        this._cLabelQ.clear();
-        
-        this._labelIdSeq = 0;
-        this._cLabelMap.clear();
-        this._dLabelMap.clear();
-    };
-    
-    /**
-     * @private
-     * @function
-     * @param {Object} options
-     */
-    Disassembler.prototype._acceptOptions = function (options) {
-        if(karbonator.isUndefined(options)) {
-            return;
-        }
-        
-        if(!karbonator.isObjectOrFunction(options)) {
-            throw new TypeError("");
-        }
-        
-        if(options.predefinedDataLabels) {
-            if(!karbonator.isEsIterable(options.predefinedDataLabels)) {
-                throw new TypeError("");
-            }
-            
-            karbonator.forOf(options.predefinedDataLabels, function (pair) {
-                if(
-                    !karbonator.isArray(pair)
-                    || pair.length < 2
-                    || !karbonator.isNonNegativeSafeInteger(pair[0])
-                    || !karbonator.isNonNegativeSafeInteger(pair[1])
-                ) {
-                    throw new TypeError("[addr, byteCount]");
-                }
-                
-                this._addGdLabel(pair[0], pair[1]);
-            }, this);
-        }
-    };
-    
-    /**
-     * @private
-     * @function
-     * @param {Number} startAddr
-     * @param {Number} endAddr
-     * @return {Disassembler._SrDisasmResult}
-     */
-    Disassembler.prototype._disassembleSubroutine = function (startAddr, endAddr) {
-        if(!karbonator.isNonNegativeSafeInteger(startAddr)) {
-            throw new TypeError("");
-        }
-        if(!karbonator.isNonNegativeSafeInteger(endAddr)) {
-            throw new TypeError("");
-        }
-        
-        var result = new Disassembler._SrDisasmResult(startAddr);
-        result.succeeded = true;
-        result.cursor = startAddr - this._baseOff;
-        
-        var tableAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
-        var longJumpAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
-        var lcJumpAddrSet = new karbonator.collection.TreeSet(karbonator.integerComparator);
-        
-        var returnCount = 0;
-        for(var working = true; working && result.cursor < endAddr; ) {
-            //Inhibit violating data tables.
-            var currentAddr = this._baseOff + result.cursor;
-            var nearestNextTableAddr = tableAddrSet.findNotLessThan(currentAddr);
-            if(
-                !karbonator.isUndefined(nearestNextTableAddr)
-                && currentAddr >= nearestNextTableAddr
-            ) {
-                break;
-            }
-            
-            var opCode = this._bytes.get(result.cursor);
-            ++result.cursor;
-            var decodedOpCode = Instruction.fromOpCode(opCode);
-            if(null === decodedOpCode) {
-                result.succeeded = false;
-                break;
-            }
-            
-            var operandType = decodedOpCode.getOperandType();
-            var operandSize = Math.abs(operandType);
-            var operand = 0;
-            if(operandSize > 0) {
-                operand = karbonator.bytesToInteger(
-                    this._bytes,
-                    operandSize, (operandType < 0), true,
-                    result.cursor
-                );
-                result.cursor += operandSize;
-            }
-            
-            var dataLabelType = 0;
-            currentAddr = this._baseOff + result.cursor;
-            if((decodedOpCode.actionCode & 0x30) === 0) {
-                switch(decodedOpCode.actionCode) {
-                case Instruction.ActionCode.rti:
-                case Instruction.ActionCode.rts:
-                    ++returnCount;
-                    
-                    if(karbonator.isUndefined(
-                        lcJumpAddrSet.findNotLessThan(currentAddr)
-                    )) {
-                        working = false;
-                    }
-                break;
-                case Instruction.ActionCode.bpl:
-                case Instruction.ActionCode.bmi:
-                case Instruction.ActionCode.bne:
-                case Instruction.ActionCode.beq:
-                case Instruction.ActionCode.bvc:
-                case Instruction.ActionCode.bvs:
-                case Instruction.ActionCode.bcc:
-                case Instruction.ActionCode.bcs:
-                    lcJumpAddrSet.add(currentAddr + operand);
-                    
-                    if(
-                        returnCount > 0
-                        && karbonator.isUndefined(
-                            lcJumpAddrSet.findNotLessThan(currentAddr)
-                        )
-                    ) {
-                        working = false;
-                    }
-                break;
-                case Instruction.ActionCode.jsr:
-                    result.srAddrSet.add(operand);
-                break;
-                case Instruction.ActionCode.jmp:
-                    switch(decodedOpCode.addressingMode) {
-                    case Instruction.AddressingMode.abs:
-                        if(result.lineList.getAddressRange().contains(operand)) {
-                            lcJumpAddrSet.add(operand);
-                        }
-                        else {
-                            longJumpAddrSet.add(operand);
-                        }
-                        
-                        //서브루틴 범위 밖으로 점프해서
-                        //제어를 넘기는 서브루틴인 경우.
-                        if(
-                            operand < result.lineList.startAddress
-                            && karbonator.isUndefined(
-                                lcJumpAddrSet.findNotLessThan(currentAddr)
-                            )
-                        ) {
-                            working = false;
-                        }
-                    break;
-                    case Instruction.AddressingMode.absInd:
-                        dataLabelType = this._getDataLabelTypeOf(decodedOpCode, operand);
-                        result.dataAddrMap.set(operand, dataLabelType);
-                        if(dataLabelType === Disassembler.DataLabelType.table) {
-                            tableAddrSet.add(operand);
-                        }
-                        
-                        //점프 테이블 주소로 간접 점프해서
-                        //제어를 넘기는 경우.
-                        if(karbonator.isUndefined(
-                            lcJumpAddrSet.findNotLessThan(currentAddr)
-                        )) {
-                            working = false;
-                        }
-                    break;
-                    default:
-                        throw new Error("An invalid opcode has been detected.");
-                    }
-                break;
-                }
-            }
-            else switch(decodedOpCode.addressingMode) {
-            case Instruction.AddressingMode.absNdxX:
-            case Instruction.AddressingMode.absNdxY:
-            case Instruction.AddressingMode.absInd:
-            case Instruction.AddressingMode.abs:
-            case Instruction.AddressingMode.zp:
-            case Instruction.AddressingMode.zpNdxX:
-            case Instruction.AddressingMode.zpNdxY:
-            case Instruction.AddressingMode.zpIndNdxY:
-            case Instruction.AddressingMode.zpNdxXInd:
-                dataLabelType = this._getDataLabelTypeOf(decodedOpCode, operand);
-                result.dataAddrMap.set(operand, dataLabelType);
-                if(dataLabelType === Disassembler.DataLabelType.table) {
-                    tableAddrSet.add(operand);
-                }
-            break;
-            }
-            
-            result.lineList.add(new Disassembler.Line(
-                Disassembler.Line.Type.instruction,
-                [decodedOpCode, operand]
-            ));
-        }
-        
-        if(result.succeeded) {
-            var range = result.lineList.getAddressRange();
-            karbonator.forOf(longJumpAddrSet, function (addr) {
-                if(range.contains(addr)) {
-                    lcJumpAddrSet.add(addr);
-                }
-                else {
-                    result.srAddrSet.add(addr);
-                }
-            }, this);
-            
-            karbonator.forOf(lcJumpAddrSet, function (addr) {
-                result.lineList.addLocalJumpAddress(addr);
-            });
-        }
-        
-        return result;
-    };
-    
-    /**
-     * @private
-     * @function
-     * @return {Array.<String>}
-     */
-    Disassembler.prototype._createResult = function () {
-        return [
-            Array.from(this._srMap).reduce(
-                function (acc, cur) {
-                    return acc + cur[1] + "\r\n";
-                },
-                ""
-            ),
-            Array.from(this._dLabelMap).reduce(
-                function (acc, cur) {
-                    return acc + cur[1].name + "\r\n";
-                },
-                ""
-            ),
-            Array.from(this._failedLineListMap).reduce(
-                function (acc, cur) {
-                    return acc + cur[1] + "\r\n";
-                },
-                ""
-            )
-        ];
-    };
-    
-    /**
-     * @private
-     * @function
-     * @return {Number}
-     */
-    Disassembler.prototype._getCurrentAddress = function () {
-        return this._baseOff + this._cursor;
-    };
-    
-    /**
-     * @private
-     * @param {Instruction} decodedOpCode
-     * @param {Number} addr
-     * @returns {Number}
-     */
-    Disassembler.prototype._getDataLabelTypeOf = function (decodedOpCode, addr) {
-        var dataLabelType = Disassembler.DataLabelType.memory;
-        
-        if(addr >= 0x8000 && addr < 0x10000) {
-            if(!decodedOpCode.doesMemoryWrite()) {
-                dataLabelType = Disassembler.DataLabelType.table;
-            }
-            else {
-                dataLabelType = Disassembler.DataLabelType.port;
-            }
-        }
-        else if(addr >= 0x4000 && addr < 0x6000) {
-            dataLabelType = Disassembler.DataLabelType.port;
-        }
-        else {
-            dataLabelType = Disassembler.DataLabelType.memory;
-        }
-
-        return dataLabelType;
-    };
-    
-    /**
-     * @function
-     * @param {Number} addr
-     * @return {Boolean}
-     */
-    Disassembler.prototype._addressIsInRange = function (addr) {
-        if(karbonator.isUndefinedOrNull(this._bytes)) {
-            throw new Error("");
-        }
-        if(!karbonator.isNonNegativeSafeInteger(addr)) {
-            throw new TypeError("");
-        }
-        
-        return addr >= this._baseOff && addr < this._endAddr;
-    };
-    
-    /**
-     * @function
-     * @param {Label} parent
-     * @param {Number} addr
-     * @param {String} [name]
-     * @return {Label}
-     */
-    Disassembler.prototype._addLcLabel = function (parent, addr) {
-        if(!(parent instanceof Label)) {
-            throw new TypeError("");
-        }
-        if(!karbonator.isSafeInteger(addr)) {
-            throw new TypeError("");
-        }
-        
-        var labelName = arguments[2];
-        if(karbonator.isUndefined(labelName)) {
-            labelName = Disassembler.createLabelName("local", addr);
-        }
-        else if(!karbonator.isString(labelName)) {
-            throw new TypeError("");
-        }
-        
-        var label = new Label(
-            ++this._labelIdSeq,
-            labelName,
-            Label.Type.code,
-            addr,
-            0,
-            parent
-        );
-        
-        this._labelMap.set(addr, label);
-        
-        return label;
-    };
-    
-    /**
-     * @function
-     * @param {Number} addr
-     * @param {String} [name]
-     * @return {Label}
-     */
-    Disassembler.prototype._addGcLabel = function (addr) {
-        if(!karbonator.isNonNegativeSafeInteger(addr)) {
-            throw new TypeError("");
-        }
-        
-        var labelName = arguments[1];
-        if(karbonator.isUndefined(labelName)) {
-            labelName = Disassembler.createLabelName("global", addr);
-        }
-        else if(!karbonator.isString(labelName)) {
-            throw new TypeError("'name' must be a string.");
-        }
-        
-        var label = this._cLabelMap.get(addr);
-        if(karbonator.isUndefined(label)) {
-            label = new Label(
-                ++this._labelIdSeq,
-                labelName,
-                Label.Type.code,
-                addr,
-                0
-            );
-            
-            this._labelMap.set(addr, label);
-            this._cLabelMap.set(addr, label);
-        }
-        
-        return label;
-    };
-    
-    /**
-     * @function
-     * @private
-     * @param {Label} label
-     */
-    Disassembler.prototype._enqueueGcLabel = function (label) {
-        if(
-            this._addressIsInRange(label.address)
-            && !this._visitedGcAddrSet.has(label.address)
-        ) {
-            this._cLabelQ.enqueue(label);
-            this._visitedGcAddrSet.add(label.address);
-        }
-    };
-    
-    /**
-     * @function
-     * @param {Number} addr
-     * @param {Number} [byteCount=0]
-     * @return {Label}
-     */
-    Disassembler.prototype._addMemoryLabel = function (addr) {
-        if(!karbonator.isNonNegativeSafeInteger(addr)) {
-            throw new TypeError("");
-        }
-        
-        var byteCount = arguments[1];
-        if(karbonator.isUndefined(byteCount)) {
-            byteCount = 0;
-        }
-        else if(!karbonator.isNonNegativeSafeInteger(byteCount)) {
-            throw new TypeError("");
-        }
-        
-        var labelName = labelName = Disassembler.createLabelName(
-            "memory",
-            addr
-        );
-        
-        var label = this._dLabelMap.get(addr);
-        if(karbonator.isUndefined(label)) {
-            label = new Label(
-                ++this._labelIdSeq,
-                labelName,
-                Label.Type.data,
-                addr,
-                byteCount
-            );
-            
-            this._labelMap.set(label.address, label);
-            //this._dLabelMap.set(label.address, label);
-        }
-        
-        return label;
-    };
-    
-    /**
-     * @function
-     * @param {Number} addr
-     * @param {Number} [byteCount=0]
-     * @return {Label}
-     */
-    Disassembler.prototype._addPortLabel = function (addr) {
-        if(!karbonator.isNonNegativeSafeInteger(addr)) {
-            throw new TypeError("");
-        }
-        
-        var byteCount = arguments[1];
-        if(karbonator.isUndefined(byteCount)) {
-            byteCount = 0;
-        }
-        else if(!karbonator.isNonNegativeSafeInteger(byteCount)) {
-            throw new TypeError("");
-        }
-        
-        var labelName = labelName = Disassembler.createLabelName(
-            "port",
-            addr
-        );
-        
-        var label = this._dLabelMap.get(addr);
-        if(karbonator.isUndefined(label)) {
-            label = new Label(
-                ++this._labelIdSeq,
-                labelName,
-                Label.Type.data,
-                addr,
-                byteCount
-            );
-            
-            this._labelMap.set(label.address, label);
-            //this._dLabelMap.set(label.address, label);
-        }
-        
-        return label;
-    };
-    
-    /**
-     * @function
-     * @param {Number} addr
-     * @param {Number} [byteCount=0]
-     * @return {Label}
-     */
-    Disassembler.prototype._addGdLabel = function (addr) {
-        if(!karbonator.isNonNegativeSafeInteger(addr)) {
-            throw new TypeError("");
-        }
-        
-        var byteCount = arguments[1];
-        if(karbonator.isUndefined(byteCount)) {
-            byteCount = 0;
-        }
-        else if(!karbonator.isNonNegativeSafeInteger(byteCount)) {
-            throw new TypeError("");
-        }
-        
-        var labelName = labelName = Disassembler.createLabelName(
-            "table",
-            addr
-        );
-        
-        var label = this._dLabelMap.get(addr);
-        if(karbonator.isUndefined(label)) {
-            label = new Label(
-                ++this._labelIdSeq,
-                labelName,
-                Label.Type.data,
-                addr,
-                byteCount
-            );
-            
-            this._labelMap.set(label.address, label);
-            this._dLabelMap.set(label.address, label);
-        }
-        
-        return label;
+        return textMap;
     };
     
     nes.Disassembler = Disassembler;
+    
+    /*////////////////////////////////*/
+    
+    /*////////////////////////////////*/
+    //SymbolTable
+    
+    var SymbolTable = function () {
+        
+    };
+    
+    /**
+     * @function
+     * @param {String} path
+     * @return {PpSymbol}
+     */
+    SymbolTable.prototype.findByPath = function (path) {
+        
+    };
+    
+    /**
+     * @function
+     * @param {String} name
+     * @return {Array.<String>}
+     */
+    SymbolTable.prototype.findAllPaths = function (name) {
+        
+    };
+    
+    
     
     /*////////////////////////////////*/
     
@@ -2565,17 +2067,37 @@
     lg.defineToken("base16_int", "([a-zA-Z0-9]{2})+");
     
     /**
+     * @constructor
+     */
+    var SourceCodeBlock = function () {
+        this.filePath = "";
+        this.includeStack = [];
+        this.startLineIndex = 0;
+        this.endLineIndex = 0;
+        this.codeLines = [];
+    };
+    
+    /**
+     * @function
+     * @param {String} newFilePath
+     * @return {Boolean}
+     */
+    SourceCodeBlock.prototype.testIncludeCycle = function (newFilePath) {
+        
+    };
+    
+    /**
      * @memberof karbonator.nes
      * @constructor
      */
-    var Assembler = function () {        
+    var Assembler = function () {
         this._lexer = lg.generate();
         this._strLines = null;
         
-        this._includeSet = new karbonator.collection.TreeSet(karbonator.stringComparator);
-        this._moduleMap = new karbonator.collection.TreeMap(karbonator.stringComparator);
-        this._labelSetMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
-        this._macroMap = new karbonator.collection.TreeMap(karbonator.integerComparator);
+        this._filePathMap = new karbonator.collection.TreeMap(karbonator.stringComparator);
+        this._nsMap = new karbonator.collection.TreeMap(karbonator.stringComparator);
+//        this._funcMap = new karbonator.collection.TreeMap();
+//        this._macroMap = new karbonator.collection.TreeMap();
     };
     
     /**
@@ -2601,54 +2123,79 @@
      * @param {Number} startIndex
      */
     Assembler.prototype._processPp = function (str, startIndex) {
+        var srcCodeBlock = null;
+        var namespace = new PpSymbol("global");
+        var globalLabel = null;
+        var localLabel = null;
+        var bank = 0;
+        var org = 0;
+        
+        var pos = startIndex;
+        var arg = "";
         var state = 0;
-        for(var i = startIndex; ; ) {
-            var ch = str.charAt(i);
-            
+        while(true) {
+            var ch = str.charAt(pos);
             switch(state) {
-            case 0://find a pre-processor command.
+            case 0:
                 switch(ch) {
-                case ' ':
-                case '\v':
-                case '\f':
-                case '\t':
-                    ++i;
+                case ' ': case '\t':
+                case '\v': case '\f':
+                case '\r': case '\n':
+                    ++pos;
                 break;
-                case '\r':
-                case '\n':
+                case _directivePrefix:
                     state = 1;
+                    ++pos;
                 break;
-                case '#':
-                    ++i;
-                    state = 2;
-                break;
-                default:
-                    //try scan global or local label.
-                    //if failed, then go to end of line.
-                    //
                 }
             break;
-            case 1://end of line.
-                
-            break;
-            case 2://determine directive.
-                //scan id.
-                //switch by id.
-            break;
-            case 3://data literal
-                
-            break;
-            case 4://include / require
-                
-            break;
-            case 5://define
-                
-            break;
-            case 6://bank
-                
-            break;
-            case 7://org
-                
+            case 1:
+                var cmd = "";
+                switch(cmd.toLowerCase()) {
+                case "namespace":
+                    arg = ""; //TODO : read the symbol name.
+                    namespace = new PpSymbol(arg);
+                    if(!this._nsMap.has(arg)) {
+                        this._nsMap.set(arg, namespace);
+                    }
+                break;
+                case "function":
+                    //add name to symbol table.
+                    //read and add the expression.
+                break;
+                case "macro":
+                    //add name to symbol table.
+                    //read and add the macro definition.
+                break;
+                case "endm":
+                    
+                break;
+                case "if":
+                    
+                break;
+                case "elif":
+                    
+                break;
+                case "else":
+                    
+                break;
+                case "endif":
+                    
+                break;
+                case "include":
+                    
+                break;
+                case "import":
+                    
+                break;
+                case "org":
+                    arg = "8000"; //TODO : Scan the integer literal.
+                    org = Number.parseInt(arg, 10); //TODO : Determine the base of the integer literal.
+                break;
+                case "dc":
+                    
+                break;
+                }
             break;
             }
         }
