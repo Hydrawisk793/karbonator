@@ -1,6 +1,6 @@
 /**
  * author : Hydrawisk793
- * e-mail : hyw793@naver.com
+ * e-mail : hyw793&#x40;naver.com
  * blog : http://blog.naver.com/hyw793
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
@@ -11,7 +11,7 @@
  */
 (function (g, factory) {
     "use strict";
-    //TODO : Require the fucking jQuery...
+    //TODO : Require jQuery...?
     if(typeof(g.define) === "function" && g.define.amd) {
         g.define(["karbonator.util.record-set"], function (karbonator) {
             return factory(g, karbonator);

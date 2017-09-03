@@ -1,6 +1,6 @@
 /**
  * author : Hydrawisk793
- * e-mail : hyw793@naver.com
+ * e-mail : hyw793&#x40;naver.com
  * blog : http://blog.naver.com/hyw793
  * disclaimer : The author is not responsible for any problems 
  * that that may arise by using this source code.
@@ -95,9 +95,8 @@
     var string = karbonator.string || {};
     karbonator.string = string;
     
-    var _minInt = Number.MIN_SAFE_INTEGER;
-    var _maxInt = Number.MAX_SAFE_INTEGER;
-    
+    var _minInt = karbonator.minimumSafeInteger;
+    var _maxInt = karbonator.maximumSafeInteger;
     var _charCodeMin = 0x000000;
     var _charCodeMax = 0x10FFFF;
     
@@ -219,7 +218,7 @@
     
     /*////////////////////////////////*/
     
-    /*////////////////////////////////*/
+    /*////////////////////////////////////////////////////////////////*/
     //RegexVm
     
     /**
@@ -232,7 +231,11 @@
         this._cursor = 0;
         this._thIdSeq = 0;
         this._ctxts = [];
+        this._logStr = "";
     };
+    
+    /*////////////////////////////////*/
+    //RegexVm._Frame
     
     /**
      * @memberof RegexVm
@@ -253,6 +256,11 @@
             throw new TypeError("An invalid argument.");
         }
     };
+    
+    /*////////////////////////////////*/
+    
+    /*////////////////////////////////*/
+    //RegexVm._Thread
     
     /**
      * @memberof RegexVm
@@ -298,7 +306,7 @@
                 );
             }
             this._frameStack = newThFrameStack;
-
+            
             var parentPath = parent._path;
             parentPath.push([forkKey, 0, 0]);
             var lastNdx = parentPath.length - 1;
@@ -432,7 +440,7 @@
      * @param {RegexVm._Thread} rhs
      * @return {Boolean}
      */
-    RegexVm._Thread.prototype.hasSameForkPathPostfixWith = function (rhs) {
+    RegexVm._Thread.prototype.hasSamePathPostfixWith = function (rhs) {
         var lhsPath = this._path;
         var rhsPath = rhs._path;
         
@@ -462,6 +470,358 @@
         
         return count > 0;
     };
+    
+    /**
+     * @function
+     */
+    RegexVm._Thread.prototype.execute = function () {
+        var opCode = this.readOpCode();
+        switch(opCode) {
+        case 0x00:
+            this.branch();
+        break;
+        case 0x01:
+            throw new Error("A not implemented opcode has been found.");
+        break;
+        case 0x02:
+        case 0x03:
+            throw new Error("An invalid opcode has been found.");
+        break;
+        case 0x04:
+            throw new Error("A not implemented opcode has been found.");
+        break;
+        case 0x05:
+            this.jumpToSubroutine();
+        break;
+        case 0x06:
+            this.returnFromSubroutine();
+        break;
+        case 0x07:
+            this.accept();
+        break;
+        case 0x08:
+        case 0x09:
+            this.fork((opCode & 0x01) !== 0);
+        break;
+        case 0x0A:
+        case 0x0B:
+            this.moveConsumePointer((opCode & 0x01) !== 0);
+        break;
+        case 0x0C:
+        case 0x0D:
+            throw new Error("An invalid opcode has been found.");
+        break;
+        case 0x0E:
+            this.beginGroup();
+        break;
+        case 0x0F:
+            this.endGroup();
+        break;
+        case 0x10:
+            this.testCode();
+        break;
+        case 0x11:
+            throw new Error("An invalid opcode has been found.");
+        break;
+        case 0x12:
+            this.testRange();
+        break;
+        case 0x13:
+            this.testRanges();
+        break;
+        default:
+            throw new Error("An invalid opcode has been found.");
+        }
+    };
+    
+    /**
+     * Reads the next opcode from the bytecode and increment the pc.
+     * 
+     * @function
+     * @return {Number}
+     */
+    RegexVm._Thread.prototype.readOpCode = function () {
+        this._instAddr = this._pc;
+        
+        var opCode = this.readInteger(false, 1);
+        this._lastOpCode = opCode;
+        
+        return opCode;
+    };
+    
+    /**
+     * Reads the next integer value from the bytecode and increment the pc.
+     * 
+     * @param {Boolean} signed
+     * @param {Number} byteCount
+     * @return {Number}
+     */
+    RegexVm._Thread.prototype.readInteger = function (signed, byteCount) {
+        var intValue = this._vm._bytecode.readInteger(this._pc, signed, byteCount);
+        
+        this._pc += byteCount;
+        
+        return intValue;
+    };
+    
+    /**
+     * @function
+     * @return {Boolean}
+     */
+    RegexVm._Thread.prototype.isDead = function () {
+        return this._frameStack.length < 1;
+    };
+    
+    /**
+     * @function
+     */
+    RegexVm._Thread.prototype.branch = function () {
+        var offset = this.readInteger(true, 2);
+        
+        this._pc += offset;
+    };
+    
+    /**
+     * @function
+     * @return {RegexVm._Frame}
+     */
+    RegexVm._Thread.prototype.getCurrentFrame = function () {
+        if(this.isDead()) {
+            throw new Error("The thread has been already dead.");
+        }
+        
+        return this._frameStack[this._frameStack.length - 1];
+    };
+    
+    /**
+     * @function
+     */
+    RegexVm._Thread.prototype.jumpToSubroutine = function () {
+        var addr = this.readInteger(false, 4);
+        
+        this._frameStack.push(new RegexVm._Frame(this._pc));
+        this._pc = addr;
+    };
+    
+    /**
+     * @function
+     */
+    RegexVm._Thread.prototype.returnFromSubroutine = function () {
+        this._pc = this.getCurrentFrame()._returnAddress;
+        this._frameStack.pop();
+    };
+    
+    /**
+     * @function
+     * @param {Boolean} prioritize
+     */
+    RegexVm._Thread.prototype.fork = function (prioritize) {
+        var goToOffset = this.readInteger(true, 2);
+        var newThreadPcOffset = this.readInteger(true, 2);
+        
+        var forkPc = this._instAddr;
+        for(var i = this._path.length; i > 0; ) {
+            --i;
+            
+            var point = this._path[i];
+            if(point[2] > 0) {
+                break;
+            }
+            
+            if(point[0] === forkPc) {
+                this._frameStack.length = 0;
+                return;
+            }
+        }
+        
+        this._vm.createThread(
+            this._pc + newThreadPcOffset,
+            this,
+            prioritize
+        );
+        
+        this._pc += goToOffset;
+    };
+    
+    /**
+     * @function
+     */
+    RegexVm._Thread.prototype.accept = function () {
+        var tokenKey = this.readInteger(false, 4);
+        
+        this._matchResult = new MatchResult(
+            tokenKey,
+            "",
+            null
+        );
+        
+        var cursorStart = this._consumeRanges[0];
+        var start = cursorStart;
+        for(var i = 1; i < this._consumeRanges.length; ++i) {
+            var end = this._consumeRanges[i];
+            if(RegexVm._Thread._skipDelimiter === end) {
+                ++i;
+                if(i >= this._consumeRanges.length) {
+                    break;
+                }
+                
+                start = this._consumeRanges[i];
+            }
+            else {
+                this._matchResult.text += this._vm._inStr.substring(start, end);
+                
+                start = end;
+            }
+        }
+        
+        this._matchResult.range = new karbonator.math.Interval(
+            cursorStart,
+            this._vm._cursor
+        );
+        
+        this._frameStack.length = 0;
+    };
+    
+    /**
+     * @function
+     * @param {Boolean} consume
+     */
+    RegexVm._Thread.prototype.moveConsumePointer = function (consume) {
+        if(!consume) {
+            this._consumeRanges.push(RegexVm._Thread._skipDelimiter);
+        }
+        this._consumeRanges.push(this._vm._cursor);
+    };
+    
+    /**
+     * @function
+     */
+    RegexVm._Thread.prototype.beginGroup = function () {
+        var groupIndex = this.readInteger(false, 1);
+        
+        this._groupNdxStack.push(groupIndex);
+        this._consumedValues.push([2, groupIndex]);
+    };
+    
+    /**
+     * @function
+     */
+    RegexVm._Thread.prototype.endGroup = function () {
+        var groupIndex = this.readInteger(false, 1);
+        
+        this._groupNdxStack.pop();
+        this._consumedValues.push([3, groupIndex]);
+    };
+    
+    /**
+     * @function
+     */
+    RegexVm._Thread.prototype.testCode = function () {
+        var charCode = this.readInteger(false, 4);
+        
+        if(!this._vm.inputMatchesCode(charCode)) {
+            this._frameStack.length = 0;
+        }
+        else {
+            if(this._path.length > 0) {
+                ++this._path[this._path.length - 1][2];
+            }
+            
+            this._consumedValues.push([0, this._vm.getCurrentCharacterCode()]);
+        }
+    };
+    
+    /**
+     * @function
+     */
+    RegexVm._Thread.prototype.testRange = function () {
+        var rangeIndex = this.readInteger(false, 4);
+        
+        if(!this._vm.inputIsInRange(rangeIndex)) {
+            this._frameStack.length = 0;
+        }
+        else {
+            if(this._path.length > 0) {
+                ++this._path[this._path.length - 1][2];
+            }
+            
+            this._consumedValues.push([0, this._vm.getCurrentCharacterCode()]);
+        }
+    };
+    
+    /**
+     * @function
+     */
+    RegexVm._Thread.prototype.testRanges = function () {
+        var rangeSetIndex = this.readInteger(false, 4);
+        
+        if(!this._vm.inputIsInRangeSet(rangeSetIndex)) {
+            this._frameStack.length = 0;
+        }
+        else {
+            if(this._path.length > 0) {
+                ++this._path[this._path.length - 1][2];
+            }
+            
+            this._consumedValues.push([0, this._vm.getCurrentCharacterCode()]);
+        }
+    };
+    
+    /*////////////////////////////////*/
+    
+    /*////////////////////////////////*/
+    //RegexVm.Bytecode
+    
+    /**
+     * @memberof RegexVm
+     * @constructor
+     * @param {iterable} rangeSet
+     * @param {iterable} rangeIndexSets
+     * @param {Boolean} littleEndian
+     * @param {karbonator.ByteArray} codeBlock
+     * @param {String} [sourceCodeForDebug]
+     */
+    RegexVm.Bytecode = function (
+        rangeSet, rangeIndexSets,
+        littleEndian, codeBlock
+    ) {
+        if(!karbonator.isEsIterable(rangeSet)) {
+            throw new TypeError("The parameter 'ranges' must have the property 'Symbol.iterator'.");
+        }
+        if(!karbonator.isEsIterable(rangeIndexSets)) {
+            throw new TypeError("The parameter 'rangeIndexSets' must have the property 'Symbol.iterator'.");
+        }
+        if(!(codeBlock instanceof ByteArray)) {
+            throw new TypeError("The parameter 'codeBlock' must be an instance of 'karbonator.ByteArray'.");
+        }
+        
+        this._ranges = Array.from(rangeSet);
+        this._rangeIndexSets = Array.from(rangeIndexSets);
+        this._littleEndian = !!littleEndian;
+        this._codeBlock = ByteArray.from(codeBlock);
+        this._sourceCodeForDebug = arguments[4];
+        if(karbonator.isUndefined(this._sourceCodeForDebug)) {
+            this._sourceCodeForDebug = "";
+        }
+    };
+    
+    /**
+     * @function
+     * @param {Number} addr
+     * @param {Boolean} signed
+     * @param {Number} byteCount
+     * @return {Number}
+     */
+    RegexVm.Bytecode.prototype.readInteger = function (addr, signed, byteCount) {
+        return karbonator.bytesToInteger(
+            this._codeBlock,
+            byteCount, signed,
+            this._littleEndian,
+            addr
+        );
+    };
+    
+    /*////////////////////////////////*/
     
     /**
      * @memberof RegexVm
@@ -678,7 +1038,8 @@
                     [RegexVm.OperandType.offset]
                 ],
                 [
-                    "reserved02", 
+                    "reserved02",
+                    0x02,
                     null
                 ],
                 [
@@ -822,45 +1183,12 @@
         if(karbonator.isUndefined(inst)) {
             throw new Error(
                 "The opcode '"
-                + opCode.toString(16) +
-                "' doesn't exist."
+                + opCode.toString(16)
+                + "' doesn't exist."
             );
         }
         
         return inst;
-    };
-    
-    /**
-     * @memberof RegexVm
-     * @constructor
-     * @param {iterable} rangeSet
-     * @param {iterable} rangeIndexSets
-     * @param {Boolean} littleEndian
-     * @param {karbonator.ByteArray} codeBlock
-     * @param {String} [sourceCodeForDebug]
-     */
-    RegexVm.Bytecode = function (
-        rangeSet, rangeIndexSets,
-        littleEndian, codeBlock
-    ) {
-        if(!karbonator.isEsIterable(rangeSet)) {
-            throw new TypeError("The parameter 'ranges' must have the property 'Symbol.iterator'.");
-        }
-        if(!karbonator.isEsIterable(rangeIndexSets)) {
-            throw new TypeError("The parameter 'rangeIndexSets' must have the property 'Symbol.iterator'.");
-        }
-        if(!(codeBlock instanceof ByteArray)) {
-            throw new TypeError("The parameter 'codeBlock' must be an instance of 'karbonator.ByteArray'.");
-        }
-        
-        this._ranges = Array.from(rangeSet);
-        this._rangeIndexSets = Array.from(rangeIndexSets);
-        this._littleEndian = !!littleEndian;
-        this._codeBlock = ByteArray.from(codeBlock);
-        this._sourceCodeForDebug = arguments[4];
-        if(karbonator.isUndefined(this._sourceCodeForDebug)) {
-            this._sourceCodeForDebug = "";
-        }
     };
     
     /**
@@ -972,7 +1300,7 @@
         var finalMatchThreadFound = false;
         var matchThread = null;
         
-        var debugStr = "";
+        this._logStr = "";
         
         this.createThread(0);
         
@@ -988,7 +1316,7 @@
                 var th = this._ctxts[i];
                 while(!th.isDead()) {
                     th.execute();
-                    debugStr += this.createExecInfoDebugMessage(th) + "\r\n";
+                    this._logStr += this.createExecInfoDebugMessage(th) + "\r\n";
                     
                     if(((th._lastOpCode & 0xF0) >>> 4) === 1) {
                         break;
@@ -1009,7 +1337,7 @@
                         --j;
                         
                         var aliveThread = aliveThreads[j];
-                        if(th.hasSameForkPathPostfixWith(aliveThread)) {
+                        if(th.hasSamePathPostfixWith(aliveThread)) {
                             if(th.isPriorTo(aliveThread)) {
                                 aliveThreads.splice(j, 1);
                             }
@@ -1027,7 +1355,7 @@
 //                    aliveThreads.push(th);
                 }
                 
-                debugStr += ".............................." + "\r\n";
+                this._logStr += ".............................." + "\r\n";
                 
                 //debugger;
             }
@@ -1037,14 +1365,14 @@
             aliveThreads = temp;
             aliveThreads.length = 0;
             
-            debugStr += "threads(" + this._ctxts.length + ") === [" + "\r\n";
+            this._logStr += "threads(" + this._ctxts.length + ") === [" + "\r\n";
             for(var i = 0; i < this._ctxts.length; ++i) {
                 var th = this._ctxts[i];
-                debugStr += 'T' + th._id + '(' + '[' + _createConsumedValuesDebugString(th._consumedValues) + ']' + ')' + "\r\n";
+                this._logStr += 'T' + th._id + '(' + '[' + _createConsumedValuesDebugString(th._consumedValues) + ']' + ')' + "\r\n";
             }
-            debugStr += ']';
+            this._logStr += ']';
             if(this._ctxts.length < 1) {
-                debugStr += "\r\n";
+                this._logStr += "\r\n";
             }
             
 //            if(acceptedThreads.length > 0) {
@@ -1056,7 +1384,7 @@
                 
                 var th = acceptedThreads[i];
                 
-                debugStr += this.createMatchResultDebugMessage(th)
+                this._logStr += this.createMatchResultDebugMessage(th)
                     + "\r\n"
                 ;
                 
@@ -1074,7 +1402,7 @@
                     if(th.isPriorTo(matchThread)) {
                         matchThread = th;
                         
-                        debugStr += 'T' + th._id + " is prior to the selected thread." + "\r\n";
+                        this._logStr += 'T' + th._id + " is prior to the selected thread." + "\r\n";
                     }
                     
                     var priorToAlivingThs = true;
@@ -1084,7 +1412,7 @@
                     if(priorToAlivingThs) {
                         finalMatchThreadFound = true;
                         
-                        debugStr += 'T' + th._id + " is prior to aliving threads." + "\r\n";
+                        this._logStr += 'T' + th._id + " is prior to aliving threads." + "\r\n";
                     }
                 }
             }
@@ -1106,22 +1434,22 @@
                 aliveThreads = temp;
                 aliveThreads.length = 0;
                 
-                debugStr += "selectedResult === "
+                this._logStr += "selectedResult === "
                     + this.createMatchResultDebugMessage(matchThread)
                     + "\r\n"
                 ;
             }
             
-            debugStr += "\r\n";
-            debugStr += "------------------------------" + "\r\n";
+            this._logStr += "\r\n";
+            this._logStr += "------------------------------" + "\r\n";
             
             //debugger;
         }
         
-        debugStr += (null === matchThread ? "Failed..." : "Found!!!") + "\r\n";
-        debugStr += "==============================" + "\r\n";
+        this._logStr += (null === matchThread ? "Failed..." : "Found!!!") + "\r\n";
+        this._logStr += "==============================" + "\r\n";
         
-        console.log(debugStr);
+        //console.log(this._logStr);
         
         return (null !== matchThread ? matchThread._matchResult : null);
     };
@@ -1139,7 +1467,7 @@
             
             switch(value[0]) {
             case 0:
-                str += String.fromCharCode(value[1]);
+                str += '\'' + String.fromCharCode(value[1]) + '\'';
             break;
             case 1:
                 str += '{' + (value[1] >= 0 ? '+' : '') + value[1] + '}';
@@ -1246,84 +1574,6 @@
     
     /**
      * @function
-     */
-    RegexVm._Thread.prototype.execute = function () {
-        var opCode = this.readOpCode();
-        switch(opCode) {
-        case 0x00:
-            this.branch();
-        break;
-        case 0x01:
-            throw new Error("A not implemented opcode has been found.");
-        break;
-        case 0x02:
-        case 0x03:
-            throw new Error("An invalid opcode has been found.");
-        break;
-        case 0x04:
-            throw new Error("A not implemented opcode has been found.");
-        break;
-        case 0x05:
-            this.jumpToSubroutine();
-        break;
-        case 0x06:
-            this.returnFromSubroutine();
-        break;
-        case 0x07:
-            this.accept();
-        break;
-        case 0x08:
-        case 0x09:
-            this.fork((opCode & 0x01) !== 0);
-        break;
-        case 0x0A:
-        case 0x0B:
-            this.moveConsumePointer((opCode & 0x01) !== 0);
-        break;
-        case 0x0C:
-        case 0x0D:
-            throw new Error("An invalid opcode has been found.");
-        break;
-        case 0x0E:
-            this.beginGroup();
-        break;
-        case 0x0F:
-            this.endGroup();
-        break;
-        case 0x10:
-            this.testCode();
-        break;
-        case 0x11:
-            throw new Error("An invalid opcode has been found.");
-        break;
-        case 0x12:
-            this.testRange();
-        break;
-        case 0x13:
-            this.testRanges();
-        break;
-        default:
-            throw new Error("An invalid opcode has been found.");
-        }
-    };
-    
-    /**
-     * @function
-     * @return {Number}
-     */
-    RegexVm._Thread.prototype.readOpCode = function () {
-        this._instAddr = this._pc;
-        
-        var opCode = this._vm._bytecode._codeBlock.get(this._pc);
-        ++this._pc;
-        
-        this._lastOpCode = opCode;
-        
-        return opCode;
-    };
-    
-    /**
-     * @function
      * @param {RegexVm._Thread} matchThread
      * @returns {String}
      */
@@ -1371,282 +1621,7 @@
         return debugStr;
     };
     
-    /**
-     * @function
-     * @return {Number}
-     */
-    RegexVm._Thread.prototype.readUint8 = function () {
-        var value = karbonator.bytesToInteger(
-            this._vm._bytecode._codeBlock,
-            1, false,
-            this._vm._bytecode._littleEndian,
-            this._pc
-        );
-        this._pc += 1;
-        
-        return value;
-    };
-    
-    /**
-     * @function
-     * @return {Number}
-     */
-    RegexVm._Thread.prototype.readInt16 = function () {
-        var value = karbonator.bytesToInteger(
-            this._vm._bytecode._codeBlock,
-            2, true,
-            this._vm._bytecode._littleEndian,
-            this._pc
-        );
-        this._pc += 2;
-        
-        return value;
-    };
-    
-    /**
-     * @function
-     * @return {Number}
-     */
-    RegexVm._Thread.prototype.readInt32 = function () {
-        var value = karbonator.bytesToInteger(
-            this._vm._bytecode._codeBlock,
-            4, true,
-            this._vm._bytecode._littleEndian,
-            this._pc
-        );
-        this._pc += 4;
-        
-        return value;
-    };
-    
-    /**
-     * @function
-     * @return {Number}
-     */
-    RegexVm._Thread.prototype.readUint32 = function () {
-        var value = karbonator.bytesToInteger(
-            this._vm._bytecode._codeBlock,
-            4, false,
-            this._vm._bytecode._littleEndian,
-            this._pc
-        );
-        this._pc += 4;
-        
-        return value;
-    };
-    
-    /**
-     * @function
-     * @return {Boolean}
-     */
-    RegexVm._Thread.prototype.isDead = function () {
-        return this._frameStack.length < 1;
-    };
-    
-    /**
-     * @function
-     */
-    RegexVm._Thread.prototype.branch = function () {
-        var offset = this.readInt16();
-        
-        this._pc += offset;
-    };
-    
-    /**
-     * @function
-     */
-    RegexVm._Thread.prototype.jumpToSubroutine = function () {
-        var addr = this.readUint32();
-        
-        this._frameStack.push(new RegexVm._Frame(this._pc));
-        this._pc = addr;
-    };
-    
-    /**
-     * @function
-     */
-    RegexVm._Thread.prototype.returnFromSubroutine = function () {
-        this._pc = this.getCurrentFrame()._returnAddress;
-        this._frameStack.pop();
-    };
-    
-    /**
-     * @function
-     * @param {Boolean} prioritize
-     */
-    RegexVm._Thread.prototype.fork = function (prioritize) {
-        var goToOffset = this.readInt16();
-        var newThreadPcOffset = this.readInt16();
-        
-        var forkPc = this._instAddr;
-        
-//        for(var i = this._consumedValues.length; i > 0; ) {
-//            --i;
-//            
-//            var point = this._consumedValues[i];
-//            if(point[0] === 0) {
-//                break;
-//            }
-//            else if(point[0] === 1 && Math.abs(point[1]) === forkPc) {
-//                this._frameStack.length = 0;
-//                return;
-//            }
-//        }
-        
-        for(var i = this._path.length; i > 0; ) {
-            --i;
-            
-            var point = this._path[i];
-            if(point[2] > 0) {
-                break;
-            }
-            
-            if(point[0] === forkPc) {
-                this._frameStack.length = 0;
-                return;
-            }
-        }
-        
-        this._vm.createThread(
-            this._pc + newThreadPcOffset,
-            this,
-            prioritize
-        );
-        
-        this._pc += goToOffset;
-    };
-    
-    /**
-     * @function
-     */
-    RegexVm._Thread.prototype.accept = function () {
-        var tokenKey = this.readUint32();
-        
-        this._matchResult = new MatchResult(
-            tokenKey,
-            "",
-            null
-        );
-        
-        var cursorStart = this._consumeRanges[0];
-        var start = cursorStart;
-        for(var i = 1; i < this._consumeRanges.length; ++i) {
-            var end = this._consumeRanges[i];
-            if(RegexVm._Thread._skipDelimiter === end) {
-                ++i;
-                if(i >= this._consumeRanges.length) {
-                    break;
-                }
-                
-                start = this._consumeRanges[i];
-            }
-            else {
-                this._matchResult.text += this._vm._inStr.substring(start, end);
-                
-                start = end;
-            }
-        }
-        
-        this._matchResult.range = new karbonator.math.Interval(
-            cursorStart,
-            this._vm._cursor
-        );
-        
-        this._frameStack.length = 0;
-    };
-    
-    /**
-     * @function
-     * @param {Boolean} consume
-     */
-    RegexVm._Thread.prototype.moveConsumePointer = function (consume) {
-        if(!consume) {
-            this._consumeRanges.push(RegexVm._Thread._skipDelimiter);
-        }
-        this._consumeRanges.push(this._vm._cursor);
-    };
-    
-    RegexVm._Thread.prototype.beginGroup = function () {
-        var groupIndex = this.readUint8();
-        
-        this._groupNdxStack.push(groupIndex);
-        this._consumedValues.push([2, groupIndex]);
-    };
-    
-    RegexVm._Thread.prototype.endGroup = function () {
-        var groupIndex = this.readUint8();
-        
-        this._groupNdxStack.pop();
-        this._consumedValues.push([3, groupIndex]);
-    };
-    
-    /**
-     * @function
-     */
-    RegexVm._Thread.prototype.testCode = function () {
-        var charCode = this.readUint32();
-        
-        if(!this._vm.inputMatchesCode(charCode)) {
-            this._frameStack.length = 0;
-        }
-        else {
-            if(this._path.length > 0) {
-                ++this._path[this._path.length - 1][2];
-            }
-            
-            this._consumedValues.push([0, this._vm._inStr.charCodeAt(this._vm._cursor)]);
-        }
-    };
-    
-    /**
-     * @function
-     */
-    RegexVm._Thread.prototype.testRange = function () {
-        var rangeIndex = this.readUint32();
-        
-        if(!this._vm.inputIsInRange(rangeIndex)) {
-            this._frameStack.length = 0;
-        }
-        else {
-            if(this._path.length > 0) {
-                ++this._path[this._path.length - 1][2];
-            }
-            
-            this._consumedValues.push([0, this._vm._inStr.charCodeAt(this._vm._cursor)]);
-        }
-    };
-    
-    /**
-     * @function
-     */
-    RegexVm._Thread.prototype.testRanges = function () {
-        var rangeSetIndex = this.readUint32();
-        
-        if(!this._vm.inputIsInRangeSet(rangeSetIndex)) {
-            this._frameStack.length = 0;
-        }
-        else {
-            if(this._path.length > 0) {
-                ++this._path[this._path.length - 1][2];
-            }
-            
-            this._consumedValues.push([0, this._vm._inStr.charCodeAt(this._vm._cursor)]);
-        }
-    };
-    
-    /**
-     * @function
-     * @return {RegexVm._Frame}
-     */
-    RegexVm._Thread.prototype.getCurrentFrame = function () {
-        if(this.isDead()) {
-            throw new Error("The thread has been already dead.");
-        }
-        
-        return this._frameStack[this._frameStack.length - 1];
-    };
-    
-    /*////////////////////////////////*/
+    /*////////////////////////////////////////////////////////////////*/
     
     /*////////////////////////////////*/
     //AstNode
@@ -4840,9 +4815,9 @@
         
         var buffer = new InstructionBuffer(this._byteOrderReversed);
         
-//        if(node.isRootOfGroup()) {
-//            buffer.put(RegexVm.Instruction.beginGroup, 0);
-//        }
+        if(node.isRootOfGroup()) {
+            buffer.put(RegexVm.Instruction.beginGroup, 0);
+        }
         
         switch(node.getType()) {
         case RegexParser.AstNodeType.operator:
@@ -4904,9 +4879,9 @@
             throw new Error("An unknown ast node type has been detected.");
         }
         
-//        if(node.isRootOfGroup()) {
-//            buffer.put(RegexVm.Instruction.endGroup, 0);
-//        }
+        if(node.isRootOfGroup()) {
+            buffer.put(RegexVm.Instruction.endGroup, 0);
+        }
         
         this._nodeCodeMap.set(node, buffer);
     };
@@ -5673,22 +5648,22 @@
                 _opTypeMap.get(OperatorTypeKeys.regexAlternation)
             )
         );
-        for(
-            var i = this._keyTokenMap.values(), iP = i.next();
-            !iP.done;
-            iP = i.next()
-        ) {
-            var token = iP.value;
-            regexStr += (regexStr === "" ? "" : "|||");
-            if(token._subRoutineOnly) {
-                regexStr += "(@{subRoutineOnly}" + token._regexText + ')';
-            }
-            else {
-                regexStr += token._regexText;
-            }
-            regexStr += "(@{accept}{" + token._key + '})';
-            rootNode.addChild(iP.value._astRootNode);
-        }
+        karbonator.forOf(
+            this._keyTokenMap,
+            function (pair) {
+                var token = pair[1];
+                regexStr += (regexStr === "" ? "" : "|||");
+                if(token._subRoutineOnly) {
+                    regexStr += "(@{subRoutineOnly}" + token._regexText + ')';
+                }
+                else {
+                    regexStr += token._regexText;
+                }
+                regexStr += "(@{accept}{" + token._key + '})';
+                rootNode.addChild(token._astRootNode);
+            },
+            this
+        );
         
         var lexer = new string.Lexer();
         var bytecode = this._bytecodeEmitter.emitCode(
@@ -5698,23 +5673,23 @@
         bytecode._regexStr = regexStr;
         lexer._regexVm._bytecode = bytecode;
         
-        for(
-            var i = this._keyTokenMap.entries(), iP = i.next();
-            !iP.done;
-            iP = i.next()
-        ) {
-            var key = iP.value[0];
-            var token = iP.value[1];
-            lexer._keyTokenMap.set(
-                key,
-                new Lexer.Token(
-                    key, token._name,
-                    token._regexText,
-                    token._subRoutineOnly
-                )
-            );
-            lexer._nameKeyMap.set(token._name, key);
-        }
+        karbonator.forOf(
+            this._keyTokenMap,
+            function (pair) {
+                var key = pair[0];
+                var token = pair[1];
+                this._keyTokenMap.set(
+                    key,
+                    new Lexer.Token(
+                        key, token._name,
+                        token._regexText,
+                        token._subRoutineOnly
+                    )
+                );
+                this._nameKeyMap.set(token._name, key);
+            },
+            lexer
+        );
         
         return lexer;
     };

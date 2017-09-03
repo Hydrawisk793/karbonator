@@ -1,6 +1,6 @@
 ﻿/**
  * author : Hydrawisk793
- * e-mail : hyw793@naver.com
+ * e-mail : hyw793&#x40;naver.com
  * blog : http://blog.naver.com/hyw793
  * disclaimer : The author is not responsible for any problems 
  * that may arise by using this source code.
@@ -36,7 +36,9 @@
 (function (global, karbonator) {
     "use strict";
     
-    var detail = karbonator.detail;
+    global;
+    
+    //var detail = karbonator.detail;
     
     /**
      * @memberof karbonator
