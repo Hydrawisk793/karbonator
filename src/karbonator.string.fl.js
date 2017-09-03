@@ -20,14 +20,23 @@
     "use strict";
     
     if(typeof(g.define) === "function" && g.define.amd) {
-        g.define(["./karbonator.collection"], function (karbonator) {
-            return factory(g, karbonator);
-        });
+        g.define(
+            [
+                "./karbonator.collection",
+                "./karbonator.math.interval",
+                "./karbonator.util.enum"
+            ],
+            function (karbonator) {
+                return factory(g, karbonator);
+            }
+        );
     }
     else if(typeof(g.module) !== "undefined" && g.module.exports) {
+        require("./karbonator.collection");
+        require("./karbonator.math.interval");
         g.exports = g.module.exports = factory(
             g,
-            require("./karbonator.collection")
+            require("./karbonator.util.enum")
         );
     }
 }(
@@ -44,7 +53,7 @@
     var assertion = karbonator.assertion;
     
     var Array = global.Array;
-    var Symbol = detail._selectSymbol();
+    var Symbol = karbonator.getEsSymbol();
     
     var TreeSet = collection.TreeSet;
     var TreeMap = collection.TreeMap;
@@ -56,8 +65,10 @@
     var Set = collection.ListSet;
     var Map = collection.ListMap;
     
+    var Enum = karbonator.util.Enum;
+    
     //For debugging only...
-    //Array.prototype.toString function fucking sucks...
+    //The original 'Array.prototype.toString' function fucking sucks.
     //Why the function just flattens all multidimensional arrays?
     //It's fucking annoying because it makes debugging hard...
     Array.prototype.toString = function () {
@@ -457,7 +468,7 @@
      * @private
      * @constructor
      */
-    RegexVm._IntegerType = karbonator.Enum.create(
+    RegexVm._IntegerType = Enum.create(
         /**
          * @param {Object} proto
          */
@@ -500,7 +511,7 @@
      * @memberof RegexVm
      * @constructor
      */
-    RegexVm.OperandType = karbonator.Enum.create(
+    RegexVm.OperandType = Enum.create(
         /**
          * @param {Object} proto
          */
@@ -522,7 +533,7 @@
                 
                 str += "name";
                 str += " : ";
-                str += this[karbonator.Enum.getKey]();
+                str += this[Enum.getKey]();
                 
                 str += '}';
                 
@@ -546,7 +557,7 @@
      * @memberof RegexVm
      * @constructor
      */
-    RegexVm.Instruction = karbonator.Enum.create(
+    RegexVm.Instruction = Enum.create(
         /**
          * @param {Object} proto
          */
@@ -667,8 +678,7 @@
                     [RegexVm.OperandType.offset]
                 ],
                 [
-                    "reserved02",
-                    0x02,
+                    "reserved02", 
                     null
                 ],
                 [
@@ -962,7 +972,7 @@
         var finalMatchThreadFound = false;
         var matchThread = null;
         
-//        var debugStr = "";
+        var debugStr = "";
         
         this.createThread(0);
         
@@ -978,7 +988,7 @@
                 var th = this._ctxts[i];
                 while(!th.isDead()) {
                     th.execute();
-//                    debugStr += this.createExecInfoDebugMessage(th) + "\r\n";
+                    debugStr += this.createExecInfoDebugMessage(th) + "\r\n";
                     
                     if(((th._lastOpCode & 0xF0) >>> 4) === 1) {
                         break;
@@ -1017,7 +1027,7 @@
 //                    aliveThreads.push(th);
                 }
                 
-//                debugStr += ".............................." + "\r\n";
+                debugStr += ".............................." + "\r\n";
                 
                 //debugger;
             }
@@ -1027,15 +1037,15 @@
             aliveThreads = temp;
             aliveThreads.length = 0;
             
-//            debugStr += "threads(" + this._ctxts.length + ") === [" + "\r\n";
-//            for(var i = 0; i < this._ctxts.length; ++i) {
-//                var th = this._ctxts[i];
-//                debugStr += 'T' + th._id + '(' + '[' + _createConsumedValuesDebugString(th._consumedValues) + ']' + ')' + "\r\n";
-//            }
-//            debugStr += ']';
-//            if(this._ctxts.length < 1) {
-//                debugStr += "\r\n";
-//            }
+            debugStr += "threads(" + this._ctxts.length + ") === [" + "\r\n";
+            for(var i = 0; i < this._ctxts.length; ++i) {
+                var th = this._ctxts[i];
+                debugStr += 'T' + th._id + '(' + '[' + _createConsumedValuesDebugString(th._consumedValues) + ']' + ')' + "\r\n";
+            }
+            debugStr += ']';
+            if(this._ctxts.length < 1) {
+                debugStr += "\r\n";
+            }
             
 //            if(acceptedThreads.length > 0) {
 //                debugger;
@@ -1046,9 +1056,9 @@
                 
                 var th = acceptedThreads[i];
                 
-//                debugStr += this.createMatchResultDebugMessage(th)
-//                    + "\r\n"
-//                ;
+                debugStr += this.createMatchResultDebugMessage(th)
+                    + "\r\n"
+                ;
                 
                 if(null === matchThread) {
                     matchThread = th;
@@ -1064,7 +1074,7 @@
                     if(th.isPriorTo(matchThread)) {
                         matchThread = th;
                         
-//                        debugStr += 'T' + th._id + " is prior to the selected thread." + "\r\n";
+                        debugStr += 'T' + th._id + " is prior to the selected thread." + "\r\n";
                     }
                     
                     var priorToAlivingThs = true;
@@ -1074,7 +1084,7 @@
                     if(priorToAlivingThs) {
                         finalMatchThreadFound = true;
                         
-//                        debugStr += 'T' + th._id + " is prior to aliving threads." + "\r\n";
+                        debugStr += 'T' + th._id + " is prior to aliving threads." + "\r\n";
                     }
                 }
             }
@@ -1096,22 +1106,22 @@
                 aliveThreads = temp;
                 aliveThreads.length = 0;
                 
-//                debugStr += "selectedResult === "
-//                    + this.createMatchResultDebugMessage(matchThread)
-//                    + "\r\n"
-//                ;
+                debugStr += "selectedResult === "
+                    + this.createMatchResultDebugMessage(matchThread)
+                    + "\r\n"
+                ;
             }
             
-//            debugStr += "\r\n";
-//            debugStr += "------------------------------" + "\r\n";
+            debugStr += "\r\n";
+            debugStr += "------------------------------" + "\r\n";
             
             //debugger;
         }
         
-//        debugStr += (null === matchThread ? "Failed..." : "Found!!!") + "\r\n";
-//        debugStr += "==============================" + "\r\n";
+        debugStr += (null === matchThread ? "Failed..." : "Found!!!") + "\r\n";
+        debugStr += "==============================" + "\r\n";
         
-//        console.log(debugStr);
+        console.log(debugStr);
         
         return (null !== matchThread ? matchThread._matchResult : null);
     };
@@ -2658,9 +2668,9 @@
      * @private
      * @enum {Object}
      */
-    RegexParser._CharRange = karbonator.Enum.create(
+    RegexParser._CharRange = Enum.create(
         /**
-         * @param {karbonator.Enum} proto
+         * @param {karbonator.util.Enum} proto
          */
         function (proto) {
             proto.getRange = function () {
@@ -2698,9 +2708,9 @@
      * @private
      * @enum {Object}
      */
-    RegexParser._CharRangeSet = karbonator.Enum.create(
+    RegexParser._CharRangeSet = Enum.create(
         /**
-         * @param {karbonator.Enum} proto
+         * @param {karbonator.util.Enum} proto
          * @param {Function} ctor
          */
         function (proto, ctor) {
@@ -2962,7 +2972,7 @@
                     valueType = 2;
                     value.push(
                         RegexParser._CharRangeSet.space[
-                            karbonator.Enum.getIndex
+                            Enum.getIndex
                         ]()
                     );
                     
@@ -2974,7 +2984,7 @@
                     valueType = 2;
                     value.push(
                         RegexParser._CharRangeSet.nonWhiteSpaces[
-                            karbonator.Enum.getIndex
+                            Enum.getIndex
                         ]()
                     );
                     
@@ -2986,7 +2996,7 @@
                     valueType = 2;
                     value.push(
                         RegexParser._CharRangeSet.word[
-                            karbonator.Enum.getIndex
+                            Enum.getIndex
                         ]()
                     );
                     
@@ -2998,7 +3008,7 @@
                     valueType = 2;
                     value.push(
                         RegexParser._CharRangeSet.nonWord[
-                            karbonator.Enum.getIndex
+                            Enum.getIndex
                         ]()
                     );
                     
@@ -3763,7 +3773,7 @@
                         break;
                         case 1:
                             exprCtxt.pushTerm(
-                                karbonator.Enum.getValueAt(
+                                Enum.getValueAt(
                                     RegexParser._CharRange,
                                     scanResult.value[0]
                                 ).getRange()
@@ -3773,7 +3783,7 @@
                         break;
                         case 2:
                             exprCtxt.pushTerm(
-                                karbonator.Enum.getValueAt(
+                                Enum.getValueAt(
                                     RegexParser._CharRangeSet,
                                     scanResult.value[0]
                                 ).getRanges()
@@ -4295,7 +4305,7 @@
                         break;
                         case 1:
                             exprCtx.pushTerm(
-                                karbonator.Enum.getValueAt(
+                                Enum.getValueAt(
                                     RegexParser._CharRange,
                                     scanResult.value[0]
                                 ).getRange()
@@ -4305,7 +4315,7 @@
                         break;
                         case 2:
                             exprCtx.pushTerm(
-                                karbonator.Enum.getValueAt(
+                                Enum.getValueAt(
                                     RegexParser._CharRangeSet,
                                     scanResult.value[0]
                                 ).getRanges()
@@ -5126,7 +5136,7 @@
                 this._ranges.add(range);
                 buffer.put(
                     RegexVm.Instruction.testRange,
-                    this._ranges.findIndex(range)
+                    this._ranges.indexOf(range)
                 );
             }
         break;
@@ -5135,14 +5145,14 @@
             for(var i = 0; i < ranges.length; ++i) {
                 range = ranges[i];
                 this._ranges.add(range);
-                var rangeNdx = this._ranges.findIndex(range);
+                var rangeNdx = this._ranges.indexOf(range);
                 rangeSet.push(rangeNdx);
             }
             
             this._rangeIndexSets.add(rangeSet);
             buffer.put(
                 RegexVm.Instruction.testRanges,
-                this._rangeIndexSets.findIndex(rangeSet)
+                this._rangeIndexSets.indexOf(rangeSet)
             );
         }
         

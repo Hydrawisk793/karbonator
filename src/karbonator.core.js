@@ -3,7 +3,7 @@
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
  * disclaimer : The author is not responsible for any problems 
- * that that may arise by using this source code.
+ * that may arise by using this source code.
  */
 
 /**
@@ -14,17 +14,15 @@
     "use strict";
     
     if(typeof(g.define) === "function" && g.define.amd) {
-        g.define(["./karbonator.polyfill-es"],
-            function (karbonator) {
-                return factory(g, karbonator);
-            }
-        );
+        g.define(function () {
+            return factory(g);
+        });
     }
     else if(typeof(g.module) !== "undefined" && g.module.exports) {
-        g.exports = g.module.exports = factory(
-            g,
-            require("./karbonator.polyfill-es")
-        );
+        g.exports = g.module.exports = factory(g);
+    }
+    else {
+        g.karbonator = factory(g);
     }
 }(
 (
@@ -32,41 +30,140 @@
     ? global
     : (typeof(window) !== "undefined" ? window : this)
 ),
-(function (global, karbonator) {
+(function (global) {
     "use strict";
     
-    var detail = karbonator.detail;
-    
-    var Number = global.Number;
-    var Symbol = detail._selectSymbol();
-    var Reflect = detail._selectReflect();
+    /**
+     * @global
+     * @namespace
+     */
+    var karbonator = {};
     
     /**
-     * @memberof karbonator.detail
+     * @memberof karbonator
+     * @namespace
+     */
+    var detail = {};
+    karbonator.detail = detail;
+    
+    var Function = global.Function;
+    var Array = global.Array;
+    
+    /*////////////////////////////////////////////////////////////////*/
+    //Constants
+    
+    /**
      * @readonly
      */
-    detail._identifierRegEx = /[a-zA-Z_$][a-zA-Z_$0-9]*/;
+    detail._twoPower7 = 128;
+    
+    /**
+     * @readonly
+     */
+    detail._twoPower8 = 256;
+    
+    /**
+     * @readonly
+     */
+    detail._twoPower15 = 32768;
+    
+    /**
+     * @readonly
+     */
+    detail._twoPower16 = 65536;
+    
+    /**
+     * @readonly
+     */
+    detail._twoPower31 = 2147483648;
+    
+    /**
+     * @readonly
+     */
+    detail._twoPower32 = 4294967296;
+    
+    /**
+     * @memberof karbonator
+     * @readonly
+     */
+    karbonator.minimumSafeInteger = (
+        Number.MIN_SAFE_INTEGER
+        ? Number.MIN_SAFE_INTEGER
+        : -9007199254740991
+    );
+    
+    /**
+     * @memberof karbonator
+     * @readonly
+     */
+    karbonator.maximumSafeInteger = (
+        Number.MAX_SAFE_INTEGER
+        ? Number.MAX_SAFE_INTEGER
+        : 9007199254740991
+    );
+    
+    /*////////////////////////////////////////////////////////////////*/
+    
+    /*////////////////////////////////////////////////////////////////*/
+    //Common internal functions.
     
     /**
      * @memberof karbonator.detail
      * @function
-     * @param {Object} global
-     * @return {String}
+     * @param {Object} arr
+     * @param {Function} traitAssertionFunc
+     * @param {*} pushBackMethodKey
+     * @param {Object} arrayLike
+     * @param {Function} [mapFunction]
+     * @param {Object} [thisArg]
+     * @return {Object}
      */
-    detail._testEnvironmentType = function (global) {
-        var envType = "Other";
+    detail._arrayFromFunctionBody = function (arr, traitAssertionFunc, pushBackMethodKey, arrayLike) {
+        traitAssertionFunc = (
+            karbonator.isUndefinedOrNull(traitAssertionFunc)
+            ? (function (v) {return v;})
+            : traitAssertionFunc
+        );
+        var mapFn = arguments[4];
+        var mapFnExist = karbonator.isFunction(mapFn);
+        var thisArg = arguments[5];
         
-        if((new Function("try{return this===window}catch(e){return false;}")).bind(global)()) {
-            envType = "WebBrowser";
+        if(arrayLike[global.Symbol.iterator]) {
+            for(
+                var i = arrayLike[global.Symbol.iterator](), iP = i.next(), j = 0;
+                !iP.done;
+                iP = i.next(), ++j
+            ) {
+                var elem = traitAssertionFunc(iP.value);
+                if(mapFnExist) {
+                    arr[pushBackMethodKey](mapFn.call(thisArg, elem, j));
+                }
+                else {
+                    arr[pushBackMethodKey](elem);
+                }
+            }
         }
-        else if(
-            !karbonator.isUndefined(global.process)
-            && global.process.release.name === "node"
-        ) {
-            envType = "Node.js";
-        }
+        //TODO : 코드 작성...?
+//        else if (isArrayLike(arrayLike)) {
+//            
+//        }
         
-        return envType;
+        return arr;
+    };
+    
+    /**
+     * @memberof karbonator.detail
+     * @function
+     * @param {*} preferred
+     * @param {*} alternative
+     * @return {*}
+     */
+    detail._selectNonUndefined = function (preferred, alternative) {
+        return (
+            !karbonator.isUndefined(preferred)
+            ? preferred
+            : alternative
+        );
     };
     
     /**
@@ -98,6 +195,422 @@
             : alternative
         );
     };
+    
+    detail._objectCreate = global.Object.create || (function (proto) {
+        if(null === proto) {
+            throw new Error("This polyfill doesn't support null argument for the 'proto' parameter.");
+        }
+
+        if(!karbonator.isObjectOrFunction(proto)) {
+            throw new TypeError("The parameter 'proto' must be an object.");
+        }
+
+        var Derived = function () {};
+        Derived.prototype = proto;
+
+        var newObject = new Derived();
+        newObject.constructor = proto.constructor;
+        if(arguments.length > 1) {
+            Object.defineProperties(Derived.prototype, arguments[1]);
+        }
+
+        return newObject;
+    });
+    
+    detail._arrayFindIndex = function (arr, callback) {
+        var index = 0;
+        for(var thisArg = arguments[1]; index < arr.length; ++index) {
+            if(callback.call(thisArg, arr[index], index, arr)) {
+                return index;
+            }
+        }
+
+        return -1;
+    };
+    
+    /*////////////////////////////////////////////////////////////////*/
+    
+    /*////////////////////////////////////////////////////////////////*/
+    //EsSymbol
+    
+    if(!global.Symbol) {
+        /**
+         * @function
+         * @param {*} arg
+         * @return {String}
+         */
+        var _createKey = function (arg) {
+            var key = "";
+
+            switch(typeof arg) {
+            case "string":
+                key = arg;
+            break;
+            case "object":
+                key = (null === arg ? "null" : arg.toString());
+            break;
+            case "undefined":
+                key = "";
+            break;
+            default:
+                key = arg.toString();
+            }
+
+            return key;
+        };
+        
+        var _globalIdCounter = 0;
+        
+        var _FakeSymbolCtor = function () {
+            this._key = _createKey(arguments[0]);
+            
+            //A non-standard behaviour that tests if the id sequencer overflow has occured.
+            //This is needed because the non-standard 'id' of polyfilled symbol must be distinct.
+            this._id = ++_globalIdCounter;
+            if(this._id === 0) {
+                throw new Error("The Symbol polyfill cannot instantiate additional distinct symbols...");
+            }
+        };
+        
+        /**
+         * Creates and returns a new symbol using a optional parameter 'description' as a key.<br/>
+         * There is no way to force not using the new operator 
+         * because the 'new.target' virtual property does not exist in Es3 environment.<br/>
+         * references: <br/>
+         * - http://ecma-international.org/ecma-262/5.1/#sec-9.12 <br/>
+         * - https://www.keithcirkel.co.uk/metaprogramming-in-es6-symbols/ <br/>
+         * @constructor
+         * @param {String} [description=""]
+         * @return {karbonator.EsSymbol}
+         */
+        var EsSymbol = function () {
+            //This code can't be a complete alternative of 'new.target' proposed in Es6 spec
+            //because this can cause some problems
+            //when Object.create(karbonator.EsSymbol.prototype) is used to inherit 'karbonator.EsSymbol.prototype'.
+            //if((this instanceof karbonator.EsSymbol)) {
+            //    throw new TypeError("'Symbol' cannot be instantiated by the new operator.");
+            //}
+
+            var arg = arguments[0];
+            //It works because it's a polyfill which is an object...
+            if(arg instanceof EsSymbol) {
+                throw new TypeError("Cannot convert symbol value to string.");
+            }
+            var newSymbol = new _FakeSymbolCtor(arg);
+
+            return newSymbol;
+        };
+        EsSymbol.prototype = _FakeSymbolCtor.prototype;
+        EsSymbol.prototype.constructor = EsSymbol;
+        
+        /**
+         * @memberof karbonator.EsSymbol
+         * @private
+         * @constructor
+         */
+        EsSymbol.Registry = function () {
+            this._registry = [];
+        };
+        
+        /**
+         * @function
+         * @param {String} key
+         * @return {Boolean}
+         */
+        EsSymbol.Registry.prototype.hasSymbol = function (key) {
+            return this._findPairIndexByKey(key) >= 0;
+        };
+        
+        /**
+         * @function
+         * @param {karbonator.EsSymbol} symbol
+         * @return {String|undefined}
+         */
+        EsSymbol.Registry.prototype.findKeyBySymbol = function (symbol) {
+            var index = detail._arrayFindIndex(
+                this._registry,
+                function (pair) {
+                    //Es6 스펙 19.4.2.5절에 따라 === 사용.
+                    return pair.value === symbol
+                        //&& pair.key === symbol._key
+                    ;
+                }
+            );
+            if(index >= 0) {
+                return this._registry[index].key;
+            }
+        };
+        
+        /**
+         * @function
+         * @param {String} key
+         * @return {karbonator.EsSymbol}
+         */
+        EsSymbol.Registry.prototype.getOrCreateSymbolByKey = function (key) {
+            var index = this._findPairIndexByKey(key);
+            if(index < 0) {
+                index = this._registry.length;
+                this._registry.push({key : key, value : EsSymbol(key)});
+            }
+
+            return this._registry[index].value;
+        };
+        
+        /**
+         * @function
+         * @param {String} key
+         * @return {Number}
+         */
+        EsSymbol.Registry.prototype._findPairIndexByKey = function (key) {
+            return detail._arrayFindIndex(
+                this._registry,
+                function (pair) {
+                    return pair.key === key;
+                }
+            );
+        };
+        
+        /**
+         * @memberof karbonator.EsSymbol
+         * @private
+         */
+        EsSymbol._globalRegistry = new EsSymbol.Registry();
+        
+        var _knownSymbolKeys = [
+            "iterator",
+            "match",
+            "replace",
+            "search",
+            "split",
+            "hasInstance",
+            "isConcatSpreadable",
+            "unscopables",
+            "species",
+            "toPrimitive",
+            "toStringTag"
+        ];
+        
+        for(var i = _knownSymbolKeys.length; i > 0; ) {
+            --i;
+            
+            var knownSymbolKey = _knownSymbolKeys[i];
+            EsSymbol[knownSymbolKey] = EsSymbol(knownSymbolKey);
+        }
+        
+        /**
+         * @memberof karbonator.EsSymbol
+         * @function
+         * @param {String} key
+         * @return {karbonator.EsSymbol}
+         */
+        EsSymbol["for"] = function (key) {
+            return EsSymbol._globalRegistry.getOrCreateSymbolByKey(
+                _createKey((!karbonator.isUndefined(key) ? key : "undefined"))
+            );
+        };
+        
+        /**
+         * @memberof karbonator.EsSymbol
+         * @function
+         * @param {karbonator.EsSymbol} symbol
+         * @return {String|undefined}
+         */
+        EsSymbol.keyFor = function (symbol) {
+            return EsSymbol._globalRegistry.findKeyBySymbol(symbol);
+        };
+        
+        /**
+         * A non-standard function to get 'SymbolDescriptiveString'.
+         * @function
+         * @return {String}
+         */
+        EsSymbol.prototype.toSymbolDescriptiveString = function () {
+            return "Symbol(" + this._key + ")";
+        };
+
+        /**
+         * Outputs a 'non-standard' string for distinguishing each symbol instances.
+         * To get a 'SymbolDescriptiveString' described in the standard,
+         * use a non-standard function 'karbonator.EsSymbol.prototype.toSymbolDescriptiveString' instead.
+         * @function
+         * @return {String}
+         * @see karbonator.EsSymbol.prototype.toSymbolDescriptiveString
+         */
+        EsSymbol.prototype.toString = function () {
+            return EsSymbol._symbolKeyPrefix + this._id + "_" + this.toSymbolDescriptiveString();
+        };
+        
+        /**
+         * @function
+         * @return {karbonator.EsSymbol}
+         */
+        EsSymbol.prototype.valueOf = function () {
+            return this;
+        };
+
+//        /**
+//         * @function
+//         * @param {String} hint
+//         * @return {karbonator.EsSymbol}
+//         */
+//        EsSymbol.prototype[EsSymbol.toPrimitive] = function (hint) {
+//            return this.valueOf();
+//        };
+
+        /**
+         * @memberof karbonator.EsSymbol
+         * @private
+         * @readonly
+         */
+        EsSymbol._symbolKeyPattern = new RegExp("^" + EsSymbol._symbolKeyPrefix + "[0-9]+_");
+        
+        /**
+         * @memberof karbonator.EsSymbol
+         * @private
+         * @readonly
+         */
+        EsSymbol._symbolKeyPrefix = detail._polyfillPropNamePrefix + "Symbol";
+        
+        karbonator.EsSymbol = EsSymbol;
+    }
+    
+    /**
+     * @memberof karbonator
+     * @return {Symbol|karbonator.EsSymbol}
+     */
+    karbonator.getEsSymbol = function () {
+        return global.Symbol ? global.Symbol : karbonator.EsSymbol;
+    };
+    
+    /*////////////////////////////////////////////////////////////////*/
+    
+    /*////////////////////////////////////////////////////////////////*/
+    //EsReflect
+    
+    if(!global.Reflect) {
+        /**
+         * @memberof karbonator
+         */
+        karbonator.EsReflect = {
+            apply : function (target, thisArg, args) {
+                return global.Function.prototype.apply.call(target, thisArg, args);
+            },
+            
+            construct : function (ctor, args) {
+                if(arguments.length > 2) {
+                    throw new Error("This polyfill doesn't support the third argument 'newTarget'.");
+                }
+                
+                var newObj = detail._objectCreate(ctor.prototype);
+                ctor.apply(newObj, args);
+                
+                return newObj;
+            },
+            
+            has : function (target, key) {
+                return (key in target);
+            },
+            
+            ownKeys : function (target) {
+                if(!karbonator.isObjectOrFunction(target)) {
+                    throw new TypeError("The parameter must be a object or a function.");
+                }
+                
+                return Object.getOwnPropertyNames(target).concat(Object.getOwnPropertySymbols(target));
+            },
+            
+            getOwnPropertyDescriptor : function () {
+                throw new Error("Not polyfilled yet...");
+            },
+            
+            defineProperty : function (target, propName, descriptor) {
+                try {
+                    Object.defineProperty(target, propName, descriptor);
+                    
+                    return true;
+                }
+                catch(e) {
+                    return false;
+                }
+            },
+            
+            deleteProperty : function (target, propKey) {
+                return delete target[propKey];
+            },
+            
+            get : function () {
+                throw new Error("Not polyfilled yet...");
+            },
+            
+            set : function (target, propName, value) {
+                throw new Error("Not polyfilled yet...");
+            },
+            
+            getPrototypeOf : function (target) {
+                return Object.getPrototypeOf(target);
+            },
+            
+            setPrototypeOf : function (target, proto) {
+                throw new Error("Not polyfilled yet...");
+            },
+            
+            isExtensible : function (target) {
+                if(!karbonator.isObjectOrFunction(target)) {
+                    throw new TypeError("The parameter must be a object or a function.");
+                }
+                
+                return Object.isExtensible(target);
+            },
+            
+            preventExtensions : function () {
+                throw new Error("Not polyfilled yet...");
+            }
+        };
+    }
+    
+    /**
+     * @memberof karbonator
+     * @return {global.Reflect|karbonator.EsReflect}
+     */
+    karbonator.getEsReflect = function () {
+        return (
+            global.Reflect
+            ? global.Reflect
+            : karbonator.EsReflect
+        );
+    };
+    
+    /*////////////////////////////////////////////////////////////////*/
+    
+    var Symbol = karbonator.getEsSymbol();
+    
+    /**
+     * @memberof karbonator.detail
+     * @readonly
+     */
+    detail._identifierRegEx = /[a-zA-Z_$][a-zA-Z_$0-9]*/;
+    
+//    /**
+//     * @memberof karbonator.detail
+//     * @function
+//     * @param {Object} global
+//     * @return {String}
+//     */
+//    detail._testEnvironmentType = function (global) {
+//        var envType = "Other";
+//        
+//        if((new Function("try{return this===window}catch(e){return false;}")).bind(global)()) {
+//            envType = "WebBrowser";
+//        }
+//        else if(
+//            !karbonator.isUndefined(global.process)
+//            && global.process.release.name === "node"
+//        ) {
+//            envType = "Node.js";
+//        }
+//        
+//        return envType;
+//    };
     
     /**
      * @memberof karbonator.detail
@@ -180,38 +693,315 @@
         })
     );
     
-    /*////////////////////////////////*/
-    //global.Console polyfill.(usually for node.js)
-    
-    (function (console) {
-        if(
-            !karbonator.isUndefined(console)
-            && !console.clear
-            && console.log
-        ) {
-            console.clear = (
-                global.process
-                ? (function () {
-                    var lines = global.process.stdout.getWindowSize()[1];
-                    for(var i = 0; i < lines; i++) {
-                        console.log('\x1BC');
-                    }
-                })
-                : console.clear = (function () {
-                    console.log('\x1B[EJ');
-                })
-            );
-        }
-    }(global.console));
-    
-    /*////////////////////////////////*/
-    
     /*////////////////////////////////////////////////////////////////*/
-    //The snapshots of 'polyfilled' ECMAScript built-in objects
+    //Trait test functions.
     
-    var Object = global.Object;
-    var Array = global.Array;
-    var Date = global.Date;
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isUndefined = function (o) {
+        return "undefined" === typeof o;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isUndefinedOrNull = function (o) {
+        return "undefined" === typeof o
+            || null === o
+        ;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isObject = function (o) {
+        return "object" === typeof o && null !== o;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isFunction = function (o) {
+        return "function" === typeof o
+            || o instanceof global.Function
+        ;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isCallable = function (o) {
+        return karbonator.isFunction(o);
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isObjectOrFunction = function (o) {
+        var result = false;
+        
+        switch(typeof o) {
+        case "function":
+            result = true;
+        break;
+        case "object":
+            result = o instanceof global.Function || null !== o;
+        //break;
+        }
+        
+        return result;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isBoolean = function (o) {
+        return "boolean" === typeof o
+            || o instanceof Boolean
+        ;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isNumber = function (o) {
+        return ("number" === typeof o || o instanceof Number)
+            && !global.isNaN(o)
+        ;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isNonNegativeSafeInteger = function (o) {
+        return karbonator.isSafeInteger(o) || o >= 0;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {Number} n
+     * @return {Boolean}
+     */
+    karbonator.isInteger = (
+        Number.isInteger
+        ? Number.isInteger
+        : (function (n) {
+            return global.isFinite(n)
+                && n === karbonator.toInteger(n)
+            ;
+        })
+    );
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {Number} n
+     * @return {Boolean}
+     */
+    karbonator.isSafeInteger = (
+        Number.isSafeInteger
+        ? Number.isSafeInteger
+        : (function (n) {
+            return karbonator.isInteger(n)
+                && Math.abs(n) <= karbonator.maximumSafeInteger
+            ;
+        })
+    );
+
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {Number} n
+     * @return {Boolean}
+     */
+    karbonator.isPositiveZero = function (n) {
+        return 1 / n === global.Infinity;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {Number} n
+     * @return {Boolean}
+     */
+    karbonator.isNegativeZero = function (n) {
+        return 1 / n === -global.Infinity;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isInt8 = function (o) {
+        return karbonator.isSafeInteger(o)
+            && (o >= -detail._twoPower7 && o < detail._twoPower7)
+        ;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isUint8 = function (o) {
+        return karbonator.isSafeInteger(o)
+            && (o >= 0 && o < detail._twoPower8)
+        ;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isInt16 = function (o) {
+        return karbonator.isSafeInteger(o)
+            && (o >= -detail._twoPower15 && o < detail._twoPower15)
+        ;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isUint16 = function (o) {
+        return karbonator.isSafeInteger(o)
+            && (o >= 0 && o < detail._twoPower16)
+        ;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isInt32 = function (o) {
+        return karbonator.isSafeInteger(o)
+            && (o >= -detail._twoPower31 && o < detail._twoPower31)
+        ;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isUint32 = function (o) {
+        return karbonator.isSafeInteger(o)
+            && (o >= 0 && o < detail._twoPower32)
+        ;
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isString = function (o) {
+        var result = false;
+        
+        switch(typeof o) {
+        case "string":
+            result = true;
+        break;
+        case "object":
+            result = o instanceof String;
+        //break;
+        }
+        
+        return result;
+    };
+    
+    /**
+     * @memberof karbonator.detail
+     * @constructor
+     */
+    detail._Array = function () {
+        Array.apply(this, arguments);
+    };
+    detail._Array.prototype = Array.prototype;
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isArray = (
+        Array.isArray
+        ? Array.isArray
+        : (function (o) {
+            //Uses a 'snapshot' constructor function 
+            //that has the original 'Array.prototype'.
+            return karbonator.isObject(o)
+                && o instanceof detail._Array
+            ;
+        })
+    );
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isSymbol = function (o) {
+        return (
+            global.Symbol
+            ? "symbol" === typeof o
+            : o instanceof karbonator.EsSymbol
+        );
+    };
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} o
+     * @return {Boolean}
+     */
+    karbonator.isEsIterable = function (o) {
+        return !karbonator.isUndefinedOrNull(o)
+            && !karbonator.isUndefinedOrNull(o[Symbol.iterator])
+        ;
+    };
     
     /*////////////////////////////////////////////////////////////////*/
     
@@ -317,9 +1107,6 @@
     /*////////////////////////////////////////////////////////////////*/
     
     /*////////////////////////////////////////////////////////////////*/
-    //karbonator namespace.
-    
-    /*////////////////////////////////*/
     //Utilities for Es3 environments.
     
     /**
@@ -328,185 +1115,26 @@
      * @param {iterable} iterable
      * @param {Function} callback
      * @param {Object} [thisArg]
+     * @return {Boolean} Whether the iteration has been discontinued.
      */
     karbonator.forOf = function (iterable, callback) {
         var thisArg = arguments[2];
         
+        var stopIteration = false;
         for(
             var i = iterable[Symbol.iterator](), iP = i.next();
-            !iP.done;
+            !iP.done && !stopIteration;
             iP = i.next()
         ) {
-            callback.call(thisArg, iP.value);
+            stopIteration = !!callback.call(thisArg, iP.value);
         }
+        
+        return stopIteration;
     };
     
-    /*////////////////////////////////*/
+    /*////////////////////////////////////////////////////////////////*/
     
-    /*////////////////////////////////*/
-    //Trait test functions.
-    
-    /**
-     * @readonly
-     */
-    detail._twoPower7 = 128;
-    
-    /**
-     * @readonly
-     */
-    detail._twoPower8 = 256;
-    
-    /**
-     * @readonly
-     */
-    detail._twoPower15 = 32768;
-    
-    /**
-     * @readonly
-     */
-    detail._twoPower16 = 65536;
-    
-    /**
-     * @readonly
-     */
-    detail._twoPower31 = 2147483648;
-    
-    /**
-     * @readonly
-     */
-    detail._twoPower32 = 4294967296;
-    
-    /**
-     * @memberof karbonator
-     * @function
-     * @param {*} o
-     * @return {Boolean}
-     */
-    karbonator.isCallable = function (o) {
-        return karbonator.isFunction(o);
-    };
-    
-    /**
-     * @memberof karbonator
-     * @function
-     * @param {*} o
-     * @return {Boolean}
-     */
-    karbonator.isBoolean = function (o) {
-        return "boolean" === typeof o
-            || o instanceof Boolean
-        ;
-    };
-    
-    /**
-     * @memberof karbonator
-     * @function
-     * @param {*} o
-     * @return {Boolean}
-     */
-    karbonator.isNumber = function (o) {
-        return ("number" === typeof o || o instanceof Number)
-            && !global.isNaN(o)
-        ;
-    };
-    
-    /**
-     * @memberof karbonator
-     * @function
-     * @param {*} o
-     * @return {Boolean}
-     */
-    karbonator.isNonNegativeSafeInteger = function (o) {
-        return o >= 0 && karbonator.isSafeInteger(o);
-    };
-    
-    /**
-     * @memberof karbonator
-     * @function
-     * @param {*} o
-     * @return {Boolean}
-     */
-    karbonator.isInt8 = function (o) {
-        return karbonator.isSafeInteger(o)
-            && (o >= -detail._twoPower7 && o < detail._twoPower7)
-        ;
-    };
-    
-    /**
-     * @memberof karbonator
-     * @function
-     * @param {*} o
-     * @return {Boolean}
-     */
-    karbonator.isUint8 = function (o) {
-        return karbonator.isSafeInteger(o)
-            && (o >= 0 && o < detail._twoPower8)
-        ;
-    };
-    
-    /**
-     * @memberof karbonator
-     * @function
-     * @param {*} o
-     * @return {Boolean}
-     */
-    karbonator.isInt16 = function (o) {
-        return karbonator.isSafeInteger(o)
-            && (o >= -detail._twoPower15 && o < detail._twoPower15)
-        ;
-    };
-    
-    /**
-     * @memberof karbonator
-     * @function
-     * @param {*} o
-     * @return {Boolean}
-     */
-    karbonator.isUint16 = function (o) {
-        return karbonator.isSafeInteger(o)
-            && (o >= 0 && o < detail._twoPower16)
-        ;
-    };
-    
-    /**
-     * @memberof karbonator
-     * @function
-     * @param {*} o
-     * @return {Boolean}
-     */
-    karbonator.isInt32 = function (o) {
-        return karbonator.isSafeInteger(o)
-            && (o >= -detail._twoPower31 && o < detail._twoPower31)
-        ;
-    };
-    
-    /**
-     * @memberof karbonator
-     * @function
-     * @param {*} o
-     * @return {Boolean}
-     */
-    karbonator.isUint32 = function (o) {
-        return karbonator.isSafeInteger(o)
-            && (o >= 0 && o < detail._twoPower32)
-        ;
-    };
-    
-    /**
-     * @memberof karbonator
-     * @function
-     * @param {*} o
-     * @return {Boolean}
-     */
-    karbonator.isEsIterable = function (o) {
-        return !karbonator.isUndefinedOrNull(o)
-            && !karbonator.isUndefinedOrNull(o[Symbol.iterator])
-        ;
-    };
-    
-    /*////////////////////////////////*/
-    
-    /*////////////////////////////////*/
+    /*////////////////////////////////////////////////////////////////*/
     //Object comparison.
     
     /**
@@ -535,7 +1163,9 @@
             }
             
             var count = lhs.length;
-            for(var i = 0; i < count; ++i) {
+            for(var i = count; i > 0; ) {
+                --i;
+                
                 if(!detail._areEqual(lhs[i], rhs[i])) {
                     return false;
                 }
@@ -573,14 +1203,16 @@
     };
     
     /**
-     * 비교 함수<br/>
-     * 0 : 좌변과 우변이 동등<br/>
-     * 양의 정수 : 좌변이 우변보다 큼<br/>
-     * 음의 정수 : 좌변이 우변보다 작음<br/>
+     * A comparison function for sorting, inserting elements into binary search trees, or etc.
+     * <br/>If the return value is
+     * <br/>zero : lhs and rhs are equal.
+     * <br/>positive integer : lhs is greater than rhs.
+     * <br/>negative integer : lhs is less than rhs.
+     * 
      * @callback karbonator.comparator
-     * @param {*} l
-     * @param {*} r
-     * @return {Number}
+     * @param {*} lhs 
+     * @param {*} rhs 
+     * @return {Number} 
      */
     
     /**
@@ -688,9 +1320,9 @@
         return -1;
     };
     
-    /*////////////////////////////////*/
+    /*////////////////////////////////////////////////////////////////*/
     
-    /*////////////////////////////////*/
+    /*////////////////////////////////////////////////////////////////*/
     //Object cloning.
     
     /**
@@ -741,7 +1373,7 @@
         if(o[karbonator.shallowClone]) {
             return o[karbonator.shallowClone]();
         }
-
+        
         return o;
     };
     
@@ -755,27 +1387,95 @@
         return detail._shallowCloneObject(o);
     };
     
-    /*////////////////////////////////*/
+    /*////////////////////////////////////////////////////////////////*/
     
-    /*////////////////////////////////*/
-    //Functions.
+    /*////////////////////////////////////////////////////////////////*/
+    //Namespace functions.
     
-    /**
-     * @memberof karbonator
-     * @function
-     */
-    karbonator.onload = function () {};
+    detail._hasPropertyFunction = function (key) {
+        return (key in this);
+    };
+
+    detail._assignPropertyAndIgonoreExceptions = function (dest, src, key) {
+        try {
+            dest[key] = src[key];
+        }
+        catch(e) {}
+    };
+
+    detail._assignPropertyAndThrowExceptionIfOccured = function (dest, src, key) {
+        dest[key] = src[key];
+    };
     
-    /**
-     * @memberof karbonator
-     * @function
-     * @param {Number} milliseconds
-     */
-    karbonator.wait = function (milliseconds) {
-        for(
-            var start = Date.now();
-            Date.now() - start < milliseconds;
+    detail._makeMergeObjectsOptionsObject = function (options) {
+        switch(typeof(options)) {
+        case "undefined":
+            options = {};
+        break;
+        case "object":
+            if(null === options) {
+                options = {};
+            }
+        break;
+        case "function":
+        break;
+        default:
+            throw new Error("The parameter 'options' must be an object.");
+        }
+        options.copyNonOwnProperties = detail._selectNonUndefined(
+            options.copyNonOwnProperties,
+            false
         );
+        options.deepCopy = detail._selectNonUndefined(
+            options.deepCopy,
+            false
+        );
+        options.overwrite = detail._selectNonUndefined(
+            options.overwrite,
+            false
+        );
+        options.ignoreExceptions = detail._selectNonUndefined(
+            options.ignoreExceptions,
+            false
+        );
+
+        return options;
+    };
+    
+    detail._mergeObjects = function (dest, src) {
+        var options = detail._makeMergeObjectsOptionsObject(arguments[2]);
+
+        var selectedHasPropertyFunction = (
+            options.copyNonOwnProperties
+            ? detail._hasPropertyFunction
+            : Object.prototype.hasOwnProperty
+        );
+        
+        var assignPropertyFunction = (
+            options.ignoreExceptions
+            ? detail._assignPropertyAndIgonoreExceptions
+            : detail._assignPropertyAndThrowExceptionIfOccured
+        );
+
+        for(var key in src) {
+            if(
+                selectedHasPropertyFunction.call(src, key)
+                && (options.overwrite || !detail._hasPropertyFunction.call(dest, key))
+            ) {
+                if(
+                    options.deepCopy
+                    && typeof(dest[key]) === "object"
+                    && typeof(src[key]) === "object"
+                ) {
+                    detail_mergeObjects(dest[key], src[key]);
+                }
+                else {
+                    assignPropertyFunction(dest, src, key);
+                }
+            }
+        }
+
+        return dest;
     };
     
     /**
@@ -786,95 +1486,7 @@
      * @param {Object} [options]
      * @return {Object}
      */
-    karbonator.mergeObjects = (function () {    
-        var _hasPropertyMethod = function (key) {
-            return (key in this);
-        };
-        
-        var _assignPropertyAndIgonoreExceptions = function (dest, src, key) {
-            try {
-                dest[key] = src[key];
-            }
-            catch(e) {}
-        };
-        
-        var _assignPropertyAndThrowExceptionIfOccured = function (dest, src, key) {
-            dest[key] = src[key];
-        };
-        
-        var _makeOptionsObject = function (options) {
-            switch(typeof(options)) {
-            case "undefined":
-                options = {};
-            break;
-            case "object":
-                if(null === options) {
-                    options = {};
-                }
-            break;
-            case "function":
-            break;
-            default:
-                throw new Error("The parameter 'options' must be an object.");
-            }
-            options.copyNonOwnProperties = detail._selectNonUndefined(
-                options.copyNonOwnProperties,
-                false
-            );
-            options.deepCopy = detail._selectNonUndefined(
-                options.deepCopy,
-                false
-            );
-            options.overwrite = detail._selectNonUndefined(
-                options.overwrite,
-                false
-            );
-            options.ignoreExceptions = detail._selectNonUndefined(
-                options.ignoreExceptions,
-                false
-            );
-            
-            return options;
-        };
-        
-        var mergeObjects = function (dest, src) {
-            var options = _makeOptionsObject(arguments[2]);
-            
-            var selectedHasPropertyMethod = (
-                options.copyNonOwnProperties
-                ? _hasPropertyMethod
-                : detail._hasOwnPropertyMethod
-            );
-            
-            var assignProperty = (
-                options.ignoreExceptions
-                ? _assignPropertyAndIgonoreExceptions
-                : _assignPropertyAndThrowExceptionIfOccured
-            );
-            
-            for(var key in src) {
-                if(
-                    selectedHasPropertyMethod.call(src, key)
-                    && (options.overwrite || !_hasPropertyMethod.call(dest, key))
-                ) {
-                    if(
-                        options.deepCopy
-                        && typeof(dest[key]) === "object"
-                        && typeof(src[key]) === "object"
-                    ) {
-                        mergeObjects(dest[key], src[key]);
-                    }
-                    else {
-                        assignProperty(dest, src, key);
-                    }
-                }
-            }
-            
-            return dest;
-        };
-        
-        return mergeObjects;
-    })();
+    karbonator.mergeObjects = detail._mergeObjects;
     
     /**
      * @memberof karbonator
@@ -899,359 +1511,9 @@
         return current;
     };
     
-    /**
-     * @function
-     * @param {Object|Function} dest
-     * @param {iterable} pairs
-     * @return {Object|Function}
-     */
-    karbonator.appendAsMember = function (dest, pairs) {
-        if(!karbonator.isObjectOrFunction(dest)) {
-            throw new TypeError("The parameter 'dest' must be an object or a function.");
-        }
-        if(!karbonator.isEsIterable(pairs)) {
-            throw new TypeError("The parameter 'pairs' must have a property 'Symbol.iterator'.");
-        }
-        
-        var temp = {};
-        var propKeys = [];
-        for(
-            var i = pairs[Symbol.iterator](), iP = i.next();
-            !iP.done;
-            iP = i.next()
-        ) {
-            if(!karbonator.isArray(iP.value)) {
-                throw new TypeError(
-                    "The pair must be an array"
-                    + " which has a string or symbol as the first element"
-                    + " and a value or an object as the second element."
-                );
-            }
-            
-            var propKey = iP.value[0];
-            if(!karbonator.isString(propKey) && !karbonator.isSymbol(propKey)) {
-                throw new Error("An enum member name must be a string or a symbol.");
-            }
-            if(dest.hasOwnProperty(propKey)) {
-                throw new Error("'dest' has already have a property '" + propKey + "'.");
-            }
-            
-            temp[propKey] = iP.value[1];
-            propKeys.push(propKey);
-        }
-        
-        for(var i = 0, count = propKeys.length; i < count; ++i) {
-            var propKey = propKeys[i];
-            dest[propKey] = temp[propKey];
-        }
-        
-        return dest;
-    };
+    /*////////////////////////////////////////////////////////////////*/
     
-    /**
-     * @function
-     * @param {Object|Function} dest
-     * @param {Function} ctor
-     * @param {iterable} pairs
-     * @return {Object|Function}
-     */
-    karbonator.createAndAppendAsMember = function (dest, ctor, pairs) {
-        if(!karbonator.isObjectOrFunction(dest)) {
-            throw new TypeError("The parameter 'dest' must be an object or a function.");
-        }
-        if(!karbonator.isFunction(ctor)) {
-            throw new TypeError("The parameter 'ctor' must be a function.");
-        }
-        if(!karbonator.isEsIterable(pairs)) {
-            throw new TypeError("The parameter 'pairs' must have a property 'Symbol.iterator'.");
-        }
-        
-        var temp = {};
-        var propKeys = [];
-        for(
-            var i = pairs[Symbol.iterator](), iP = i.next();
-            !iP.done;
-            iP = i.next()
-        ) {
-            if(!karbonator.isArray(iP.value)) {
-                throw new TypeError(
-                    "The pair must be an array"
-                    + " which has a string or symbol as the first element"
-                    + " and an array of constructor arguments as the second element."
-                );
-            }
-            
-            var propKey = iP.value[0];
-            if(!karbonator.isString(propKey) && !karbonator.isSymbol(propKey)) {
-                throw new Error("An enum member name must be a string or a symbol.");
-            }
-            if(dest.hasOwnProperty(propKey)) {
-                throw new Error("'dest' has already have a property '" + propKey.toString() + "'.");
-            }
-            
-            if(!karbonator.isArray(iP.value[1])) {
-                throw new TypeError("The second element of a pair must be an array of constructor arguments.");
-            }
-            
-            temp[propKey] = Reflect.construct(ctor, iP.value[1]);
-            propKeys.push(propKey);
-        }
-        
-        for(var i = 0, count = propKeys.length; i < count; ++i) {
-            var propKey = propKeys[i];
-            dest[propKey] = temp[propKey];
-        }
-        
-        return dest;
-    };
-    
-    /*////////////////////////////////*/
-    
-    /*////////////////////////////////*/
-    //karbonator.Enum
-    
-    karbonator.Enum = (function () {
-        var _pSymMemberIndex = Symbol("karbonator.Enum.prototype.index");
-        var _pSymMemberKey = Symbol("karbonator.Enum.prototype.key");
-        var _pSymStaticKeys = Symbol("karbonator.Enum.keys");
-        
-        /**
-         * @memberof karbonator
-         * @constructor
-         */
-        var Enum = function () {
-            throw new Error(
-                "'karbonator.Enum' cannot be directly instantiated."
-                + " use 'karbonator.Enum.create' static method"
-                + " to create a subtype of 'karbonator.Enum'."
-            );
-        };
-        
-        /**
-         * @memberof karbonator.Enum
-         * @readonly
-         * @type {Symbol}
-         */
-        Enum.getIndex = Symbol("karbonator.Enum.getIndex");
-        
-        /**
-         * @memberof karbonator.Enum
-         * @readonly
-         * @type {Symbol}
-         */
-        Enum.getKey = Symbol("karbonator.Enum.getKey");
-        
-        /**
-         * @memberof karbonator.Enum
-         * @readonly
-         * @type {Symbol}
-         */
-        Enum.getValue = Symbol("karbonator.Enum.getValue");
-        
-        /**
-         * @function
-         * @return {Number}
-         */
-        Enum.prototype[Enum.getIndex] = function () {
-            return this[_pSymMemberIndex];
-        };
-        
-        /**
-         * @function
-         * @return {String|Symbol}
-         */
-        Enum.prototype[Enum.getKey] = function () {
-            return this[_pSymMemberKey];
-        };
-        
-        /**
-         *  var ColorEnum = karbonator.Enum.create(
-         *      function (proto) {
-         *          proto.getNumber = function () {
-         *              return this._num;
-         *          };
-         *          proto.getAlpha = function () {
-         *              return this._alpha;
-         *          };
-         *      },
-         *      function (num, alpha) {
-         *          this._num = num;
-         *          this._alpha = alpha;
-         *      },
-         *      [["red", [0, 0.125]], ["green", [1, 0.125]], ["blue", [2, 0.125]], [Symbol("violet"), [123, 0.5]]]
-         *  );
-         *
-         * @memberof karbonator.Enum
-         * @function
-         * @param {Function} protoHandler
-         * @param {Function} ctor
-         * @param {iterable} pairs
-         * @return {karbonator.Enum}
-         */
-        Enum.create = function (protoHandler, ctor, pairs) {
-            if(!karbonator.isFunction(protoHandler)) {
-                throw new TypeError("The parameter 'protoHandler' must be a function.");
-            }
-            
-            if(!karbonator.isFunction(ctor)) {
-                throw new TypeError("The parameter 'ctor' must be a function.");
-            }
-            
-            if(!karbonator.isEsIterable(pairs)) {
-                throw new TypeError(
-                    "The parameter "
-                    + "'pairs'"
-                    + " must have a property "
-                    + "'Symbol.iterator'."
-                );
-            }
-                        
-            var EnumType = ctor;
-            var proto = Object.create(Enum.prototype);
-            protoHandler(proto, ctor);
-            EnumType.prototype = proto;
-            
-            var keys = [];
-            for(
-                var i = pairs[Symbol.iterator](), iP = i.next(), ndx = 0;
-                !iP.done;
-                iP = i.next(), ++ndx
-            ) {
-                var key = iP.value[0];
-                if(!karbonator.isString(key) && !karbonator.isSymbol(key)) {
-                    throw new TypeError("Keys of enum members must be strings or symbols.");
-                }
-                if(EnumType.hasOwnProperty(key)) {
-                    throw new Error(
-                        "The key '"
-                        + key
-                        + "' already exists."
-                    );
-                }
-                keys.push(key);
-                
-                EnumType[key] = Reflect.construct(EnumType, iP.value[1]);
-                EnumType[key][_pSymMemberIndex] = ndx;
-                EnumType[key][_pSymMemberKey] = key;
-            }
-            EnumType[_pSymStaticKeys] = keys;
-            
-            EnumType[Symbol.iterator] = function () {
-                return ({
-                    _keys : EnumType[_pSymStaticKeys],
-                    
-                    _index : 0,
-                    
-                    next : function () {
-                        var result = {
-                            done : this._index >= this._keys.length
-                        };
-                        
-                        if(!result.done) {
-                            var key = this._keys[this._index];
-                            result.value = [
-                                this._keys[this._index],
-                                EnumType[key]
-                            ];
-                            
-                            ++this._index;
-                        }
-                        
-                        return result;
-                    }
-                });
-            };
-            
-            return EnumType;
-        };
-        
-        var _assertIsEnumType = function (enumType) {
-            if(!karbonator.isFunction(enumType)) {
-                throw new TypeError(
-                    "The paramter 'enumType'"
-                    + " must be a derived type of "
-                    + "'karbonator.Enum'."
-                );
-            }
-        };
-        
-        /**
-         * @memberof karbonator.Enum
-         * @function
-         * @param {Function} enumType
-         * @returns {Array.<String|Symbol>}
-         */
-        Enum.getKeys = function (enumType) {
-            _assertIsEnumType(enumType);
-            
-            return enumType[_pSymStaticKeys].slice();
-        };
-        
-        /**
-         * @memberof karbonator.Enum
-         * @function
-         * @param {Function} enumType
-         * @param {Number} index
-         * @return {String|Symbol}
-         */
-        Enum.getKeyAt = function (enumType, index) {
-            _assertIsEnumType(enumType);
-            
-            return enumType[_pSymStaticKeys][index];
-        };
-        
-        /**
-         * @memberof karbonator.Enum
-         * @function
-         * @param {Function} enumType
-         * @param {Number} index
-         * @return {*}
-         */
-        Enum.getValueAt = function (enumType, index) {
-            _assertIsEnumType(enumType);
-            
-            return Enum.findByKey(enumType, Enum.getKeyAt(enumType, index));
-        };
-        
-        /**
-         * @memberof karbonator.Enum
-         * @function
-         * @param {Function} enumType
-         * @return {Number}
-         */
-        Enum.getCount = function (enumType) {
-            _assertIsEnumType(enumType);
-            
-            return enumType[_pSymStaticKeys].length;
-        };
-        
-        /**
-         * @memberof karbonator.Enum
-         * @function
-         * @param {Function} enumType
-         * @param {String|Symbol} key
-         * @return {karbonator.Enum}
-         */
-        Enum.findByKey = function (enumType, key) {
-            _assertIsEnumType(enumType);
-            
-            if(!enumType.hasOwnProperty(key)) {
-                throw new Error(
-                    "The enum member '"
-                    + key
-                    + "' doesn't exist."
-                );
-            }
-            
-            return enumType[key];
-        };
-        
-        return Enum;
-    }());
-    
-    /*////////////////////////////////*/
-    
-    /*////////////////////////////////*/
+    /*////////////////////////////////////////////////////////////////*/
     //karbonator.ByteArray
     
     /**
@@ -1327,24 +1589,6 @@
             this._subIndex = ((elementCount - 1) & _subNdxBm) + 1;
             this.fill((karbonator.isUndefined(arguments[1]) ? 0 : arguments[1]));
         }
-    };
-    
-    /**
-     * @function
-     * @param {ByteArray} oThis
-     * @param {Number} index
-     * @param {Number} [maxBound]
-     * @return {Number}
-     */
-    var _assertIsValidIndex = function (oThis, index) {
-        _assertIsNonNegativeSafeInteger(index);
-        
-        var maxBound = (karbonator.isUndefined(arguments[2]) ? oThis.getElementCount() : arguments[2]);
-        if(index >= maxBound) {
-            throw new RangeError("Index out of range.");
-        }
-        
-        return index;
     };
     
     /**
@@ -1450,7 +1694,7 @@
      * @return {Number}
      */
     ByteArray.prototype.get = function (index) {
-        _assertIsValidIndex(this, index);
+        this._assertIsValidIndex(index);
         
         var bufNdx = index >>> _bufNdxExp;
         var subNdx = index & _subNdxBm;
@@ -1465,7 +1709,7 @@
      * @return {karbonator.ByteArray}
      */
     ByteArray.prototype.set = function (index, v) {
-        _assertIsValidIndex(this, index);
+        this._assertIsValidIndex(index);
         _assertIsUint8(v); 
         
         var bufNdx = index >>> _bufNdxExp;
@@ -1485,9 +1729,9 @@
      */
     ByteArray.prototype.fill = function (v) {
         _assertIsUint8(v);
-        var start = (karbonator.isUndefined(arguments[1]) ? 0 : _assertIsValidIndex(this, arguments[1]));
+        var start = (karbonator.isUndefined(arguments[1]) ? 0 : this._assertIsValidIndex(arguments[1]));
         var elemCount = this.getElementCount();
-        var end = (karbonator.isUndefined(arguments[2]) ? elemCount : _assertIsValidIndex(this, arguments[2], elemCount + 1));
+        var end = (karbonator.isUndefined(arguments[2]) ? elemCount : this._assertIsValidIndex(arguments[2], elemCount + 1));
         
         for(var i = start; i < end; ++i) {
             this.set(i, v);
@@ -1503,8 +1747,8 @@
      * @return {karbonator.ByteArray}
      */
     ByteArray.prototype.swapElements = function (lhsIndex, rhsIndex) {
-        _assertIsValidIndex(this, lhsIndex);
-        _assertIsValidIndex(this, rhsIndex);
+        this._assertIsValidIndex(lhsIndex);
+        this._assertIsValidIndex(rhsIndex);
         
         var lhsElem = this.get(lhsIndex);
         this.set(lhsIndex, this.get(rhsIndex));
@@ -1538,13 +1782,13 @@
         _assertIsUint8(v);
         var elemCount = this.getElementCount();
         index = (karbonator.isUndefined(index) ? elemCount : index);
-        _assertIsValidIndex(this, index, elemCount + 1);
-
+        this._assertIsValidIndex(index, elemCount + 1);
+        
         if(this._subIndex >= _bytesPerInt) {
             this._buffer.push(0);
             this._subIndex = 0;
         }
-
+        
         var destBufNdx = index >>> _bufNdxExp;
         var destSubNdx = index & _subNdxBm;
 
@@ -1586,7 +1830,7 @@
             throw new Error("No more bytes left.");
         }
 
-        _assertIsValidIndex(this, index);
+        this._assertIsValidIndex(index);
 
         var destBufNdx = index >>> _bufNdxExp;
         var destSubNdx = index & _subNdxBm;
@@ -1783,13 +2027,58 @@
 
         return str;
     };
-
+    
+    /**
+     * @private
+     * @function
+     * @param {Number} index
+     * @param {Number} [maxBound]
+     * @return {Number}
+     */
+    ByteArray.prototype._assertIsValidIndex = function (index) {
+        _assertIsNonNegativeSafeInteger(index);
+        
+        var maxBound = arguments[1];
+        if(karbonator.isUndefined(maxBound)) {
+            maxBound = this.getElementCount();
+        }
+        
+        if(index >= maxBound) {
+            throw new RangeError("Index out of range.");
+        }
+        
+        return index;
+    };
+    
     karbonator.ByteArray = ByteArray;
     
-    /*////////////////////////////////*/
+    /*////////////////////////////////////////////////////////////////*/
     
-    /*////////////////////////////////*/
-    //Bit conversion functions.
+    /*////////////////////////////////////////////////////////////////*/
+    //Conversion functions.
+    
+    /**
+     * @memberof karbonator
+     * @function
+     * @param {*} v
+     * @return {Number}
+     */
+    karbonator.toInteger = function (v) {
+        var n = Number(v);
+        if(global.isNaN(n)) {
+            return +0;
+        }
+        
+        if(
+            n === 0
+            || n === global.Infinity
+            || n === -global.Infinity
+        ) {
+            return n;
+        }
+        
+        return Math.sign(n) * Math.floor(Math.abs(n));
+    };
     
     /**
      * @memberof karbonator.detail
@@ -1833,37 +2122,45 @@
         
         detail._assertByteCountInRange(byteCount);
         
-        var dest = null;
-        if(karbonator.isUndefined(arguments[3])) {
+        var dest = arguments[3];
+        if(karbonator.isUndefined(dest)) {
             dest = new karbonator.ByteArray(byteCount);
         }
-        else {
-            dest = arguments[3];
-            if(!(dest instanceof karbonator.ByteArray)) {
-                throw new TypeError("'dest' must be an instance of 'karboantor.ByteArray'.");
-            }
+        else if(!(dest instanceof karbonator.ByteArray)) {
+            throw new TypeError("'dest' must be an instance of 'karboantor.ByteArray'.");
         }
         
-        var destIndex = dest.getElementCount();
-        if(!karbonator.isUndefined(arguments[4])) {
-            destIndex = arguments[4];
-            if(!karbonator.isNonNegativeSafeInteger(destIndex)) {
-                throw new RangeError("'destIndex' must be a non-negative safe integer.");
-            }            
+        var destIndex = arguments[4];
+        if(karbonator.isUndefined(destIndex)) {
+            destIndex = dest.getElementCount();
+        }
+        else if(!karbonator.isNonNegativeSafeInteger(destIndex)) {
+            throw new RangeError("'destIndex' must be a non-negative safe integer.");
+        }
+        
+        for(
+            var i = destIndex + byteCount - dest.getElementCount();
+            i > 0;
+        ) {
+            --i;
+            
+            dest.pushBack(0);
         }
         
         if(!!arguments[2]) {
-            for(var i = 0; i < byteCount; ++i) {
-                dest.insert((value & 0xFF), destIndex + i);
+            for(var i = destIndex, j = byteCount; j > 0; ++i) {
+                --j;
+                
+                dest.set(i, (value & 0xFF));
                 value >>>= 8;
             }
         }
-        else {
-            for(var i = 0, j = byteCount; i < byteCount; ++i) {
-                --j;
-                dest.insert((value & 0xFF), destIndex + j);
-                value >>>= 8;
-            }
+        else for(var i = destIndex + byteCount, j = byteCount; j > 0; ) {
+            --j;
+            --i;
+            
+            dest.set(i, (value & 0xFF));
+            value >>>= 8;
         }
         
         return dest;
@@ -1872,7 +2169,7 @@
     /**
      * @memberof karbonator
      * @function
-     * @param {karbonator.ByteArray} bytes
+     * @param {karbonator.ByteArray|iterable} bytes
      * @param {Number} byteCount - 1, 2 or 4 only.
      * @param {Boolean} [signed=false]
      * @param {Boolean} [byteOrderReversed=false]
@@ -1881,8 +2178,18 @@
      */
     karbonator.bytesToInteger = function (bytes, byteCount) {
         if(!(bytes instanceof karbonator.ByteArray)) {
-            throw new TypeError("The parameter 'byteArray' must be an instance of 'karbonator.ByteArray'.");
+            if(karbonator.isEsIterable(bytes)) {
+                bytes = karbonator.ByteArray.from(bytes);
+            }
+            else {
+                throw new TypeError(
+                    "'byteArray' must be an instance of 'karbonator.ByteArray'"
+                    + " or "
+                    + "an iterable collection of integers."
+                );
+            }
         }
+        
         if(!karbonator.isNonNegativeSafeInteger(byteCount)) {
             throw new TypeError("'byteCount' must be a non-negative integer.");
         }
@@ -1954,60 +2261,9 @@
         }
         
         return intValue;
-        
-//        if(!(bytes instanceof karbonator.ByteArray)) {
-//            throw new TypeError("The parameter 'byteArray' must be an instance of 'karbonator.ByteArray'.");
-//        }
-//        
-//        detail._assertByteCountInRange(byteCount);
-//        
-//        var startIndex = 0;
-//        if(!karbonator.isUndefined(arguments[4])) {
-//            startIndex = arguments[4];
-//            if(!karbonator.isNonNegativeSafeInteger(startIndex)) {
-//                throw new TypeError("The parameter 'startIndex' must be a non-negative safe integer.");
-//            }
-//        }
-//        
-//        var buffer = new karbonator.ByteArray();
-//        var count = 0;
-//        for(var len = bytes.getElementCount(); count < byteCount && count < len; ++count) {
-//            buffer.pushBack((bytes.get(startIndex + count) & 0xFF));
-//        }
-//        if(count < byteCount) {
-//            throw new Error("Not enough bytes.");
-//        }
-//        
-//        if(!!arguments[3]) {
-//            buffer.reverse();
-//        }
-//        
-//        var value = 0;
-//        for(var i = 0; i < byteCount; ++i) {
-//            value <<= 8;
-//            value |= buffer.get(i);
-//        }
-//        
-//        if((byteCount & 0x01) !== 0) {
-//            if(!!arguments[2] && (value & 0x80) !== 0) {
-//                value -= detail._twoPower8;
-//            }
-//        }
-//        else if(((byteCount >>> 1) & 0x01) !== 0) {
-//            if(!!arguments[2] && (value & 0x8000) !== 0) {
-//                value -= detail._twoPower16;
-//            }
-//        }
-//        else if(((byteCount >>> 2) & 0x01) !== 0) {
-//            if(!arguments[2] && value < 0) {
-//                value += detail._twoPower32;
-//            }
-//        }
-//        
-//        return value;
     };
     
-    /*////////////////////////////////*/
+    /*////////////////////////////////////////////////////////////////*/
     
     /*////////////////////////////////////////////////////////////////*/
     //karbonator.math namespace.
@@ -2085,659 +2341,31 @@
         return result;
     };
     
-    math.Interval = (function (global, karbonator) {
-        var detail = karbonator.detail;
-        var math = karbonator.math;
-        
-        var Number = global.Number;
-        var Error = global.Error;
-        var TypeError = global.TypeError;
-        
-        var _epsilon = math.epsilon;
-        var _minInt = karbonator.minimumSafeInteger;
-        var _maxInt = karbonator.maximumSafeInteger;
-        
-        /**
-         * @memberof karbonator.math
-         * @constructor
-         * @param {Number} value1
-         * @param {Number} [value2]
-         */
-        var Interval = function (value1) {
-            switch(arguments.length) {
-            case 0:
-                throw new TypeError("At least one number or an Interval instance must be passed.");
-            break;
-            case 1:
-                if(value1 instanceof Interval) {
-                    this._min = value1._min;
-                    this._max = value1._max;
-                }
-                else if(karbonator.isNumber(value1)) {
-                    this._min = this._max = value1;
-                }
-                else {
-                    throw new TypeError("The parameter must be a number or an Interval instance.");
-                }
-            break;
-            case 2:
-            default:
-                var value2 = arguments[1];
-                
-                if(
-                    !karbonator.isNumber(value1)
-                    || !karbonator.isNumber(value2)
-                ) {
-                    throw new TypeError("Both 'value1' and 'value2' must be numbers.");
-                }            
-                    
-                if(value1 < value2) {
-                    this._min = value1;
-                    this._max = value2;
-                }
-                else {
-                    this._min = value2;
-                    this._max = value1;
-                }
-            //break;
-            }
-        };
-        
-        /**
-         * @function
-         * @param {*} o
-         */
-        var _assertIsInterval = function (o) {
-            if(!(o instanceof Interval)) {
-                throw new TypeError("The parameter must be an instance of karbonator.math.Interval.");
-            }
-        };
-        
-        /**
-         * @function
-         * @param {Interval} o
-         * @param {Number} value
-         * @return {Boolean}
-         */
-        var _isValueInInterval = function (o, value) {
-            return (value >= o._min && value <= o._max);
-        };
-        
-        /**
-         * @function
-         * @param {Array.<Interval>} sortedArray
-         * @param {Interval} o
-         * @param {Function} comparator
-         * @param {Object} [thisArg]
-         * @return {Boolean}
-         */
-        var _insertIfNotExistAndSort = function (sortedArray, o, comparator) {
-            var thisArg = arguments[3];
-            comparator = (
-                typeof(comparator) !== "undefined"
-                ? comparator
-                : (function (lhs, rhs) {return lhs - rhs;})
+    /*////////////////////////////////////////////////////////////////*/
+    
+    /*////////////////////////////////////////////////////////////////*/
+    //global.Console polyfill.(usually for node.js)
+    
+    (function (console) {
+        if(
+            !karbonator.isUndefined(console)
+            && !console.clear
+            && console.log
+        ) {
+            console.clear = (
+                global.process
+                ? (function () {
+                    var lines = global.process.stdout.getWindowSize()[1];
+                    for(var i = 0; i < lines; i++) {
+                        console.log('\x1BC');
+                    }
+                })
+                : console.clear = (function () {
+                    console.log('\x1B[EJ');
+                })
             );
-            
-            var len = sortedArray.length;
-            var result = true;
-            if(len < 1) {
-                sortedArray.push(o);
-            }
-            else {
-                var loop = true;
-                for(var i = 0; loop && i < len; ) {
-                    var cp = comparator.call(thisArg, sortedArray[i], o);                        
-                    if(cp === 0) {
-                        result = false;
-                        loop = false;
-                    }
-                    else if(cp > 0) {
-                        sortedArray.splice(i, 0, o);
-                        loop = false;
-                    }
-                    else {
-                        ++i;
-                    }
-                }
-                
-                if(loop) {
-                    sortedArray.push(o);
-                }
-            }
-            
-            return result;
-        };
-        
-        /**
-         * @function
-         * @param {Interval} l
-         * @param {Interval} r
-         * @return {Number}
-         */
-        var _intervalComparatorForSort = function (l, r) {
-            var diff = l._min - r._min;
-            if(math.numberEquals(diff, 0, this.epsilon)) {
-                return (l[karbonator.equals](r) ? 0 : -1);
-            }
-            
-            return diff;
-        };
-        
-        /**
-         * @function
-         * @param {Array.<Interval>} intervals
-         * @param {Number} [epsilon=karbonator.math.epsilon]
-         * @return {Array.<Interval>}
-         */
-        var _createSortedIntervalListSet = function (intervals) {
-            var comparatorParams = {epsilon : arguments[1]};
-            var sortedIntervals = [];
-            for(var i = 0, len = intervals.length; i < len; ++i) {
-                _insertIfNotExistAndSort(
-                    sortedIntervals,
-                    intervals[i],
-                    _intervalComparatorForSort,
-                    comparatorParams
-                );
-            }
-            
-            return sortedIntervals;
-        };
-        
-        /**
-         * @function
-         * @param {Interval|Number} o
-         */
-        var _coerceArgumentToInterval = function (o) {
-            var result = o;
-            if(karbonator.isNumber(o)) {
-                result = new Interval(o, o);
-            }
-            
-            _assertIsInterval(result);
-            
-            return result;
-        };
-        
-        /**
-         * @function
-         * @param {Array.<Interval>} sortedListSet
-         * @param {Number} startIndex
-         * @return {Number}
-         */
-        var _findEndOfClosureIndex = function (sortedListSet, startIndex) {
-            var endOfClosureIndex = startIndex + 1;
-            for(
-                var i = startIndex, len = sortedListSet.length;
-                i < endOfClosureIndex && i < len;
-                ++i
-            ) {
-                var current = sortedListSet[i];
-                
-                var loopJ = true;
-                var endOfNeighborIndex = i + 1;
-                for(var j = endOfNeighborIndex; loopJ && j < len; ) {
-                    var other = sortedListSet[j];
-                    
-                    if(current._max < other._min) {
-                        endOfNeighborIndex = j;
-                        loopJ = false;
-                    }
-                    else {
-                        ++j;
-                    }
-                }
-                if(loopJ) {
-                    endOfNeighborIndex = len;
-                }
-                
-                endOfClosureIndex = (
-                    endOfClosureIndex < endOfNeighborIndex
-                    ? endOfNeighborIndex
-                    : endOfClosureIndex
-                );
-            }
-            
-            return endOfClosureIndex;
-        };
-        
-        /**
-         * @memberof karbonator.math.Interval
-         * @function
-         * @param {Array.<karbonator.math.Interval>} intervals
-         * @param {Number} [epsilon=karbonator.math.epsilon]
-         * @param {Boolean} [mergePoints=false]
-         * @return {Array.<karbonator.math.Interval>}
-         */
-        Interval.disjoin = function (intervals) {
-            switch(intervals.length) {
-            case 0:
-                return [];
-            //break;
-            case 1:
-                return [new Interval(intervals[0]._min, intervals[0]._max)];
-            //break;
-            }
-            
-            var disjoinedIntervals = [];
-            
-            var j = 0, sortedPointMaxIndex = 0, endOfClosureIndex = 0;
-            var neighbor = null;
-            var sortedPoints = [];
-            var sortedListSet = _createSortedIntervalListSet(intervals, arguments[1]);
-            for(var i = 0, len = sortedListSet.length; i < len; ) {
-                j = 0;
-                
-                endOfClosureIndex = _findEndOfClosureIndex(sortedListSet, i);
-                sortedPoints.length = 0;
-                for(j = i; j < endOfClosureIndex; ++j) {
-                    neighbor = sortedListSet[j];
-                    _insertIfNotExistAndSort(
-                        sortedPoints,
-                        neighbor._min
-                    );
-                    _insertIfNotExistAndSort(
-                        sortedPoints,
-                        neighbor._max
-                    );
-                }
-                
-                sortedPointMaxIndex = sortedPoints.length - 1;
-                if(arguments[2]) {
-                    disjoinedIntervals.push(new Interval(sortedPoints[0], sortedPoints[sortedPointMaxIndex]));
-                }
-                else {
-                    //TODO : 안전성 검사(e.g. Interval이 1개인 경우)
-                    j = 0;
-                    do {
-                        disjoinedIntervals.push(new Interval(sortedPoints[j], sortedPoints[j + 1]));
-                        ++j;
-                    }
-                    while(j < sortedPointMaxIndex);
-                }
-                
-                i = endOfClosureIndex;
-            }
-            
-            return disjoinedIntervals;
-        };
-        
-        /**
-         * @memberof karbonator.math.Interval
-         * @function
-         * @param {Array.<karbonator.math.Interval>} intervals
-         * @param {Number} [minimumValue=Number.MIN_VALUE]
-         * @param {Number} [maximumValue=Number.MAX_VALUE]
-         * @param {Number} [epsilon=karbonator.math.epsilon]
-         * @return {Array.<karbonator.math.Interval>}
-         */
-        Interval.merge = function (intervals) {
-            var min = arguments[1];
-            if(karbonator.isUndefined(min)) {
-                min = Number.MIN_VALUE;
-            }
-            else if(!karbonator.isNumber(min)) {
-                throw new TypeError("'minimumValue' must be a number.");
-            }
-                
-            var max = arguments[2];
-            if(karbonator.isUndefined(max)) {
-                max = Number.MIN_VALUE;
-            }
-            else if(!karbonator.isNumber(max)) {
-                throw new TypeError("'maximumValue' must be a number.");
-            }
-            else if(max < min) {
-                throw new RangeError(
-                    "'maximumValue'"
-                    + " cannot be less than "
-                    + "'minimumValue'."
-                );
-            }
-            
-            var epsilon = arguments[3];
-            if(karbonator.isUndefined(epsilon)) {
-                epsilon = _epsilon;
-            }
-            else if(!karbonator.isNumber(epsilon)) {
-                throw new TypeError("'epsilon' must be a number.");
-            }
-            
-            //TODO : 맞는지 확인
-            var disjoined = Interval.disjoin(intervals, epsilon, true);
-            for(var i = 0, j = 1; j < disjoined.length; ++i, ++j) {
-                if(
-                    karbonator.math.numberEquals(
-                        disjoined[i]._max,
-                        disjoined[j]._min
-                    )
-                ) {
-                    console.warn(
-                        "'karbonator.math.Interval.merge' method"
-                        + " does wrong behaviour."
-                        + " It doesn't merge intervals well."
-                    );
-                }
-            }
-            
-            return disjoined;
-        };
-        
-        /**
-         * @memberof karbonator.math.Interval
-         * @function
-         * @param {Array.<karbonator.math.Interval>} intervals
-         * @param {Number} [minimumValue=Number.MIN_VALUE]
-         * @param {Number} [maximumValue=Number.MAX_VALUE]
-         * @param {Number} [epsilon=karbonator.math.epsilon]
-         * @return {Array.<karbonator.math.Interval>}
-         */
-        Interval.negate = function (intervals) {
-            var negatedIntervals = [];
-            
-            //Must be sorted in lowest minimum value order.
-            var epsilon = detail._selectNonUndefined(arguments[3], _epsilon);
-            var disjoinedIntervals = Interval.disjoin(intervals, epsilon, true);
-            var intervalCount = disjoinedIntervals.length;
-            var i, j = 0;
-            
-            if(intervalCount > 0) {
-                var min = disjoinedIntervals[j]._min;
-                if(karbonator.isInteger(min)) {
-                    negatedIntervals.push(new Interval(
-                        detail._selectInt(arguments[1], Number.MIN_SAFE_INTEGER),
-                        min - 1
-                    ));
-                }
-                else {
-                    negatedIntervals.push(new Interval(
-                        detail._selectFloat(arguments[1], -Number.MAX_VALUE),
-                        min - epsilon
-                    ));
-                }
-                
-                i = 0, ++j;
-            }
-            
-            for(; j < intervalCount; ++j, ++i) {
-                var max = disjoinedIntervals[i]._max;
-                var min = disjoinedIntervals[j]._min;
-                negatedIntervals.push(new Interval(
-                    max + (karbonator.isInteger(max) ? 1 : epsilon),
-                    min - (karbonator.isInteger(min) ? 1 : epsilon)
-                ));
-            }
-            
-            if(i < intervalCount) {
-                var max = disjoinedIntervals[i]._max;
-                if(karbonator.isInteger(max)) {
-                    negatedIntervals.push(new Interval(
-                        max + 1,
-                        detail._selectInt(arguments[2], Number.MAX_SAFE_INTEGER)
-                    ));
-                }
-                else {
-                    negatedIntervals.push(new Interval(
-                        max + epsilon,
-                        detail._selectFloat(arguments[2], Number.MAX_VALUE)
-                    ));
-                }
-            }
-            
-            return negatedIntervals;
-        };
-        
-        /**
-         * @memberof karbonator.math.Interval
-         * @function
-         * @param {Array.<karbonator.math.Interval>} intervals
-         * @param {Number} [targetIndex=0]
-         * @param {Number} [epsilon=karbonator.math.epsilon]
-         * @return {Array.<karbonator.math.Interval>}
-         */
-        Interval.findClosure = function (intervals) {
-            var sortedListSet = _createSortedIntervalListSet(intervals, arguments[2]);
-            
-            var targetIndex = (karbonator.isUndefined(arguments[1]) ? 0 : arguments[1]);
-            var len = sortedListSet.length;
-            var visitFlags = [];
-            for(var i = 0; i < len; ++i) {
-                visitFlags.push(false);
-            }
-            
-            var closureStartIndex = targetIndex;
-            var closureInclusiveEndIndex = targetIndex;
-            var targetIndices = [targetIndex];
-            for(; targetIndices.length > 0; ) {
-                var i = targetIndices.pop();
-                if(!visitFlags[i]) {
-                    visitFlags[i] = true;
-                    
-                    var lhs = sortedListSet[i];
-                    for(var j = 0; j < len; ++j) {
-                        if(j !== i && lhs.intersectsWith(sortedListSet[j])) {
-                            targetIndices.push(j);
-                            
-                            closureStartIndex = (closureStartIndex > j ? j : closureStartIndex);
-                            closureInclusiveEndIndex = (closureInclusiveEndIndex < j ? j : closureInclusiveEndIndex);
-                        }
-                    }
-                }
-            }
-            
-            var closure = [];
-            for(var i = closureStartIndex; i <= closureInclusiveEndIndex; ++i) {
-                closure.push(sortedListSet[i]);
-            }
-            
-            return closure;
-        };
-        
-        /**
-         * @function
-         * @return {karbonator.math.Interval}
-         */
-        Interval.prototype[karbonator.shallowClone] = function () {
-            return new Interval(this._min, this._max);
-        };
-        
-        /**
-         * @function
-         * @return {Number}
-         */
-        Interval.prototype.getMinimum = function () {
-            return this._min;
-        };
-        
-        /**
-         * @function
-         * @return {Number}
-         */
-        Interval.prototype.getMaximum = function () {
-            return this._max;
-        };
-        
-        /**
-         * @function
-         * @param {karbonator.math.Interval|Number} rhs
-         * @param {Number} [epsilon=karbonator.math.epsilon]
-         * @return {Boolean}
-         */
-        Interval.prototype[karbonator.equals] = function (rhs) {
-            if(this === rhs) {
-                return true;
-            }
-            
-            if(karbonator.isUndefinedOrNull(rhs)) {
-                return false;
-            }
-            
-            var epsilon = arguments[1];
-            if(karbonator.isNumber(rhs)) {
-                return math.numberEquals(this._min, this._max, epsilon)
-                    && math.numberEquals(this._min, rhs, epsilon)
-                ;
-            }
-            
-            return math.numberEquals(this._min, rhs._min, epsilon)
-                && math.numberEquals(this._max, rhs._max, epsilon)
-            ;
-        };
-        
-        /**
-         * @function
-         * @param {karbonator.math.Interval|Number} rhs
-         * @param {Number} [epsilon=karbonator.math.epsilon]
-         * @return {Number}
-         */
-        Interval.prototype[karbonator.compareTo] = function (rhs) {
-            if(this[karbonator.equals](rhs, arguments[1])) {
-                return 0;
-            }
-            
-            var target = _coerceArgumentToInterval(rhs);
-            var diff = this._min - target._min;
-            return (
-                math.numberEquals(diff, 0, karbonator.math.epsilon)
-                ? 0
-                : diff
-            );
-        };
-        
-        /**
-         * @function
-         * @param {karbonator.math.Interval|Number} rhs
-         * @return {Boolean}
-         */
-        Interval.prototype.intersectsWith = function (rhs) {
-            var target = _coerceArgumentToInterval(rhs);
-            
-            if(this._min < target._min) {
-                return this._max >= target._min && target._max >= this._min;
-            }
-            else {
-                return target._max >= this._min && this._max >= target._min;
-            }
-        };
-        
-        /**
-         * @function
-         * @param {karbonator.math.Interval|Number|Array|String} rhs
-         * @return {Boolean}
-         */
-        Interval.prototype.contains = function (rhs) {
-            if(rhs instanceof Interval) {
-                if(this._min < rhs._min) {
-                    return _isValueInInterval(this, rhs._min)
-                        && _isValueInInterval(this, rhs._max)
-                    ;
-                }
-                else {
-                    return _isValueInInterval(rhs, this._min)
-                        && _isValueInInterval(rhs, this._max)
-                    ;
-                }
-            }
-            
-            if(karbonator.isNumber(rhs)) {
-                return _isValueInInterval(this, rhs);
-            }
-            
-            if(karbonator.isArray(rhs)) {
-                for(var i = 0, len = rhs.length; i < len; ++i) {
-                    if(!this.contains(rhs[i])) {
-                        return false;
-                    }
-                }
-                
-                return true;
-            }
-            
-            if(karbonator.isString(rhs)) {
-                for(var i = 0; i < rhs.length; ++i) {
-                    if(!_isValueInInterval(this, rhs.charCodeAt(i))) {
-                        return false;
-                    }
-                }
-                
-                return true;
-            }
-            
-            throw new TypeError("The parameter must be either an karbonator.math.Interval instance, an array, a string or a number.");
-        };
-        
-        /**
-         * @function
-         * @param {Number} [minimumValue]
-         * @param {Number} [maximumValue]
-         * @param {Number} [epsilon=karbonator.math.epsilon]
-         * @return {Array.<karbonator.math.Interval>}
-         */
-        Interval.prototype.negate = function () {
-            var negatedIntervals = [];
-            
-            if(karbonator.isInteger(this._min)) {
-                negatedIntervals.push(new Interval(
-                    detail._selectInt(arguments[0], _minInt),
-                    this._min - 1
-                ));
-            }
-            else {
-                negatedIntervals.push(new Interval(
-                    detail._selectFloat(arguments[0], -Number.MAX_VALUE),
-                    this._min - detail._selectNonUndefined(arguments[2], _epsilon)
-                ));
-            }
-            
-            if(karbonator.isInteger(this._max)) {
-                negatedIntervals.push(new Interval(
-                    detail._selectInt(arguments[1], _maxInt),
-                    this._max + 1
-                ));
-            }
-            else {
-                negatedIntervals.push(new Interval(
-                    detail._selectFloat(arguments[1], Number.MAX_VALUE),
-                    this._max + detail._selectNonUndefined(arguments[2], _epsilon)
-                ));
-            }
-            
-            return negatedIntervals;
-        };
-        
-        /**
-         * @function
-         * @param {Number} v
-         * @return {String}
-         */
-        var _intToString = function (v) {
-            if(v === detail._maxInt) {
-                return "INT_MAX";
-            }
-            else if(v === detail._minInt) {
-                return "INT_MIN";
-            }
-            else {
-                return v.toString();
-            }
-        };
-        
-        /**
-         * @function
-         * @return {String}
-         */
-        Interval.prototype.toString = function () {
-            return '['
-                + _intToString(this._min)
-                + ", "
-                + _intToString(this._max)
-                + ']'
-            ;
-        };
-        
-        return Interval;
-    }(global, karbonator));
+        }
+    }(global.console));
     
     /*////////////////////////////////////////////////////////////////*/
     

@@ -2,22 +2,34 @@
  * author : Hydrawisk793
  * e-mail : hyw793@naver.com
  * blog : http://blog.naver.com/hyw793
- * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
+ * disclaimer : The author is not responsible for any problems 
+ * that may arise by using this source code.
  */
 
+/**
+ * @param {global|window} g
+ * @param {Function} factory
+ */
 (function (g, factory) {
     "use strict";
     
-    if(typeof(define) === "function" && define.amd) {
-        define(["./karbonator.collection"], function (karbonator) {
+    if(typeof(g.define) === "function" && g.define.amd) {
+        g.define(["./karbonator.collection"], function (karbonator) {
             return factory(g, karbonator);
         });
     }
-    else if(typeof(module) !== "undefined" && module.exports) {
-        exports = module.exports = factory(g, require("./karbonator.collection"));
+    else if(typeof(g.module) !== "undefined" && g.module.exports) {
+        g.exports = module.exports = factory(g, require("./karbonator.collection"));
+    }
+    else {
+        factory(g, g.karbonator);
     }
 }(
-(typeof(global) !== "undefined" ? global : (typeof(window) !== "undefined" ? window : this)),
+(
+    typeof(global) !== "undefined"
+    ? global
+    : (typeof(window) !== "undefined" ? window : this)
+),
 (function (global, karbonator) {
     "use strict";
     

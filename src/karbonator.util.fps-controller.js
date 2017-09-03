@@ -20,10 +20,19 @@
     else if(typeof(g.module) !== "undefined" && g.module.exports) {
         g.exports = g.module.exports = factory(g, require("./karbonator.core"));
     }
+    else {
+        factory(g, g.karbonator);
+    }
 }(
-(typeof(global) !== "undefined" ? global : (typeof(window) !== "undefined" ? window : this)),
+(
+    typeof(global) !== "undefined"
+    ? global
+    : (typeof(window) !== "undefined" ? window : this)
+),
 (function (global, karbonator) {
     "use strict";
+    
+    global;
     
     var detail = karbonator.detail;
     
@@ -32,7 +41,6 @@
      * @namespace
      */
     var util = {};
-    
     karbonator.util = util;
     
     /*////////////////////////////////*/
@@ -44,11 +52,12 @@
          * @constructor
          * @param {Number} fps
          * @param {Function} callback
+         * @param {Object} [thisArg]
          */
         var FpsController = function (fps, callback) {
             this._fps = fps;
             this._delay = 1000 / fps;
-            this._callback = callback;
+            this._callback = callback.bind(arguments[2]);
             this._handle = 0;
             this._parameters = null;
         };
@@ -81,8 +90,10 @@
             this._elapsedTick = this._currentTick - this._startTick;
             if(this._elapsedTick >= this._delay) {
                 this._callback(
-                    {},
-                    this._parameters
+                    this._parameters,
+                    {
+                        fpsController : this
+                    }
                 );
                 this._startTick = this._currentTick;
             }

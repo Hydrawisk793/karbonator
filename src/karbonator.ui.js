@@ -5,20 +5,37 @@
  * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
  */
 
+/**
+ * @param {global|window} g
+ * @param {Function} factory
+ */
 (function (g, factory) {
     "use strict";
     
-    if(typeof(define) === "function" && define.amd) {
-        define(["./karbonator.util", "./karbonator.dom"], function (util, karbonator) {
-            return factory(g, karbonator);
-        });
+    if(typeof(g.define) === "function" && g.define.amd) {
+        g.define(
+            [
+                "./karbonator.dom",
+                "./karbonator.util.fps-controller"
+            ],
+            function (karbonator) {
+                return factory(g, karbonator);
+            }
+        );
     }
-    else if(typeof(module) !== "undefined" && module.exports) {
-        require("./karbonator.util");
-        exports = module.exports = factory(g, require("./karbonator.dom"));
+    else if(typeof(g.module) !== "undefined" && g.module.exports) {
+        require("./karbonator.util.fps-controller");
+        g.exports = g.module.exports = factory(g, require("./karbonator.dom"));
+    }
+    else {
+        factory(g, g.karbonator);
     }
 }(
-(typeof(global) !== "undefined" ? global : (typeof(window) !== "undefined" ? window : this)),
+(
+    typeof(global) !== "undefined"
+    ? global
+    : (typeof(window) !== "undefined" ? window : this)
+),
 (function (global, karbonator) {
     "use strict";
     
@@ -32,7 +49,9 @@
     karbonator.ui = ui;
     
     var Symbol = detail._selectSymbol();
-    var TouchEvent = global.TouchEvent;
+    
+    //var TouchEvent = global.TouchEvent;
+    var HTMLElement = global.HTMLElement;
     
     /*////////////////////////////////////////////////////////////////*/
     //ResizeObserver
@@ -70,6 +89,8 @@
         /**
          * @private
          * @function
+         * @param {Object} context
+         * @param {Object} args
          */
         ResizeObserver.prototype._observe = function (context, args) {
             var observer = args.observer;
@@ -79,8 +100,8 @@
             observer._currentSize.height = observer._element.clientHeight;
             
             if(
-                (observer._previousSize.width - observer._currentSize.width != 0)
-                || (observer._previousSize.height - observer._currentSize.height != 0)
+                (observer._previousSize.width - observer._currentSize.width !== 0)
+                || (observer._previousSize.height - observer._currentSize.height !== 0)
             ) {
                 karbonator.dom.dispatchEvent(
                     observer._element,
@@ -127,7 +148,7 @@
             elementStyle.width = parentStyle.width;
             elementStyle.height = parentStyle.height;
             elementStyle.backgroundColor = "rgba(0, 0, 0, 0.8)";
-        }
+        };
         
         /**
          * @function
@@ -196,8 +217,8 @@
             this.setDragMode(options.dragMode);
             this.moveTo(options.slideIndex);
             
-            if(typeof(dotList) !== "undefined") {
-                if(!(dotList instanceof HTMLElement)) {
+            if(typeof(options.dotList) !== "undefined") {
+                if(!(options.dotList instanceof HTMLElement)) {
                     throw new TypeError("The parameter 'slideList' must be an instance of 'HTMLElement'.");
                 }
             }
@@ -315,7 +336,7 @@
             this.moveTo(nextIndex);
             
             return nextIndex;
-        }
+        };
         
         /**
          * @private
@@ -678,7 +699,7 @@
          * @param {Boolean} [focus = false]
          * @param {Array} [names]
          */
-        var TagList = function (container, focus, names) {
+        var TagList = function (container) {
             if(typeof(container) === "undefined" || container === null) {
                 throw new TypeError("The parameter 'container' must be an instance of 'Element'.");
             }
@@ -690,13 +711,14 @@
             this._tags = [];
             this._addNewEmptyTag();
             
-            if(typeof(names) !== "undefined" && names instanceof Array) {
+            var names = arguments[2];
+            if(karbonator.isArray(names)) {
                 for(var i = 0; i < names.length; ++i) {
                     this.add(names[i]);
                 }
             }
             
-            if((typeof(focus) === "undefined" ? false : focus)) {
+            if(!!arguments[1]) {
                 this._focusLast();
             }
         };
@@ -737,7 +759,7 @@
              * @return {Boolean}
              */
             Tag.prototype.isLast = function () {
-                return this._tagList._tags.indexOf(this) == this._tagList._tags.length - 1;
+                return this._tagList._tags.indexOf(this) === this._tagList._tags.length - 1;
             };
             
             /**
@@ -802,7 +824,7 @@
                     }
                 break;
                 }
-            }
+            };
             
             /**
              * @private
@@ -824,8 +846,8 @@
              * @function
              * @param {Boolean} [focus = true]
              */
-            Tag.prototype._terminateInput = function (focus) {
-                focus = (typeof(focus) === "undefined" ? false : focus);
+            Tag.prototype._terminateInput = function () {
+                var focus = (typeof(arguments[0]) === "undefined" ? false : arguments[0]);
                 
                 if(this._element.tagName === "INPUT") {
                     this._element.value = this._element.value.trim();
@@ -866,7 +888,7 @@
                         }
                     }
                 }
-            }
+            };
             
             /**
              * @private
@@ -1066,12 +1088,12 @@
         
         /**
          * @function
-         * @return {Boolean}
+         * @param {Boolean} insensitive
          */
         TagList.prototype.setTagNameCaseInsensitive = function (insensitive) {
             this._tagNameCaseInsensitive = insensitive;
         };
-            
+        
         /**
          * @function
          * @return {TagList.ValueIterator}
@@ -1116,8 +1138,8 @@
          * @param {Number} [startIndex = 0]
          * @return {Number}
          */
-        TagList.prototype.findIndex = function (name, startIndex) {
-            var i = startIndex || 0;
+        TagList.prototype.findIndex = function (name) {
+            var i = (karbonator.isUndefined(arguments[1]) ? 0 : arguments[1]);
             for(; i < this._tags.length; ++i) {
                 if(this._tagNameEquals(this._tags[i].getName(), name)) {
                     break;
@@ -1125,7 +1147,7 @@
             }
             
             return (i < this._tags.length ? i : -1);
-        }
+        };
         
         /**
          * @function
@@ -1133,10 +1155,10 @@
          * @param {Number} [startIndex = 0]
          * @return {Number}
          */
-        TagList.prototype.findCount = function (name, startIndex) {
+        TagList.prototype.findCount = function (name) {
             var count = 0;
             for(
-                var i = (startIndex || 0);
+                var i = (karbonator.isUndefined(arguments[1]) ? 0 : arguments[1]);
                 i < this._tags.length;
                 ++i
             ) {
@@ -1146,7 +1168,7 @@
             }
             
             return count;
-        }
+        };
         
         /**
          * @function
@@ -1164,7 +1186,7 @@
             }
             
             return count >= 2;
-        }
+        };
         
         /**
          * @function
@@ -1187,11 +1209,11 @@
          * @param {String} name
          * @param {Boolean} [focus = false]
          */
-        TagList.prototype.add = function (name, focus) {
+        TagList.prototype.add = function (name) {
             var lastTag = this._tags[this._tags.length - 1];
             if(lastTag._element.tagName === "INPUT") {
                 lastTag._element.value = name;
-                lastTag._terminateInput(focus);
+                lastTag._terminateInput(!!arguments[1]);
             }
         };
         
@@ -1201,8 +1223,8 @@
          * @param {Boolean} [focus = false]
          * @return {Boolean}
          */
-        TagList.prototype.remove = function (name, focus) {
-            return this.removeAt(this.findIndex(name), focus);
+        TagList.prototype.remove = function (name) {
+            return this.removeAt(this.findIndex(name), !!arguments[1]);
         };
         
         /**
@@ -1211,7 +1233,7 @@
          * @param {Boolean} [focus = false]
          * @return {Boolean}
          */
-        TagList.prototype.removeAt = function (index, focus) {
+        TagList.prototype.removeAt = function (index) {
             var result = index >= 0;
             if(result) {
                 var tag = this._tags[index];
@@ -1220,7 +1242,7 @@
                 tag._terminateInput();
             }
             
-            if(focus) {
+            if(!!arguments[1]) {
                 this._focusLast();
             }
             
@@ -1231,15 +1253,15 @@
          * @function
          * @param {Boolean} [focus = false]
          */
-        TagList.prototype.removeAll = function (focus) {
+        TagList.prototype.removeAll = function () {
             for(var i = this._tags.length - 1; i > 0; ) {
                 this.removeAt(--i);
             }
             
-            if(focus) {
+            if(!!arguments[0]) {
                 this._focusLast();
             }
-        }
+        };
         
         /**
          * @private
@@ -1266,14 +1288,13 @@
             return new TagList.Tag(this);
         };
         
-    
         /**
          * @private
          * @function
          */
         TagList.prototype._focusLast = function () {
             this._tags[this._tags.length - 1].focus();
-        }
+        };
         
         return TagList;
     })();

@@ -14,15 +14,18 @@
     "use strict";
     
     if(typeof(g.define) === "function" && g.define.amd) {
-        g.define(["./karbonator.string"], function (karbonator) {
+        g.define(["./karbonator.string.fl"], function (karbonator) {
             return factory(g, karbonator);
         });
     }
     else if(typeof(g.module) !== "undefined" && g.module.exports) {
         g.exports = g.module.exports = factory(
             g,
-            require("./karbonator.string")
+            require("./karbonator.string.fl")
         );
+    }
+    else {
+        factory(g, g.karbonator);
     }
 }(
 (
@@ -33,9 +36,11 @@
 (function (global, karbonator) {
     "use strict";
     
-    var detail = karbonator.detail;
+    global;
     
-    var Symbol = detail._selectSymbol();
+    //var detail = karbonator.detail;
+    
+    //var Symbol = karbonator.getEsSymbol();
     
     /**
      * @memberof karbonator
