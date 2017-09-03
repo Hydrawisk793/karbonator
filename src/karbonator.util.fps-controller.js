@@ -2,7 +2,8 @@
  * author : Hydrawisk793
  * e-mail : hyw793&#x40;naver.com
  * blog : http://blog.naver.com/hyw793
- * disclaimer : The author is not responsible for any problems that that may arise by using this source code.
+ * disclaimer : The author is not responsible for any problems 
+ * that may arise by using this source code.
  */
 
 /**

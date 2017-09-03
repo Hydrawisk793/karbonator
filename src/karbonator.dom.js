@@ -220,7 +220,7 @@
      * @function
      * @param {String} type
      */
-    EventListenerList.prototype.dispatchEvent = function () {
+    EventListenerList.prototype.dispatchEvent = function (type) {
         
     };
 
@@ -1167,26 +1167,23 @@
      * @param {Node} node
      * @return {String}
      */
-    dom.getTextContent = (function () {
-        if(TextContentPropertySupported) {
-            return function (node) {
+    dom.getTextContent = (
+        TextContentPropertySupported
+        ? (function (node) {
                 return node.textContent;
-            };
-        }
-        else {
-            return function (node) {
-                var text = "";
-                
-                this.traverseNodeByPreorder(node, function (node, root) {
-                    if(node.nodeType == 3) {
-                        text += node.nodeValue;
-                    }
-                });
-                
-                return text;
-            };
-        }
-    })();
+        })
+        : (function (node) {
+            var text = "";
+
+            this.traverseNodeByPreorder(node, function (node, root) {
+                if(node.nodeType === 3) {
+                    text += node.nodeValue;
+                }
+            });
+
+            return text;
+        })
+    );
     
     /**
      * @memberof karbonator.dom
@@ -1195,21 +1192,18 @@
      * @param {String} text
      * @return {String}
      */
-    dom.setTextContent = (function () {
-        if(TextContentPropertySupported) {
-            return function (node, text) {
-                return (node.textContent = text);
-            };
-        }
-        else {
-            return function (node, text) {
-                this.removeAllChildren(node);
-                node.appendChild(node.ownerDocument.createTextNode(text));
-                
-                return text;
-            };
-        }
-    })();
+    dom.setTextContent = (
+        TextContentPropertySupported
+        ? (function (node, text) {
+            return (node.textContent = text);
+        })
+        : (function (node, text) {
+            this.removeAllChildren(node);
+            node.appendChild(node.ownerDocument.createTextNode(text));
+
+            return text;
+        })
+    );
     
     /**
      * @memberof karbonator.dom
@@ -1253,22 +1247,19 @@
      * @param {Element} element
      * @return {ElementClassList}
      */
-    dom.getClassList = (function () {
-        if(ElementExist && detail._hasOwnPropertyMethod.call(Element.prototype, "classList")) {
-            return function (element) {
-                return element.classList;
-            };
-        }
-        else {
-            return function (element) {
-                if(typeof(element.classList) === "undefined") {
-                    element.classList = new ElementClassList(element);
-                }
-                
-                return element.classList;
-            };
-        }
-    })();
+    dom.getClassList = (
+        (ElementExist && detail._hasOwnPropertyMethod.call(Element.prototype, "classList"))
+        ? (function (element) {
+            return element.classList;
+        })
+        : (function (element) {
+            if(typeof(element.classList) === "undefined") {
+                element.classList = new ElementClassList(element);
+            }
+
+            return element.classList;
+        })
+    );
     
     /**
      * @memberof karbonator.dom
@@ -1340,7 +1331,7 @@
     /**
      * @memberof karbonator.dom
      * @function
-     * @param {HTMLInputElement} element
+     * @param {HTMLInputElement} inputElement
      * @param {Number} selectionStart
      * @param {Number} selectionEnd
      */

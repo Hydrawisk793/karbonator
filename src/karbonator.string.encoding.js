@@ -3,7 +3,7 @@
  * e-mail : hyw793&#x40;naver.com
  * blog : http://blog.naver.com/hyw793
  * disclaimer : The author is not responsible for any problems 
- * that that may arise by using this source code.
+ * that may arise by using this source code.
  */
 
 /**
@@ -51,7 +51,6 @@
         0x010000, 0x200000,
         0x04000000, 0x80000000
     ];
-    var borderCount = byteCountBorders.length;
     var firstByteMasks = [
         0x0000007F, 0x000007C0,
         0x0000F000, 0x001C0000,
@@ -105,14 +104,14 @@
 
             for(
                 restByteCount = 0;
-                restByteCount < borderCount;
+                restByteCount < byteCountBorders.length;
                 ++restByteCount
             ) {
                 if(ch < byteCountBorders[restByteCount]) {
                     break;
                 }
             }
-            if(restByteCount >= borderCount) {
+            if(restByteCount >= byteCountBorders.length) {
                 throw new Error("");
             }
             

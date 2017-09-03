@@ -2113,7 +2113,7 @@
      * @param {Boolean} [byteOrderReversed=false]
      * @param {karbonator.ByteArray} [dest]
      * @param {Number} [destIndex]
-     * @returns {karbonator.ByteArray}
+     * @return {karbonator.ByteArray}
      */
     karbonator.integerToBytes = function (value, byteCount) {
         if(!karbonator.isInteger(value)) {
@@ -2174,7 +2174,7 @@
      * @param {Boolean} [signed=false]
      * @param {Boolean} [byteOrderReversed=false]
      * @param {Number} [startIndex=0]
-     * @returns {Number}
+     * @return {Number}
      */
     karbonator.bytesToInteger = function (bytes, byteCount) {
         if(!(bytes instanceof karbonator.ByteArray)) {
